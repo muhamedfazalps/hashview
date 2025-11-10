@@ -53,6 +53,7 @@ def create_app():
     from hashview.analytics.routes import analytics
     from hashview.notifications.routes import notifications
     from hashview.searches.routes import searches
+    from hashview.wrapped.routes import wrapped
 
     app.register_blueprint(agents)
     app.register_blueprint(api)
@@ -69,6 +70,7 @@ def create_app():
     app.register_blueprint(analytics)
     app.register_blueprint(notifications)
     app.register_blueprint(searches)
+    app.register_blueprint(wrapped)
 
     # Add custom Jinja2 Filters
     app.add_template_filter(jinja_hex_decode)

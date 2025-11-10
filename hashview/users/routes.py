@@ -95,7 +95,8 @@ def users_add():
             return redirect(url_for('users.users_list'))
         return render_template('users_add.html', title='User Add', form=form)
     else:
-        abort(403)
+        flash('Unauthorized to add users account.', 'danger')
+        return redirect(url_for('users.users_list'))
 
 @users.route("/users/delete/<int:user_id>", methods=['POST'])
 @login_required
@@ -107,7 +108,8 @@ def users_delete(user_id):
         flash('User has been deleted!', 'success')
         return redirect(url_for('users.users_list'))
     else:
-        abort(403)
+        flash('Unauthorized to delete users account.', 'danger')
+        return redirect(url_for('users.users_list'))
 
 @users.route("/profile", methods=['GET', 'POST'])
 @login_required
@@ -116,6 +118,7 @@ def profile():
     if form.validate_on_submit():
         current_user.first_name = form.first_name.data
         current_user.last_name = form.last_name.data
+        current_user.email_address = form.email.data
         if form.pushover_user_key.data:
             current_user.pushover_user_key = form.pushover_user_key.data
         if form.pushover_app_id.data:
@@ -126,6 +129,7 @@ def profile():
     elif request.method == 'GET':
         form.first_name.data = current_user.first_name
         form.last_name.data = current_user.last_name
+        form.email.data = current_user.email_address
     return render_template('profile.html', title='Profile', form=form, current_user=current_user)
 
 @users.route("/profile/send_test_pushover", methods=['GET'])
@@ -165,7 +169,7 @@ def reset_request():
             token = user.get_reset_token()
             subject = 'Password Reset Request.'
             message = f'''To reset your password, vist the following link:
-    {url_for('users.reset_token', user_id=user.id, token=token, _external=True)}
+    {url_for('users.reset_token', user_id=user.id, token=token, _external=False)}
 
     If you did not make this request... then something phishy is going on.
     '''
@@ -217,3 +221,27 @@ def reset_token(user_id :int, token :str):
         db.session.commit()
         flash('Your password has been updated! You are now able to login.', 'success')
         return redirect(url_for('users.login_get'))
+
+# Promote a user to admin
+@users.route("/users/promote/<int:user_id>", methods=['POST'])
+@login_required
+def promote_user(user_id):
+    if not current_user.admin:
+        abort(403)
+    user = Users.query.get_or_404(user_id)
+    user.admin = True
+    db.session.commit()
+    flash(f'User {user.email_address} promoted to admin.', 'success')
+    return redirect(url_for('users.users_list'))
+
+# Demote a user to regular user
+@users.route("/users/demote/<int:user_id>", methods=['POST'])
+@login_required
+def demote_user(user_id):
+    if not current_user.admin:
+        abort(403)
+    user = Users.query.get_or_404(user_id)
+    user.admin = False
+    db.session.commit()
+    flash(f'User {user.email_address} demoted to regular user.', 'success')
+    return redirect(url_for('users.users_list'))

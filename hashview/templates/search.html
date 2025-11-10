@@ -8,84 +8,79 @@
 {% endblock header %}
 {% block content %}
 <article class="media content-section">
+    <style>
+        .dropdown-item {
+            font-size: 1.25rem !important;
+        }
+    </style>
     <div class="media-body">
         <div class="content-section">
             <form method="POST" action="" enctype="multipart/form-data">
                 {{ searchForm.hidden_tag() }}
-                <div class="input-group">
-                    <div class="input-group-prepend w-100">
-     
-                        {% if searchForm.search_type.errors %}
-                            {{ searchForm.search_type(class="is-invalid") }}
-                            {{ searchForm.query(class="is-invalid")}}
-                            <div class="invalid-feedback">
-                                {% for error in searchForm.search_type.errors %}
-                                    <span>{{ error }}</span>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            {{ searchForm.search_type(class="btn btn-outline-secondary dropdown-toggle") }} 
-                            {{ searchForm.query(class="form-control", style="border-radius:0px;", placeholder="Enter search text")}}
-                        {% endif %}
-                        {{ searchForm.submit(class="btn btn-primary pull-right", style="border-bottom-right-radius: 4px; border-top-right-radius: 4px;")}}
-                        {% if results %}
-                        {{ searchForm.export(class="btn btn-secondary pull-right", style="margin-left:5px;border-radius:4px 0px 0px 4px;", title="Export results to a file")}}  
-                        {{ searchForm.export_type(class="btn pull-right", style="padding:0px;border-radius:0px 4px 4px 0px; border:1px solid black;", title="Column Separator to use when exporting") }}
+                <div class="input-group mb-3">
+                    {% if searchForm.search_type.errors %}
+                        {{ searchForm.search_type(class="is-invalid") }}
+                        {{ searchForm.query(class="is-invalid")}}
+                        <div class="invalid-feedback">
+                            {% for error in searchForm.search_type.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ searchForm.search_type(class="btn btn-outline-secondary dropdown-toggle", style="font-size: 1.25rem;") }}
+                        {{ searchForm.query(class="form-control form-control-lg", placeholder="Enter search text")}}
                     {% endif %}
-                    </div> 
+                    {{ searchForm.submit(class="btn btn-primary", style="border-bottom-right-radius: 4px; border-top-right-radius: 4px;")}}
+                    {% if results %}
+                        {{ searchForm.export(class="btn btn-secondary", style="margin-left:5px;", title="Export results to a file")}}  
+                        {{ searchForm.export_type(class="btn btn-outline-secondary", style="padding:0px;", title="Column Separator to use when exporting") }}
+                    {% endif %}
                 </div>
             </form>
         </div>
         <br>
-        {% if results %}
+        {% if hash_results %}
             <table class="table">
                 <thead>
                 <tr>
-                    <th scope="col">Customer</th>
-                    <th scope="col">Username</th>
-                    <th scope="col">Hash</th>
-                    <th scope="col">Plaintext</th>
+                    <th scope="col">Recovered_at</th>
+                    <th scope="col">HashType</th>
+                    <th scope="col">Cipher Text</th>
+                    <th scope="col">Plain Text</th>
                 </tr>
                 </thead>
                 <tbody>
-                    {% for entry in results %}
-                        <tr>
-                            <td>
-                                {% for hashfile in hashfiles %}
-                                    {% if hashfile.id == entry[1].hashfile_id %}
-                                        {% for customer in customers %}
-                                            {% if customer.id == hashfile.customer_id %}
-                                                {{ customer.name }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>
-                                {% if entry[1].username %}
-                                    {{entry[1].username | jinja_hex_decode }}
+                    {% for entry in hash_results %}
+                        <td>
+                            {% if entry.cracked %}
+                                {% if entry.recovered_at == None %}
+                                    <i> Before Jan 1st 2025 </i>
                                 {% else %}
-                                    <i>None</i>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <p class="text-break">
-                                    {{ entry[0].ciphertext }}
-                                </p>
-                            </td>
-                            <td>
-                                {% if entry[0].cracked %}
-                                    {{ entry[0].plaintext | jinja_hex_decode }}
-                                {% else %}
-                                    <i>unrecovered</i>
-                                {% endif %}
-                            </td>
-                        </tr>
+                                    {{ entry.recovered_at}}
+                                {% endif %}  
+                            {% else %}
+                                <i>unrecovered</i>
+                            {% endif %}
+                        </td>
+                        <td>{{entry.hash_type}}</td>
+                        <td>
+                            <p class="text-break">
+                                {{ entry.ciphertext }}
+                            </p>
+                        </td>
+                        <td>
+                            {% if entry.cracked %}
+                                {{ entry.plaintext | jinja_hex_decode }}
+                            {% else %}
+                                <i>unrecovered</i>
+                            {% endif %}
+                        </td>                              
                     {% endfor %}
                 </tbody>
             </table>
         {% endif %}
-        {% if not results %}
+        <br>
+        {% if hashfile_results %}
             <table class="table">
                 <thead>
                 <tr>
@@ -96,10 +91,53 @@
                 </tr>
                 </thead>
                 <tbody>
-                    <tr><td></td></tr>
+                    {% for entry in hashfile_results %}
+                        {% if redacted_data == False %}
+                            <tr>
+                                <td>
+                                    {% for hashfile in hashfiles %}
+                                        {% if hashfile.id == entry[1].hashfile_id %}
+                                            {% for customer in customers %}
+                                                {% if customer.id == hashfile.customer_id %}
+                                                    {{ customer.name }}
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    {% if entry[1].username %}
+                                        {{entry[1].username | jinja_hex_decode }}
+                                    {% else %}
+                                        <i>None</i>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <p class="text-break">
+                                        {{ entry[0].ciphertext }}
+                                    </p>
+                                </td>
+                                <td>
+                                    {% if entry[0].cracked %}
+                                        {{ entry[0].plaintext | jinja_hex_decode }}
+                                    {% else %}
+                                        <i>unrecovered</i>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td><i>removed</i></td>
+                                <td><i>removed</i></td>
+                                <td>{{ entry.ciphertext }}</td>
+                                <td>{{ entry.plaintext | jinja_hex_decode }}</td>
+                            </tr>            
+                        {% endif %}
+                    {% endfor %}
                 </tbody>
             </table>
         {% endif %}
+        
     </div>
 </article>
 {% endblock content %}

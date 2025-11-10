@@ -70,7 +70,7 @@ def dynamicwordlist_update(wordlist_id):
     wordlist = Wordlists.query.get(wordlist_id)
     if wordlist.type == 'dynamic':
         update_dynamic_wordlist(wordlist_id)
-        flash('Updated Dynamic Wordlist', 'succes')
+        flash('Updated Dynamic Wordlist', 'success')
     else:
         flash('Invalid wordlist', 'danger')
     return redirect(url_for('wordlists.wordlists_list'))

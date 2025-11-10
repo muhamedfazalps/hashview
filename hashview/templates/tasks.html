@@ -1,10 +1,7 @@
 {% extends "layout.html"%}
 {% block header %}
 <br>
-<h1>Tasks</h1>
 <br>
-Task are predefined hashcat commands. Any number of tasks can be assigned to a Job.
-<a class="btn btn-success btn-sm mt-1 mb-1" href="{{ url_for('tasks.tasks_add') }}">Add</a>
 <br>
 <br>
 <br>
@@ -12,36 +9,144 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
 {% block content %}
     <article class="media content-section">
         <div class="media-body">
-            <table class="table">
-                <thead>
-                  <tr>
-                    <th scope="col">Task Name</th>
-                    <th scope="col">Owner</th>
-                    <th scope="col">Type</th>
-                    <th scope="col">Control</th>
-                  </tr>
-                </thead>
-                <tbody>
-                    {% for task in tasks %}
-                        <tr>
-                            <td>{{ task.name }}</td>
-                            <td>
-                                {% for user in users %}
-                                    {% if user.id == task.owner_id %}
-                                        {{ user.first_name }} {{ user.last_name }}
+            <div class="card">
+                <h4 class="card-header">
+                    Tasks 
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Tasks are predefined hashcat commands. Any number of tasks can be assigned to a job" style="margin-left:5px;"></i>
+                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('tasks.tasks_add') }}">Add</a>
+                </h4>
+                <div class="card-body ">            
+                    <table class="table table-hover table-sm">
+                    <thead>
+                    <tr>
+                        <th scope="col">
+                            <a href="{{ url_for('tasks.tasks_list', sort_by='name', sort_order='desc' if sort_by == 'name' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
+                                Task Name
+                                {% if sort_by == 'name' %}
+                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
+                                {% else %}
+                                    <i class="fa fa-sort text-muted"></i>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th scope="col">
+                            <a href="{{ url_for('tasks.tasks_list', sort_by='owner', sort_order='desc' if sort_by == 'owner' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
+                                Owner
+                                {% if sort_by == 'owner' %}
+                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
+                                {% else %}
+                                    <i class="fa fa-sort text-muted"></i>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th scope="col">
+                            <a href="{{ url_for('tasks.tasks_list', sort_by='type', sort_order='desc' if sort_by == 'type' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
+                                Type
+                                {% if sort_by == 'type' %}
+                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
+                                {% else %}
+                                    <i class="fa fa-sort text-muted"></i>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th scope="col">
+                            <a href="{{ url_for('tasks.tasks_list', sort_by='recovered', sort_order='desc' if sort_by == 'recovered' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
+                                Passwords Recovered
+                                {% if sort_by == 'recovered' %}
+                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
+                                {% else %}
+                                    <i class="fa fa-sort text-muted"></i>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th style="width:140px" scope="col">Control</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                            <tr>
+                                <td style="vertical-align:middle;">{{ task.name }}</td>
+                                <td style="vertical-align:middle;">
+                                    {% for user in users %}
+                                        {% if user.id == task.owner_id %}
+                                            {{ user.first_name }} {{ user.last_name }}
+                                        {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td style="vertical-align:middle;">
+                                    {% if task.hc_attackmode == 0 %}
+                                        Straight (Wordlist + Rules)
+                                    {% elif task.hc_attackmode == 1 %}
+                                        Combination (Wordlist1, Rule1, Wordlist2, Rule2)                                      
+                                    {% elif task.hc_attackmode == 3 %}
+                                        Brute-force (Maskmode)
+                                    {% elif task.hc_attackmode == 6 %}
+                                        Hybrid (Wordlist + Mask)
+                                    {% elif task.hc_attackmode == 7 %}
+                                        Hybrid (Mask + Wordlist)
+                                    {% else %}
+                                        UNDEF?
                                     {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>{{ task.hc_attackmode}}</td>
-                            <td>
-                                <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{task.id}}" title=Info></button>
-                                <a class="fa fa-edit btn btn-warning" href="/tasks/edit/{{task.id}}" role="button" title=Edit></a>
-                                <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{task.id}}" title=Delete></button>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-              </table>
+                                </td>
+                                <td style="vertical-align:middle;">
+                                    {% set ns = namespace(recovered_count=0) %}
+                                    {% for performance in task_recovery_performance %}
+                                        {% if performance.task_id == task.id %}
+                                            {% set ns.recovered_count = performance.recovered_count %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    {{ ns.recovered_count }}
+                                <td style=vertical-align:middle;>
+                                    <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{task.id}}" title=Info></button>
+                                    <a class="fa fa-edit btn btn-warning" href="/tasks/edit/{{task.id}}" role="button" title=Edit></a>
+                                    <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{task.id}}" title=Delete></button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                    </table>
+                </div>
+                <!-- Pagination Controls -->
+        <nav aria-label="Tasks pagination">
+            <ul class="pagination justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('tasks.tasks_list', page=pagination.prev_num, sort_by=sort_by, sort_order=sort_order) }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo; Prev</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">&laquo; Prev</span>
+                </li>
+                {% endif %}
+
+                {% for p in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
+                    {% if p %}
+                        {% if p == pagination.page %}
+                        <li class="page-item active"><span class="page-link" >{{ p }}</span></li>
+                        {% else %}
+                        <li class="page-item"><a class="page-link"  href="{{ url_for('tasks.tasks_list', page=p, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a></li>
+                        {% endif %}
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link" >…</span></li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <li class="page-item">
+                    <a class="page-link"  href="{{ url_for('tasks.tasks_list', page=pagination.next_num, sort_by=sort_by, sort_order=sort_order) }}" aria-label="Next">
+                        <span aria-hidden="true">Next &raquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link" >Next &raquo;</span>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+            </div>
         </div>
     </article>
     {% for task in tasks %}
@@ -49,9 +154,9 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
         <div class="modal fade" id="infoModal{{task.id}}" tabindex="-1" aria-labelledby="infoModal{{task.id}}Label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header d-flex align-items-center">
                 <h5 class="modal-title" id="infoModal{{task.id}}Label">Info: {{task.name}}</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>
@@ -112,7 +217,7 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                     </table>
                 </div>
                 <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
             </div>
@@ -125,7 +230,7 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
             <div class="modal-content">
                 <div class="modal-header">
                 <h5 class="modal-title" id="deleteModal{{task.id}}Label">Delete: {{task.name}} ?</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>
@@ -133,7 +238,7 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                 This will permanantly delete the task. Are you sure you want to continue?
                 </div>
                 <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
                 <form action="{{ url_for('tasks.tasks_delete', task_id=task.id) }}" method="POST">
                     <input class="btn btn-danger" type="submit" value="Delete">
                 </form>

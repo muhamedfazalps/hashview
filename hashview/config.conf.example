@@ -1,3 +1,6 @@
+[SERVER]
+SERVER_NAME = FQDN:PORT
+
 [database]
 host = localhost
 username = username

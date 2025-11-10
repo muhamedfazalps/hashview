@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, render_template, flash, url_for, redirect, current_app
+from flask import Blueprint, render_template, flash, url_for, redirect, current_app, request
 from flask_login import login_required, current_user
 from hashview.models import Rules, Tasks, Jobs, JobTasks, Users
 from hashview.rules.forms import RulesForm
@@ -41,6 +41,40 @@ def rules_add():
             flash(f'Rules File created!', 'success')
             return redirect(url_for('rules.rules_list'))
     return render_template('rules_add.html', title='Rules Add', form=form)
+
+@rules.route("/rules/edit/<int:rule_id>", methods=['GET', 'POST'])
+@login_required
+def rules_view(rule_id):
+    rule = Rules.query.get_or_404(rule_id)
+    # Read file content
+    try:
+        with open(rule.path, 'r') as f:
+            content = f.read()
+    except Exception as e:
+        flash(f'Error reading file: {e}', 'danger')
+        return redirect(url_for('rules.rules_list'))
+
+    can_edit = current_user.admin or rule.owner_id == current_user.id
+
+    if request.method == 'POST':
+        if not can_edit:
+            flash('Unauthorized action!', 'danger')
+            return redirect(url_for('rules.rules_view', rule_id=rule.id))
+        new_content = request.form.get('content')
+        try:
+            with open(rule.path, 'w') as f:
+                f.write(new_content)
+            # Update metadata
+            rule.size = get_linecount(rule.path)
+            rule.checksum = get_filehash(rule.path)
+            db.session.commit()
+            flash('Rule file updated.', 'success')
+        except Exception as e:
+            flash(f'Error saving file: {e}', 'danger')
+        return redirect(url_for('rules.rules_view', rule_id=rule.id))
+
+    return render_template('rules_edit.html', rule=rule, content=content, can_edit=can_edit)
+ 
 
 @rules.route("/rules/delete/<int:rule_id>", methods=['GET', 'POST'])
 @login_required

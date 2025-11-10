@@ -45,7 +45,8 @@ def settings_list():
             HashviewForm        = HashviewForm,
             tmp_folder_size     = tmp_folder_size,
             application_version = hashview.__version__,
-            database_version    = db.get_engine(current_app).execute('SELECT version_num FROM alembic_version LIMIT 1;').fetchone()[0],
+            database_bersion    = db.session.execute('SELECT version_num FROM alembic_version LIMIT 1;').scalar()
+            #database_version    = db.get_engine(current_app).execute('SELECT version_num FROM alembic_version LIMIT 1;').fetchone()[0],
         )
     else:
         abort(403)

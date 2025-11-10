@@ -1,9 +1,7 @@
 {% extends "layout.html"%}
 {% block header %}
 <br>
-<h1>Customers</h1>
 <br>
-The following are a list of customers currently configured in Hashview. All Jobs, passwords and hashes will be assigned to a single customer. Deleting a customer will remove ALL data from the system.
 <br>
 <br>
 <br>
@@ -11,26 +9,34 @@ The following are a list of customers currently configured in Hashview. All Jobs
 {% block content %}
     <article class="media content-section">
         <div class="media-body">
-            <table class="table">
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Control</th>
-                  </tr>
-                </thead>
-                <tbody>
-                    {% for customer in customers %}
+            <div class="card">
+                <h4 class="card-header">
+                    Customers
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="The following are a list of customers currently configured in Hashview. All Jobs, passwords and hashes will be assigned to a single customer. Deleting a customer will remove ALL data from the system." style="margin-left:5px;"></i>
+                </h4>
+                <div class="card-body ">              
+                    <table class="table table-hover table-sm">
+                        <thead>
                         <tr>
-                            <td>{{ customer.name }}</td>
-                            <td>
-                                <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{customer.id}}" title=Info></button> 
-                                <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{customer.id}}" role="button" title=Analytics></a> 
-                                <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{customer.id}}" title=Delete></button>
-                            </td>
+                            <th scope="col">Name</th>
+                            <th scope="col">Control</th>
                         </tr>
-                    {% endfor %}
-                </tbody>
-              </table>
+                        </thead>
+                        <tbody>
+                            {% for customer in customers %}
+                                <tr>
+                                    <td>{{ customer.name }}</td>
+                                    <td style="text-align: right;">
+                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{customer.id}}" title=Info></button> 
+                                        <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{customer.id}}" role="button" title=Analytics></a> 
+                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{customer.id}}" title=Delete></button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>    
         </div>
     </article>
     {% for customer in customers %}
@@ -38,11 +44,9 @@ The following are a list of customers currently configured in Hashview. All Jobs
     <div class="modal fade" id="infoModal{{customer.id}}" tabindex="-1" aria-labelledby="infoModal{{customer.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-            <h5 class="modal-title" id="infoModal{{customer.id}}Label">Info: {{customer.name}}</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+            <div class="modal-header d-flex align-items-center">
+                <h5 class="modal-title" id="infoModal{{customer.id}}Label">Info: {{customer.name}}</h5>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="modal-body">
                 <table class="table">
@@ -71,7 +75,7 @@ The following are a list of customers currently configured in Hashview. All Jobs
                   </table>
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
         </div>
@@ -82,20 +86,18 @@ The following are a list of customers currently configured in Hashview. All Jobs
     <div class="modal fade" id="deleteModal{{customer.id}}" tabindex="-1" aria-labelledby="deleteModal{{customer.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-            <h5 class="modal-title" id="deleteModal{{customer.id}}Label">Delete: {{customer.name}} ?</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+            <div class="modal-header d-flex align-items-center">
+                <h5 class="modal-title" id="deleteModal{{customer.id}}Label">Delete: {{customer.name}} ?</h5>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="modal-body">
             This will permanantly delete the customer and any associated hashfiles and hashes. Are you sure you want to continue?
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
-            <form action="{{ url_for('customers.customers_delete', customer_id=customer.id) }}" method="POST">
-                <input class="btn btn-danger" type="submit" value="Delete">
-            </form>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <form action="{{ url_for('customers.customers_delete', customer_id=customer.id) }}" method="POST">
+                    <input class="btn btn-danger" type="submit" value="Delete">
+                </form>
             </div>
         </div>
         </div>

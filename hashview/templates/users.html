@@ -1,10 +1,7 @@
 {% extends "layout.html"%}
 {% block header %}
 <br>
-<h1>Users</h1>
 <br>
-These are the awesome people that use Hashview.
-<a class="btn btn-success btn-sm mt-1 mb-1" href="{{ url_for('users.users_add') }}">Add</a>
 <br>
 <br>
 <br>
@@ -12,46 +9,61 @@ These are the awesome people that use Hashview.
 {% block content %}
     <article class="media content-section">
         <div class="media-body">
-            <table class="table">
-                <thead>
-                  <tr>
-                    <th scope="col">First</th>
-                    <th scope="col">Last</th>
-                    <th scope="col">Email</th>
-                    <th scope="col">Role</th>
-                    <th scope="col">Last Login</th>
-                    <th scope="col">Control</th>
-                  </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
+            <div class="card">
+                <h4 class="card-header">
+                    Users 
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="These are the awesome people that use Hashview." style="margin-left:5px;"></i>
+                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('users.users_add') }}">Add</a>
+                </h4>
+                <div class="card-body ">  
+                    <table class="table table-hover table-sm">
+                        <thead>
                         <tr>
-                            <td>{{ user.first_name }}</td>
-                            <td>{{ user.last_name }}</td>
-                            <td>{{ user.email_address }}</td>
-                            <td>
-                                {% if user.admin %}
-                                    Admin
-                                {% else %}
-                                    User
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if user.last_login_utc %}
-                                        {{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}
-                                {% else %}
-                                        <i>Never</i>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{user.id}}" title=Info></button>
-                                <button type="button" class="fa fa-undo btn btn-warning" data-toggle="modal" data-target="#resetModal{{user.id}}" title='Reset Password'></button>
-                                <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{user.id}}" title=Delete></button>
-                            </td>
+                            <th scope="col">First</th>
+                            <th scope="col">Last</th>
+                            <th scope="col">Email</th>
+                            <th scope="col">Role</th>
+                            <th scope="col">Last Login</th>
+                            <th style="width:140px" scope="col">Control</th>
                         </tr>
-                    {% endfor %}
-                </tbody>
-              </table>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                                <tr>
+                                    <td style=vertical-align:middle;>
+                                        {{ user.first_name }}
+                                    </td>
+                                    <td style=vertical-align:middle;>
+                                        {{ user.last_name }}
+                                    </td>
+                                    <td style=vertical-align:middle;>
+                                        {{ user.email_address }}
+                                    </td>
+                                    <td style=vertical-align:middle;>
+                                        <form method="post" action="{{ url_for('users.promote_user', user_id=user.id) if not user.admin else url_for('users.demote_user', user_id=user.id) }}">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" onchange="this.form.submit()" {% if user.admin %}checked{% endif %}{% if not current_user.admin %} disabled{% endif %}>
+                                            </div>
+                                        </form>
+                                    </td>
+                                    <td style=vertical-align:middle;>
+                                        {% if user.last_login_utc %}
+                                                {{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}
+                                        {% else %}
+                                                <i>Never</i>
+                                        {% endif %}
+                                    </td>
+                                    <td style=vertical-align:middle;>
+                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{user.id}}" title=Info></button>
+                                        <button type="button" class="fa fa-undo btn btn-warning" data-bs-toggle="modal" data-bs-target="#resetModal{{user.id}}" title='Reset Password'></button>
+                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{user.id}}" title=Delete></button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </article>
     {% for user in users %}
@@ -59,9 +71,9 @@ These are the awesome people that use Hashview.
         <div class="modal fade" id="infoModal{{user.id}}" tabindex="-1" aria-labelledby="infoModal{{user.id}}Label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header d-flex align-items-center">
                 <h5 class="modal-title" id="infoModal{{user.id}}Label">Info: {{user.email_address}}</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>
@@ -124,7 +136,7 @@ These are the awesome people that use Hashview.
                       </table>
                 </div>
                 <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
             </div>
@@ -135,9 +147,9 @@ These are the awesome people that use Hashview.
         <div class="modal fade" id="resetModal{{user.id}}" tabindex="-1" aria-labelledby="resetModal{{user.id}}Label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header d-flex align-items-center">
                 <h5 class="modal-title" id="resetModal{{user.id}}Label">Password Reset: {{user.email_address}}</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>
@@ -145,7 +157,7 @@ These are the awesome people that use Hashview.
                 Reset this users password?
                 </div>
                 <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">No</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No</button>
                 <form action="{{ url_for('users.admin_reset', user_id=user.id) }}" method="POST">
                     <input class="btn btn-primary" type="submit" value="Yes">
                 </form>
@@ -159,9 +171,9 @@ These are the awesome people that use Hashview.
         <div class="modal fade" id="deleteModal{{user.id}}" tabindex="-1" aria-labelledby="deleteModal{{user.id}}Label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header d-flex align-items-center">
                 <h5 class="modal-title" id="deleteModal{{user.id}}Label">Delete: {{user.email_address}} ?</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>
@@ -169,7 +181,7 @@ These are the awesome people that use Hashview.
                 This will permanantly delete the account. Are you sure you want to continue?
                 </div>
                 <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
                 <form action="{{ url_for('users.users_delete', user_id=user.id) }}" method="POST">
                     <input class="btn btn-danger" type="submit" value="Delete">
                 </form>

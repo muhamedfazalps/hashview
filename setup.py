@@ -51,6 +51,17 @@ requirements = open('requirements.txt', 'r')
 for entry in requirements:
     install_and_import('transliterate')
 
+print('\nCollecting Hashview Server Information.')
+server_fqdn = input('Enter the IP or FQDN of the web front end: ')
+while len(server_fqdn) == 0:
+    print('Error: Invalid entry Please try again.')
+    server_fqdn = input('Enter the IP or FQDN of the web front end: ')
+
+server_port = input('Enter the port of the web front end: ')
+while len(server_port) == 0:
+    print('Error: Invalid entry Please try again.')
+    server_port = input('Enter the port of the web front end: ')
+
 print('\nCollecting Hashview Database Configuration Information')
 db_server = input('Enter the IP or hostname of the server running mysql. i.e. 127.0.0.1 or localhost: ')
 while len(db_server) == 0:
@@ -90,6 +101,9 @@ else:
 
 # Write config file
 config = open("hashview/config.conf", "w")
+config.write('[SERVER]\n')
+config.write("SERVER_NAME = ") + str(server_fqdn) + ":" + str(server_port) + "\n\n"
+
 config.write("[database]\n")
 config.write("host = " + str(db_server) + "\n")
 config.write("username = " + str(db_username) + "\n")

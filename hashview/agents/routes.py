@@ -5,6 +5,7 @@ from hashview.agents.forms import AgentsForm
 from hashview.models import Agents, JobTasks
 from hashview.models import db
 import os
+import time
 
 agents = Blueprint('agents', __name__)
 
@@ -110,3 +111,11 @@ def agents_download():
     os.system(cmd)
 
     return send_from_directory('control/tmp', filename, as_attachment=True)
+
+@agents.route("/agents/restart/<agent_id>", methods=['GET'])
+@login_required
+def agents_restart(agent_id):
+    #agents = Agents.query.get(agent_id)
+    os.system('/bin/sh restart-agent.sh')
+    time.sleep(15)
+    return redirect(url_for('main.home'))

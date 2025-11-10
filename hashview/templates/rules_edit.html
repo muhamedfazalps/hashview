@@ -1,0 +1,31 @@
+{% extends "layout.html"%}
+{% block header %}
+<br>
+<br>
+<br>
+<br>
+<br>
+{% endblock header %}
+{% block content %}
+    <article class="media content-section">
+        <div class="media-body">
+            <div class="card">
+                <h4 class="card-header">
+                    Rule: Edit {{ rule.name }}
+                </h4>
+                <div class="card-body ">
+                    <form method="POST" action="">
+                        <div class="form-group">
+                            <textarea class="form-control" name="content" rows="20" {% if not can_edit %}disabled{% endif %}>{{ content }}</textarea>
+                        </div>
+                        {% if can_edit %}
+                            <div class="form-group">
+                                {{ form.submit(class="btn btn-outline-info pull-right")}}
+                            </div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </article>
+{% endblock content %}

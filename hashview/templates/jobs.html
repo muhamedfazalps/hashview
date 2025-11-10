@@ -1,10 +1,7 @@
 {% extends "layout.html"%}
 {% block header %}
 <br>
-<h1>Jobs</h1>
 <br>
-Jobs contain a series of tasks (hashcat commands). Jobs also have an associated list of hashes to crack.
-<a class="btn btn-success btn-sm mt-1 mb-1" href="{{ url_for('jobs.jobs_add') }}">Create a New Job</a>
 <br>
 <br>
 <br>
@@ -12,66 +9,139 @@ Jobs contain a series of tasks (hashcat commands). Jobs also have an associated 
 {% block content %}
     <article class="media content-section">
         <div class="media-body">
-            <table class="table">
-                <thead>
-                  <tr>
-                    <th scope="col">Customer</th>
-                    <th scope="col">Name</th>
-                    <th scope="col">Hash File</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Owner</th>
-                    <th scope="col">Control</th>                   
-                  </tr>
-                </thead>
-                <tbody>
-                    {% for job in jobs%}
-                        <tr>
-                            <td>
-                                {% for customer in customers %}
-                                    {% if customer.id == job.customer_id %}
-                                        {{ customer.name }}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>{{ job.name }}</td>
-                            <td>
-                                {% for hashfile in hashfiles %}
-                                    {% if hashfile.id == job.hashfile_id %}
-                                        {{ hashfile.name }}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>{{ job.status }}</td>
-                            <td>
-                                {% for user in users %}
-                                    {% if user.id == job.owner_id %}
-                                        {{ user.first_name }} {{ user.last_name }}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>
-                                {% if job.status == 'Ready' %}
-                                    <a class="fa fa-play btn btn-success" href="/jobs/start/{{job.id}}" role="button" title=start></a>
-                                {% elif job.status == 'Queued' or job.status == 'Running' %}
-                                    <a class="fa fa-stop btn btn-secondary" href="/jobs/stop/{{job.id}}" role="button" title=stop></a>
-                                {% elif job.status == 'Completed' %}
-                                    <a class="fa fa-check btn btn-primary" href="#" role="button" title=Completed></a>
-                                {% elif job.status == 'Canceled' %}
-                                    <a class="fa fa-close btn btn-secondary" href="/jobs/start/{{job.id}}" role="button" title=Canceled></a>
-                                {% endif %}
-                                {% if job.status != 'Incomplete' %}
-                                    <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{job.customer_id}}&hashfile_id={{job.hashfile_id}}" role="button" title=Analytics></a>
-                                    <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{job.id}}" title=Info></button>
-                                {% endif %}
-                                {% if job.status != 'Running' and job.status != 'Queued' %}
-                                    <a class="fa fa-edit btn btn-warning" href="/jobs/{{job.id}}/assigned_hashfile/" role="button" title=Edit></a>
-                                {% endif %}
-                                <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{job.id}}" title=Delete></button>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-              </table>
+            <div class="card">
+                <h4 class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        Jobs
+                        <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Jobs contain a series of tasks (hashcat commands). Jobs also have an associated list of hashes to crack." style="margin-left:5px;"></i>
+                    </div>
+                    <a class="btn btn-success btn-sm mt-1 mb-1" href="{{ url_for('jobs.jobs_add') }}">New Job</a>
+                </h4>
+                <div class="card-body ">
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                            <th>Customer</th>
+                            <th>Name</th>
+                            <th>Hash File</th>
+                            <th style="text-align:center;">Status</th>
+                            <th>
+                                Owner
+                                <label class="switch" style="margin-left: 10px; vertical-align: middle;" title="Show only my jobs">
+                                    <input type="checkbox" id="showOnlyMineToggle" {% if show_only_mine == 'true' %}checked{% endif %}>
+                                    <span class="slider round"></span>
+                                </label>
+                            </th>
+                            <th style="width:235px" scope="col">Control</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for job in jobs%}
+                                <tr>
+                                    <td>
+                                        {% for customer in customers %}
+                                            {% if customer.id == job.customer_id %}
+                                                {{ customer.name }}
+                                            {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td style="vertical-align:middle;">{{ job.name }}</td>
+                                    <td style="vertical-align:middle;">
+                                        {% for hashfile in hashfiles %}
+                                            {% if hashfile.id == job.hashfile_id %}
+                                                {{ hashfile.name }}
+                                            {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td style="text-align:center; vertical-align:middle;">
+                                        {% if job.status == 'Ready' %}
+                                            <i class="fa fa-triangle-exclamation fa-fw" style="color: #ffc107 !important"></i>
+                                        {% elif job.status == 'Queued' %}
+                                            <i class="fa fa-clock-o fa-fw"></i>
+                                        {% elif job.status == 'Running' %}
+                                            <i class="fa fa-refresh fa-spin fa-fw" style="color: #198754 !important"></i>
+                                        {% elif job.status == 'Completed' %}
+                                            <i class="fa fa-check-circle fa-fw" style="color: #198754!important"></i>
+                                        {% elif job.status == 'Canceled' %}
+                                            <i class="fa fa-ban fa-fw" style="color: #dc3545 !important"></i>
+                                        {% elif job.status == 'Incomplete' %}
+                                            <i class="fa fa-exclamation-triangle" style="color: #ffc107 !important"></i>
+                                        {% endif %}
+                                    </td>
+                                    <td style="vertical-align:middle;">
+                                        {% for user in users %}
+                                            {% if user.id == job.owner_id %}
+                                                {{ user.first_name }} {{ user.last_name }}
+                                            {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td style="vertical-align:middle;">
+                                        {% if job.status == 'Ready' %}
+                                            <a class="fa fa-play btn btn-success" href="/jobs/start/{{job.id}}" role="button" title=start></a>
+                                        {% elif job.status == 'Queued' or job.status == 'Running' %}
+                                            <a class="fa fa-stop btn btn-secondary" href="/jobs/stop/{{job.id}}" role="button" title=stop></a>
+                                        {% elif job.status == 'Completed' %}
+                                            <a class="fa fa-check btn btn-primary" href="#" role="button" title=Completed></a>
+                                        {% elif job.status == 'Canceled' %}
+                                            <a class="fa fa-close btn btn-secondary" href="/jobs/start/{{job.id}}" role="button" title=Canceled></a>
+                                        {% endif %}
+                                        {% if job.status != 'Incomplete' %}
+                                            <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{job.customer_id}}&hashfile_id={{job.hashfile_id}}" role="button" title=Analytics></a>
+                                            <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{job.id}}" title=Info></button>
+                                        {% endif %}
+                                        {% if job.status == 'Running' or job.status == 'Queued' %}
+                                            <button class="fa fa-edit btn btn-outline-warning" disabled title=Edit></button>
+                                        {% else %}
+                                            <a class="fa fa-edit btn btn-warning" href="/jobs/{{job.id}}/assigned_hashfile/" role="button" title=Edit></a>
+                                        {% endif %}
+                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{job.id}}" title=Delete></button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <!-- Pagination Controls -->
+        <nav aria-label="Jobs pagination">
+            <ul class="pagination justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('jobs.jobs_list', page=pagination.prev_num, show_only_mine=show_only_mine) }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo; Prev</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">&laquo; Prev</span>
+                </li>
+                {% endif %}
+
+                {% for p in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
+                    {% if p %}
+                        {% if p == pagination.page %}
+                        <li class="page-item active"><span class="page-link" >{{ p }}</span></li>
+                        {% else %}
+                        <li class="page-item"><a class="page-link"  href="{{ url_for('jobs.jobs_list', page=p, show_only_mine=show_only_mine) }}">{{ p }}</a></li>
+                        {% endif %}
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link" >…</span></li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <li class="page-item">
+                    <a class="page-link"  href="{{ url_for('jobs.jobs_list', page=pagination.next_num, show_only_mine=show_only_mine) }}" aria-label="Next">
+                        <span aria-hidden="true">Next &raquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link" >Next &raquo;</span>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+                </div>
+            </div>
         </div>
     </article>
     {% for job in jobs %}
@@ -79,12 +149,10 @@ Jobs contain a series of tasks (hashcat commands). Jobs also have an associated 
     <div class="modal fade" id="infoModal{{job.id}}" tabindex="-1" aria-labelledby="infoModal{{job.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
+        <div class="modal-header d-flex align-items-center">
             <h5 class="modal-title" id="infoModal{{job.id}}Label">Info: {{job.name}}</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-            </div>
+            <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        </div>
             <div class="modal-body">
                 <table class="table">
                     <thead>
@@ -129,10 +197,11 @@ Jobs contain a series of tasks (hashcat commands). Jobs also have an associated 
                             </td>
                           </tr>
                       </tbody>
-                  </table>
+                    </thead>
+                </table>
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
         </div>
@@ -143,17 +212,15 @@ Jobs contain a series of tasks (hashcat commands). Jobs also have an associated 
     <div class="modal fade" id="deleteModal{{job.id}}" tabindex="-1" aria-labelledby="deleteModal{{job.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-            <h5 class="modal-title" id="deleteModal{{job.id}}Label">Delete: {{job.name}} ?</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-            </div>
+            <div class="modal-header d-flex align-items-center">
+                <h5 class="modal-title" id="infoModal{{job.id}}Label">Delete: {{job.name}} ?</h5>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>                
             <div class="modal-body">
-            This will permanantly delete the job. Are you sure you want to continue?
+                This will permanantly delete the job. Are you sure you want to continue?
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
             <form action="{{ url_for('jobs.jobs_delete', job_id=job.id) }}" method="POST">
                 <input class="btn btn-danger" type="submit" value="Delete">
             </form>
@@ -162,4 +229,23 @@ Jobs contain a series of tasks (hashcat commands). Jobs also have an associated 
         </div>
     </div>
     {% endfor %}
+
+    <script>
+        document.getElementById('showOnlyMineToggle').addEventListener('change', function() {
+            const isChecked = this.checked;
+            const urlParams = new URLSearchParams(window.location.search);
+
+            if (isChecked) {
+                urlParams.set('show_only_mine', 'true');
+            } else {
+                urlParams.set('show_only_mine', 'false');
+            }
+
+            // Reset to page 1 when toggling filter
+            urlParams.set('page', '1');
+
+            // Reload the page with the new parameters
+            window.location.search = urlParams.toString();
+        });
+    </script>
 {% endblock content %}
