@@ -1,20 +1,27 @@
 {% extends "layout.html.j2" %}
 {% block header %}
 <br>
-<h1>Add Rules</h1>
 <br>
 <br>
 <br>
 <br>
 {% endblock header %}
 {% block content %}
-<div class="content-section">
-    <form method="POST" action="" enctype="multipart/form-data">
-        {{ form.hidden_tag() }}
-        <fieldset class="form-group">
-           <div class="form-group">
-            {{ form.name.label(class="form-control-label") }}
+<article class="media content-section">
+    <div class="media-body">
+        <div class="card">
+            <h4 class="card-header">
+                Add Rules
+                <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Select and upload your hashcat Rules file." style="margin-left:5px;"></i>
+            </h4>
+            <div class="card-body "> 
+                <form method="POST" action="" enctype="multipart/form-data">
+                    {{ form.hidden_tag() }}
+                    <fieldset class="form-group">
+                    <div class="form-group">
+                        {{ form.name.label(class="form-control-label") }}
 
+<<<<<<< HEAD:hashview/templates/rules_add.html.j2
             {% if form.name.errors %}
                 {{ form.name(class="form-control form-control-lg is-invalid") }}
                 <div class="invalid-feedback">
@@ -38,7 +45,36 @@
         </fieldset>
         <div class="form-group">
             {{ form.submit(class="btn btn-outline-info")}}
+=======
+                        {% if form.name.errors %}
+                            {{ form.name(class="form-control form-control-lg is-invalid") }}
+                            <div class="invalid-feedback">
+                                {% for error in form.name.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            {{ form.name(class="form-control form-control-lg") }}
+                        {% endif %}
+                    </div>
+                    <br> 
+                    <div class="form-group">
+                            {{ form.rules.label() }}
+                            {{ form.rules(class="form-control-file") }}
+                            {% if form.rules.errors %}
+                                {% for error in form.rules.errors %}
+                                    <span class="text-danger">{{ error }}</span></br>
+                                {% endfor %}
+                            {% endif %}  
+                    </div> 
+                    </fieldset>
+                    <div class="form-group">
+                        {{ form.submit(class="btn btn-outline-info pull-right")}}
+                    </div>
+                </form>
+            </div>
+>>>>>>> origin/internal-features:hashview/templates/rules_add.html
         </div>
-    </form>
-</div>
+    </div>
+</article>
 {% endblock content %}

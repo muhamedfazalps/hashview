@@ -20,7 +20,6 @@ def notifications_list():
 
     return render_template('notifications.html.j2', title='Notifications', job_notifications=job_notifications, hash_notifications=hash_notifications, jobs=jobs, hashes=hashes, hashfiles=hashfiles)
 
-
 @notifications.route("/notifications/delete/job/<int:notification_id>", methods=['GET'])
 @login_required
 def notifications_job_delete(notification_id):

@@ -1,14 +1,15 @@
-"""Flask routes to handle Jobs"""
+from flask import Blueprint, render_template, redirect, flash, url_for, current_app, request
+from flask_login import login_required, current_user
+from sqlalchemy import func
+from hashview.jobs.forms import JobsForm, JobsNewHashFileForm, JobsNotificationsForm, JobSummaryForm
+from hashview.models import HashNotifications, JobNotifications, Jobs, Customers, Hashfiles, Users, HashfileHashes, Hashes, JobTasks, Tasks, TaskGroups, Settings, Wordlists
+from hashview.utils.utils import save_file, import_hashfilehashes, build_hashcat_command, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile
+from hashview.models import db
+from datetime import datetime
 import os
 import secrets
 import json
 from datetime import datetime
-from flask import Blueprint, render_template, redirect, flash, url_for, current_app, request
-from flask_login import login_required, current_user
-from hashview.jobs.forms import JobsForm, JobsNewHashFileForm, JobsNotificationsForm, JobSummaryForm
-from hashview.models import HashNotifications, JobNotifications, Jobs, Customers, Hashfiles, Users, HashfileHashes, Hashes, JobTasks, Tasks, TaskGroups, Settings
-from hashview.utils.utils import save_file, import_hashfilehashes, build_hashcat_command, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile
-from hashview.models import db
 
 
 jobs = Blueprint('jobs', __name__)
@@ -16,14 +17,38 @@ jobs = Blueprint('jobs', __name__)
 @jobs.route("/jobs", methods=['GET', 'POST'])
 @login_required
 def jobs_list():
-    """Function to return list of Jobs"""
-    jobs = Jobs.query.order_by(Jobs.created_at.desc()).all()
+    # Add pagination to reduce load time when many jobs exist
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # Adjust as needed
+
+    # Check if filtering by current user
+    show_only_mine = request.args.get('show_only_mine', 'false')
+
+    # Build query based on filter
+    if show_only_mine == 'true':
+        pagination = Jobs.query.filter_by(owner_id=current_user.id).order_by(Jobs.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    else:
+        pagination = Jobs.query.order_by(Jobs.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+
+    jobs = pagination.items
+
     customers = Customers.query.all()
     users = Users.query.all()
     hashfiles = Hashfiles.query.all()
     job_tasks = JobTasks.query.all()
     tasks = Tasks.query.all()
-    return render_template('jobs.html.j2', title='Jobs', jobs=jobs, customers=customers, users=users, hashfiles=hashfiles, job_tasks=job_tasks, tasks=tasks)
+    return render_template(
+        'jobs.html',
+        title='Jobs',
+        jobs=jobs,
+        customers=customers,
+        users=users,
+        hashfiles=hashfiles,
+        job_tasks=job_tasks,
+        tasks=tasks,
+        pagination=pagination,
+        show_only_mine=show_only_mine
+    )
 
 @jobs.route("/jobs/add", methods=['GET', 'POST'])
 @login_required
@@ -53,7 +78,8 @@ def jobs_add():
                     priority = job_priority,
                     status = 'Incomplete',
                     customer_id = customer_id,
-                    owner_id = current_user.id)
+                    owner_id = current_user.id,
+                    limit_recovered = jobsForm.limit_recovered.data)
         db.session.add(job)
         db.session.commit()
         return redirect(str(job.id)+"/assigned_hashfile/")
@@ -82,11 +108,11 @@ def jobs_assigned_hashfile(job_id):
 
         hashfile_path = ""
         hashfile_name = ""
-        if jobsNewHashFileForm.hashfile.data:
+        if jobs_new_hashfile_form.hashfile.data:
             # User submitted a file upload
-            hashfile_path = os.path.join(current_app.root_path, save_file('control/tmp', jobsNewHashFileForm.hashfile.data))
-            hashfile_name = jobsNewHashFileForm.hashfile.data.filename
-        elif jobsNewHashFileForm.hashfilehashes.data:
+            hashfile_path = os.path.join(current_app.root_path, save_file('control/tmp', jobs_new_hashfile_form.hashfile.data))
+            hashfile_name = jobs_new_hashfile_form.hashfile.data.filename
+        elif jobs_new_hashfile_form.hashfilehashes.data:
             # User submitted copied/pasted hashes
             # Going to have to save a file manually instead of using save_file since save_file requires form data to be passed and we're not collecting that object for this tab
 
@@ -94,7 +120,7 @@ def jobs_assigned_hashfile(job_id):
                 flash('You must assign a name to the hashfile', 'danger')
                 return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
             else:
-                hashfile_name = jobsNewHashFileForm.name.data
+                hashfile_name = jobs_new_hashfile_form.name.data
 
             random_hex = secrets.token_hex(8)
             hashfile_path = 'hashview/control/tmp/' + random_hex
@@ -139,6 +165,14 @@ def jobs_assigned_hashfile(job_id):
                                                 hash_type=hash_type
                                                 ):
                     return ('Something went wrong. Check the filetype / hashtype and try again.')
+
+                hashfile_hashes_cnt = db.session.query(HashfileHashes).filter_by(hashfile_id=hashfile.id).count()
+                if hashfile_hashes_cnt == 0:
+                    db.session.delete(hashfile)
+                    db.session.commit()
+                    flash('No valid hashes found in the hashfile. Hashfile not added.', 'danger')
+                    return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
+
 
                 # Delete hashfile file on disk
                 # TODO
@@ -190,21 +224,35 @@ def jobs_assigned_hashfile_cracked(job_id, hashfile_id):
 def jobs_list_tasks(job_id):
     """Function to list tasks for a given job"""
     job = Jobs.query.get(job_id)
-    tasks = Tasks.query.all()
+    tasks = Tasks.query.order_by(Tasks.name.asc()).all()
     job_tasks = JobTasks.query.filter_by(job_id=job_id)
     task_groups = TaskGroups.query.all()
+    wordlists = Wordlists.query.all()
     # Right now we're doing nested loops in the template, this could probably be solved with a left/join select
 
-    return render_template('jobs_assigned_tasks.html.j2', title='Jobs Assigned Tasks', job=job, tasks=tasks, job_tasks=job_tasks, task_groups=task_groups)
+    return render_template('jobs_assigned_tasks.html.j2', title='Jobs Assigned Tasks', job=job, tasks=tasks, job_tasks=job_tasks, task_groups=task_groups, wordlists=wordlists)
 
 @jobs.route("/jobs/<int:job_id>/assign_task/<int:task_id>", methods=['GET'])
 @login_required
 def jobs_assign_task(job_id, task_id):
-     """Function to assign task to job"""
+    """Function to assign task to job"""
 
-    exists = JobTasks.query.filter_by(job_id=job_id, task_id=task_id).first()
-    if exists:
-        flash('Task already assigned to the job.', 'warning')
+    # Someone smarter than me can turn this into a single DB Query
+    jobtask_exists = JobTasks.query.filter_by(job_id=job_id, task_id=task_id).first()
+    wordlist = Wordlists.query.get(Tasks.query.get(task_id).wl_id)
+    # hc_attackmode = Tasks.query.get(task_id).hc_attackmode
+    
+    if jobtask_exists:
+        #if hc_attackmode == '0' or hc_attackmode == '1' or hc_attackmode == '6' or hc_attackmode == '7':
+        if wordlist:
+            if wordlist.type == 'static':
+                flash('Task already assigned to the job.', 'warning')
+            else:
+                job_task = JobTasks(job_id=job_id, task_id=task_id, status='Not Started')
+                db.session.add(job_task)
+                db.session.commit() 
+        else:
+            flash('Task already assigned to the job.', 'warning')
     else:
         job_task = JobTasks(job_id=job_id, task_id=task_id, status='Not Started')
         db.session.add(job_task)
@@ -220,10 +268,65 @@ def jobs_assign_task_group(job_id, task_group_id):
     task_group = TaskGroups.query.get(task_group_id)
 
     for task_group_entry in json.loads(task_group.tasks):
-        job_task = JobTasks(job_id=job_id, task_id=task_group_entry, status='Not Started')
-        db.session.add(job_task)
-        db.session.commit()
+        # Check if task.hc_attackmode = 0, 1, 6, or 7. If so allow duplicates
+        jobtask_exists = JobTasks.query.filter_by(job_id=job_id, task_id=task_group_entry).first()
+        wordlist = Wordlists.query.get(Tasks.query.get(task_group_entry).wl_id)
 
+        if jobtask_exists:
+            if wordlist:
+                if wordlist.type == 'static':
+                    continue
+                else:
+                    job_task = JobTasks(job_id=job_id, task_id=task_group_entry, status='Not Started')
+                    db.session.add(job_task)
+                    db.session.commit()
+            else:
+                continue
+        else:
+            job_task = JobTasks(job_id=job_id, task_id=task_group_entry, status='Not Started')
+            db.session.add(job_task)
+            db.session.commit()
+
+
+        # job_task = JobTasks(job_id=job_id, task_id=task_group_entry, status='Not Started')
+        # db.session.add(job_task)
+        # db.session.commit()
+
+    return redirect("/jobs/" + str(job_id) + "/tasks")
+
+@jobs.route("/jobs/<int:job_id>/assign_task/lucky", methods=['GET'])
+@login_required
+def jobs_assign_lucky_task_group(job_id):
+
+    job = Jobs.query.get(job_id)
+    hashfile = Hashfiles.query.get(job.hashfile_id)
+    hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id=hashfile.id).first()
+    hash = Hashes.query.get(hashfile_hashes.hash_id)
+
+
+    # Get top 10 effective tasks
+    most_effective_tasks_raw = db.session.query(func.count(Hashes.id).label("row_count"), Hashes.task_id, Tasks.name,).join(Tasks, Hashes.task_id == Tasks.id) \
+        .filter(Hashes.cracked == '1') \
+        .filter(Hashes.task_id is not None) \
+        .filter(Hashes.task_id != '0') \
+        .filter(Hashes.hash_type == hash.hash_type) \
+        .group_by(Hashes.task_id) \
+        .order_by(func.count(Hashes.id).desc()) \
+        .limit(10) \
+        .all()
+
+    if len(most_effective_tasks_raw) == 0:
+        flash('Not enough data to generate top tasks.', 'danger')
+    else:
+    # for each effective task 
+        for entry in most_effective_tasks_raw:
+            job_tasks = JobTasks.query.filter_by(job_id=job_id).all()
+            if entry.task_id not in {job_task.task_id for job_task in job_tasks}:
+                job_task = JobTasks(job_id=job_id, task_id=entry.task_id, status='Not Started')
+                db.session.add(job_task)
+                db.session.commit()
+
+        flash('Successfully Added Top 10 Tasks', 'success')
     return redirect("/jobs/" + str(job_id) + "/tasks")
 
 @jobs.route("/jobs/<int:job_id>/assign_task/lucky", methods=['GET'])
@@ -367,23 +470,35 @@ def jobs_assign_notifications(job_id):
     # form.hashes.choices = [(str(c[0].id), str(bytes.fromhex(c[1].username).decode('latin-1')) + ':' + c[0].ciphertext) for c in db.session.query(Hashes, HashfileHashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==job.hashfile_id).all()]
 
     if form.validate_on_submit():
-        if form.job_completion.data != 'none':
-            job_notification = JobNotifications(
-                owner_id = current_user.id,
-                job_id = job_id,
-                method = form.job_completion.data
-            )
-            db.session.add(job_notification)
-            db.session.commit()
-
-        if form.hash_completion.data == 'email' or form.hash_completion.data == 'push':
-            return redirect("/jobs/"+str(job_id)+"/notifications/" + str(form.hash_completion.data)+ "/hashes")
-        elif form.hash_completion.data == 'none':
-            #return redirect("/jobs/" + str(job_id)+ "/summary")
-            return redirect("/jobs/" + str(job_id)+ "/tasks")
+        if form.job_completion_email.data == True:
+            # Check if we already have a notification set
+            pre_existing_job_notification = JobNotifications.query.filter_by(job_id=job_id, owner_id=current_user.id, method='email').first()
+            if pre_existing_job_notification == None:
+                job_notification = JobNotifications(
+                    owner_id = current_user.id,
+                    job_id = job_id,
+                    method = 'email'
+                )
+                db.session.add(job_notification)
+                db.session.commit()
+        if form.job_completion_pushover.data == True:
+            pre_existing_job_notification = JobNotifications.query.filter_by(job_id=job_id, owner_id=current_user.id, method='push').first()
+            if pre_existing_job_notification == None:
+                job_notification = JobNotifications(
+                    owner_id = current_user.id,
+                    job_id = job_id,
+                    method = 'push'
+                )
+                db.session.add(job_notification)
+                db.session.commit()
+        if form.hash_completion_pushover.data == True and form.hash_completion_email.data == True:
+            return redirect("/jobs/"+str(job_id)+"/notifications/both/hashes")
+        elif form.hash_completion_pushover.data == True and form.hash_completion_email.data == False:
+            return redirect("/jobs/"+str(job_id)+"/notifications/push/hashes")
+        elif form.hash_completion_pushover.data == False and form.hash_completion_email.data == True:
+            return redirect("/jobs/"+str(job_id)+"/notifications/email/hashes")
         else:
-            flash('Error. Invalid notification method', 'danger')
-            return redirect("/jobs/" + str(job_id) + "/notifications")
+            return redirect("/jobs/" + str(job_id)+ "/tasks")
     else:
         return render_template('jobs_assigned_notifications.html.j2', title='Jobs Assigned Notifications', job=job, form=form)
 
@@ -401,14 +516,34 @@ def jobs_assign_notification_hashes(job_id, method):
                 if str(selected) == str(entry[0]):
                     hash_notification_exists = HashNotifications.query.filter_by(hash_id=entry[0]).filter_by(owner_id=current_user.id).first()
                     if not hash_notification_exists:
-                        hash_notification = HashNotifications(
-                            owner_id = current_user.id,
-                            hash_id = entry[0],
-                            method = method
-                        )
-                        db.session.add(hash_notification)
-                        db.session.commit()
-
+                        if method == 'push' or method == 'email':
+                            hash_notification = HashNotifications(
+                                owner_id = current_user.id,
+                                hash_id = entry[0],
+                                method = method
+                            )
+                            db.session.add(hash_notification)
+                            db.session.commit()
+                        elif method == 'both':
+                            hash_notification_email = HashNotifications(
+                                owner_id = current_user.id,
+                                hash_id = entry[0],
+                                method = 'email'
+                            )
+                            hash_notification_pushover = HashNotifications(
+                                owner_id = current_user.id,
+                                hash_id = entry[0],
+                                method = 'push'
+                            )
+                            db.session.add(hash_notification_email)
+                            db.session.add(hash_notification_pushover)
+                            db.session.commit()
+                        else:
+                            continue
+                            
+        # Some for entry in request/post
+        # add hash notification if not already set
+        #return redirect("/jobs/"+str(job_id)+"/summary")
         return redirect("/jobs/"+str(job_id)+"/tasks")
 
     return render_template('jobs_assigned_notifications_hashes.html.j2', title='Assigned Hash Notifications', job=job, hashes=hashes, existing_hash_notifications=existing_hash_notifications)

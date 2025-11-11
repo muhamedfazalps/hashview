@@ -39,6 +39,22 @@
         max-height: 350px;
         overflow-y: auto;
     }
+    </style>
+<style>
+.card-header, .card-body {
+    background-color: white !important;
+}
+.card-header {
+    /* color: black !important; */
+    color: rgba(0,0,0,0.6) !important
+}
+.table, .table th, .table td {
+    background-color: white !important;
+    /* color: black !important;
+    border-color: black !important; */
+    color: rgba(0,0,0,0.6) !important;
+    border-color: rgba(0,0,0,0.6) !important
+}
 </style>
 
 <script>
@@ -62,16 +78,23 @@
             const fontSize = chartArea.right / 15
             ctx.font = `${fontStyle} ${fontSize}px ${fontFamily}`
             ctx.fillStyle = 'rgba(0,0,0,0.6)' //Text color
+            //ctx.fillstyle = '#e0e0e0' //Text color
 
             //Center text
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             var value = this.chart.options.percent ? this.chart.options.percent : "";
             ctx.fillText(value, (chartArea.right + chartArea.left) / 2, (chartArea.bottom + chartArea.top) / 2)
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
 
             //Set chart background color to white
+=======
+            
+            //Set chart background color to #6A626f
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
             ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = 'white';
+            //ctx.fillStyle = '#393531';
+            ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, this.chart.width, this.chart.height);
         };
     }
@@ -132,12 +155,22 @@
 {% block content %}
 <br>
 <br>
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
 <div id="config_options" class="form-row">
     <div class="col-auto mb-1">
         <span>Customers &nbsp;</h4>
         <div class="content-section btn btn-outline-secondary">
             <div class="dropdown">
                 <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"
+=======
+<div class="container"></div>
+    <div class="col" align="center"></div>
+        <div id="config_options" class="form-row d-flex align-items-center">
+            <div class="col-auto mb-2 d-flex align-items-center"> 
+                <span>Customers:&nbsp;</span>
+                <div class="dropdown ml-2">
+                <button class="btn btn-default dropdown-toggle" type="button" id="customerDropdownButton" data-bs-toggle="dropdown"
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
                     aria-haspopup="true" aria-expanded="false">
                     {% if customer_id %}
                         {% for customer in customers %}
@@ -155,55 +188,79 @@
                         <div class="dropdown-divider"></div>
                     {% endif %}
 
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
                     {% for customer in customers %}
+=======
+                    {% for customer in customers %}  
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
                         <a class="dropdown-item" href="/analytics?customer_id={{customer.id}}"> {{customer.name}} </a>
                     {% endfor %}
                 </div>
             </div>
         </div>
-    </div>
-    <div class="col-auto mb-1">
-        <span>HashFiles &nbsp;</h4>
-        {% if customer_id is not none %}
-        <div class="content-section btn btn-outline-secondary">
-            <div class="dropdown">
-                <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"
-                    aria-haspopup="true" aria-expanded="false">
-                    {% if hashfile_id %}
+        <span>&nbsp;&nbsp;</span>
+        <div class="col-auto mb-2 d-flex align-items-center">
+            <span>HashFiles:&nbsp;</span>
+                {% if customer_id is not none %}
+                <div class="dropdown ml-2">
+                    <button class="btn btn-default dropdown-toggle" type="button" id="hashfileDropdownButton" data-bs-toggle="dropdown"
+                        aria-haspopup="true" aria-expanded="false">
+                        {% if hashfile_id %}
+                            {% for hashfile in hashfiles %}
+                                {% if hashfile.id|string() == hashfile_id|string() %}
+                                    {{ hashfile.name }}
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            All Hashfiles
+                        {% endif %}
+                    </button>
+                    <div class="dropdown-menu">
+                        {% if hashfile_id %}
+                            <a class="dropdown-item" href="/analytics?customer_id={{customer_id}}"> All Hashfiles </a>
+                            <div class="dropdown-divider"></div>
+                        {% endif %}
                         {% for hashfile in hashfiles %}
-                            {% if hashfile.id|string() == hashfile_id|string() %}
-                                {{ hashfile.name }}
-                            {% endif %}
-                        {% endfor %}
-                    {% else %}
-                        All Hashfiles
-                    {% endif %}
-                </button>
-                <div class="dropdown-menu">
-                    {% if hashfile_id %}
-                        <a class="dropdown-item" href="/analytics?customer_id={{customer_id}}"> All Hashfiles </a>
-                        <div class="dropdown-divider"></div>
-                    {% endif %}
-                    {% for hashfile in hashfiles %}
-                        {% if customer_id %}
-                            {% if hashfile.customer_id|string() == customer_id|string() %}
+                            {% if customer_id %}
+                                {% if hashfile.customer_id|string() == customer_id|string() %}
+                                    <a class="dropdown-item" href="/analytics?customer_id={{customer_id}}&hashfile_id={{hashfile.id}}"> {{hashfile.name}} </a>
+                                {% endif %}
+                            {% else %}
                                 <a class="dropdown-item" href="/analytics?customer_id={{customer_id}}&hashfile_id={{hashfile.id}}"> {{hashfile.name}} </a>
                             {% endif %}
-                        {% else %}
-                            <a class="dropdown-item" href="/analytics?customer_id={{customer_id}}&hashfile_id={{hashfile.id}}"> {{hashfile.name}} </a>
-                        {% endif %}
-                    {% endfor %}
+                        {% endfor %}
+                    </div>
                 </div>
+                {% else %}
+                <div class="dropdown">
+                    <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                    aria-haspopup="true" aria-expanded="false">
+                    N/A
+                </button>
             </div>
+            {% endif %}
         </div>
-        {% else %}
-        <div class="content-section btn btn-outline-secondary">
-            <div class="dropdown">
-                <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"
-                aria-haspopup="true" aria-expanded="false">
-              N/A
-            </button>
+
+        <div class="col-auto mb-2 d-flex align-items-right">
+        <div class="input-group ml-auto">   
+            <button class="btn btn-default dropdown-toggle" type="button" id="chartDropdownButton" data-bs-toggle="dropdown"
+                aria-haspopup="true" aria-expanded="false">Download Charts</button>
+            <div class="dropdown-menu">         
+                <button class="dropdown-item" onclick="chart_download_all()">All Charts</button>
+                <div class="dropdown-divider"></div>           
+                <button class="dropdown-item" onclick="get_chart(1)">Recovered Accounts</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" onclick="get_chart(2)">Password Complexity</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" onclick="get_chart(3)">Recovered Hashes</button>                    
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" onclick="get_chart(4)">Composition Makeup</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" onclick="get_chart(5)">Passwords Count by Length</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" onclick="get_chart(6)">Top 10 Passswords</button>
             </div>
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
         </div>
         {% endif %}
     </div>
@@ -230,15 +287,24 @@
                     <button class="dropdown-item" onclick=get_chart(6)>Top 10 Passswords</button>
                 </div>
             </div>
+=======
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
             <div class="input-group-append">
                 <span class="input-group-text" id="basic-addon1">
                     <i id="toggle_icons" class="fa fa-eye-slash" role="button" onclick="show_hide()" title="Show/Hide Icons"></i>
                 </span>
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
               </div>
           </div>
       </div>
+=======
+            </div>
+        </div>
+    </div>
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
     </div>
 </div>
+
 
 <!-- this layout is so jank, someone please help me-->
 
@@ -292,11 +358,11 @@
                                 elements: {
                                     center: {
                                         text: 'Red is 2/3 of the total numbers',
-                                            color: '#FF6384', // Default is #000000
-                                                fontStyle: 'Arial', // Default is Arial
-                                                    sidePadding: 20, // Default is 20 (as a percentage)
-                                                        minFontSize: 25, // Default is 20 (in px), set to false and text will not wrap.
-                                                            lineHeight: 25 // Default is 25 (in px), used for when text wraps
+                                        color: '#FF6384', // Default is #000000
+                                        fontStyle: 'Arial', // Default is Arial
+                                        sidePadding: 20, // Default is 20 (as a percentage)
+                                        minFontSize: 25, // Default is 20 (in px), set to false and text will not wrap.
+                                        lineHeight: 25 // Default is 25 (in px), used for when text wraps
                                     }
                                 }
                             }
@@ -434,38 +500,39 @@
                                 type: 'doughnut',
                                 data: {
                                     labels: {{ fig4_labels | safe }},
-                            datasets: [{
-                                label: "my label",
-                                data: {{ fig4_values | safe }},
-                                backgroundColor: ['rgba(192, 0, 0, 0.5)',
-                                'rgba(227, 108, 10, 0.5)',
-                                'rgba(224, 202, 33, 0.5)',
-                                'rgba(0, 128, 0, 0.5)',
-                                'rgba(128, 128, 128, 0.5)',]
-                                    }]
-                                },
-                            options: {
-                                responsive: false,
-                                    plugins: {
-                                    legend: {
-                                        position: 'bottom',
+                                    datasets: [{
+                                        label: "my label",
+                                        data: {{ fig4_values | safe }},
+                                        backgroundColor: ['rgba(192, 0, 0, 0.5)',
+                                        'rgba(227, 108, 10, 0.5)',
+                                        'rgba(224, 202, 33, 0.5)',
+                                        'rgba(0, 128, 0, 0.5)',
+                                        'rgba(128, 128, 128, 0.5)',]
+                                            }]
                                         },
-                                    title: {
-                                        color: 'rgba(0,0,0,0.6)', //Text color
-                                        display: false,
-                                            text: 'Composition Makeup',
-                                                font: {
-                                            size: 18,
-                                                family: 'Arial'
-                                        },
-                                        padding: {
-                                            top: 10,
-                                            bottom: 20
+                                options: {
+                                    responsive: false,
+                                        plugins: {
+                                            legend: {
+                                                position: 'bottom',
+                                                },
+                                            title: {
+                                                color: 'rgba(0,0,0,0.6)', //Text color
+                                                display: false,
+                                                    text: 'Composition Makeup',
+                                                        font: {
+                                                    size: 18,
+                                                        family: 'Arial'
+                                                },
+                                                padding: {
+                                                    top: 10,
+                                                    bottom: 20
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            });
+                            );
                             chart_download(3);
                         </script>
                     </canvas>
@@ -589,7 +656,11 @@
                             plugins: [{
                                 beforeDraw: function(chart,args,options){
                                         const c = chart.ctx
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
                                         c.fillStyle = 'white';
+=======
+                                        c.fillStyle = '#ffffff';
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
                                         c.fillRect(0, 0, chart.width, chart.height);
                                    }
                                 }],
@@ -650,7 +721,11 @@
                             plugins: [{
                                 beforeDraw: function(chart,args,options){
                                         const c = chart.ctx
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
                                         c.fillStyle = 'white';
+=======
+                                        c.fillStyle = '#ffffff';
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
                                         c.fillRect(0, 0, chart.width, chart.height);
                                    }
                                 }],
@@ -737,8 +812,11 @@
     <div class="row">
         <div class="col" align="center">
             <div class="card">
-                <h5 class="card-header">Accounts Where The Password is The Same As The Username</h5>
-                <div class="card-body">
+                <h5 class="card-header">Accounts Where The Password is The Same As The Username
+    <a id="fig8_download" class="fa fa-download download_btn" role="button" title="Download Table"
+       onclick="window.location.href='{% if customer_id %}/analytics/download/fig8?customer_id={{customer_id}}{% if hashfile_id %}&hashfile_id={{hashfile_id}}{% endif %}{% elif hashfile_id %}/analytics/download/fig8?hashfile_id={{hashfile_id}}{% else %}/analytics/download/fig8{% endif %}'"></a>
+</h5>
+                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
                     <table class="table">
                         <tbody>
                             <tr>
@@ -754,6 +832,44 @@
                                 {% endif %}
                             {% endfor %}
                             </tr>
+<<<<<<< HEAD:hashview/templates/analytics.html.j2
+=======
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>    
+    <div class="row">
+        <div class="col" align="center">
+            <br>
+            <br>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col" align="center">
+            <div class="card">
+                <h5 class="card-header">Accounts that Share the Same Password or Password Hash
+                    <a id="fig9_download" class="fa fa-download download_btn" role="button" title="Download Table"
+                    onclick="window.location.href='{% if customer_id %}/analytics/download/fig9?customer_id={{customer_id}}{% if hashfile_id %}&hashfile_id={{hashfile_id}}{% endif %}{% elif hashfile_id %}/analytics/download/fig9?hashfile_id={{hashfile_id}}{% else %}/analytics/download/fig9{% endif %}'"></a>
+                </h5>
+                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                            {% set pos = namespace(value=0) %}
+                            {% for entry in fig9_table %}
+                                {% set pos.value = pos.value + 1 %}
+                                <td>
+                                    {{entry}}
+                                </td>
+                                {% if pos.value % 3 == 0%}
+                                    </tr>
+                                    <tr>
+                                {% endif %}
+                            {% endfor %}
+                            </tr>
+>>>>>>> origin/internal-features:hashview/templates/analytics.html
                         </tbody>
                     </table>
                 </div>
@@ -766,5 +882,5 @@
             <br>
             <br>
         </div>
-    </div>
+    </div>    
     {% endblock content %}

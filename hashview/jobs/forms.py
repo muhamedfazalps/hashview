@@ -1,6 +1,6 @@
 """Forms Page to manage Jobs"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField, SelectField, TextAreaField, FileField
+from wtforms import StringField, SubmitField, SelectField, TextAreaField, FileField, BooleanField
 from wtforms.validators import DataRequired, ValidationError
 from hashview.models import Jobs
 
@@ -16,6 +16,7 @@ class JobsForm(FlaskForm):
 													('1', '1 - lowest')], default=3, validators=[DataRequired()])
 	customer_id = StringField('Customer ID (unused)', validators=[DataRequired()])
 	customer_name = StringField('Customer Name (unused)')
+	limit_recovered = BooleanField('Stop job after single hash has been recovered.')
 	submit = SubmitField('Next')
 
 	def validate_job(self, name):
@@ -56,6 +57,8 @@ class JobsNewHashFileForm(FlaskForm):
 													('8100', '(8100) Citrix NetScaler (SHA1)'),
 													('9900', '(9900) Radmin2'),													
 													('22200', '(22200) Citrix NetScaler (SHA512)'),
+													('31500', '(31500) Domain Cached Credentials (DCC, MS Cache (NT))'),
+													('31600', '(31600) Domain Cached Credentials 2 (DCC2), MS Cache 2, (NT)'),
 
 													('', ''), # Spacer for better visibility					    
 													('', 'R A W   &  S A L T E D'),
@@ -155,6 +158,8 @@ class JobsNewHashFileForm(FlaskForm):
 													('15500', '(15500) JKS Java Key Store SHA1 ($jksprivk$)'),																									
 													('23100', '(23100) Apple Keychain ($keychain$)'),
 													('66001', '(66001) Password, agilekeychain'),
+													('34300', '(34300) KeePass Argon 2 (KDBX v4)'),
+													('34301', '(34301) KeePass AESKDF (KDBX v4)'),
 
 													('', ''), # Spacer for better visibility
 													('', 'C Y R P T O C U R R E N C Y   W A L L E T'),
@@ -217,22 +222,22 @@ class JobsNewHashFileForm(FlaskForm):
 													('19600', '(19600) Kerberos 5 TGS-REP etype 17 (AES128-CTS-HMAC-SHA1-96)'),
 													('19700', '(19700) Kerberos 5 TGS-REP etype 18 (AES256-CTS-HMAC-SHA1-96)'),
 													('19800', '(19800) Kerberos 5, etype 17, Pre-Auth'),
-													('19900', '(19900) Kerberos 5, etype 18, Pre-Auth')])													
+													('19900', '(19900) Kerberos 5, etype 18, Pre-Auth'),
+													('35300', '(35300) Kerberos 5, etype 23, TGS-REP (NT)'),
+													('35400', '(35400) Kerberos 5, etype 23, AS-REP (NT)')])													
 
     hashfilehashes = TextAreaField('Hashes')
     hashfile = FileField('Upload Hashfile')
     submit = SubmitField('Next')
 
 class JobsNotificationsForm(FlaskForm):
-	"""Class representing Job Notification Form"""
-
-	job_completion = SelectField('Notify when Job completes', choices=[('none', 'No'),
-													                    ('email', 'Send Email'),
-													                    ('push', 'Send Push Notification')], validators=[DataRequired()])
-	hash_completion = SelectField('Notify when specific hashes crack', choices=[('none', 'No'),
-													                    ('email', 'Send Email'),
-													                    ('push', 'Send Push Notification')], validators=[DataRequired()])
-	submit = SubmitField('Next')
+    """Class representing Job Notification Form"""
+	job_completion_email = BooleanField('Send an email when job completes?')
+    job_completion_pushover = BooleanField('Send a Pushover message when job completes?')
+    hash_completion_email = BooleanField('Send an email when a specific hash is recovered?')
+    hash_completion_pushover = BooleanField('Send a Pushover message when a specific has is recovered?')
+											                    ('push', 'Send Push Notification')], validators=[DataRequired()])
+    submit = SubmitField('Next')
 
 class JobSummaryForm(FlaskForm):
     """Class representing an Jobs Summary"""

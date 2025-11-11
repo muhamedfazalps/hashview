@@ -9,6 +9,7 @@
 
 .modal-body{ /* Prevent long names from showing outside of popup modal */
     overflow: auto;
+    background-color: #6A626F;
 }
 
 #job_status{
@@ -26,12 +27,414 @@
 }
 
 .card {
-    border: dark;
+    border: 1px solid #464241;
     border-radius: 12px;
+    overflow: hidden;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
     transition: transform 0.3s ease;
 }
 
 .card:hover {
     transform: translateY(-5px);
+}
+
+/* Pulse animation for danger cards - fading border */
+.pulse {
+    animation: pulseBorder 2s infinite;
+}
+
+@keyframes pulseBorder {
+    0% {
+        border-color: rgba(220,53,69,0.2);
+        box-shadow: 0 0 0 5px rgba(220,53,69,0.2);
+    }    
+    50% {
+        border-color: rgba(220,53,69,0.7);
+        box-shadow: 0 0 0 0 rgba(220,53,69,0.7);        
+    }
+    100% {
+        border-color: rgba(220,53,69,0.7);
+        box-shadow: 0 0 0 0 rgba(220,53,69,0.7);
+    }    
+    /* 50% {
+        border-color: rgba(220,53,69,0.7);
+        box-shadow: 0 0 0 0 rgba(220,53,69,0.7);        
+    }
+    0% {
+        border-color: rgba(220,53,69,0.2);
+        box-shadow: 0 0 0 5px rgba(220,53,69,0.2);
+    } */
+}
+
+/* Dark mode overrides */
+body {
+    background-color: #2E2832;
+    color: #e0e0e0;
+}
+a {
+    color: #90caf9;
+}
+.card {
+    background-color: #393531;
+    border-color: #464241;
+    color: #e0e0e0;
+}
+.card.bg-danger {
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: #fff !important;
+}
+.table,
+.table-striped,
+.table-sm,
+.table-hover,
+.table-bordered,
+.table-striped .table-sm,
+.table-striped .table,
+.table-sm .table {
+    background-color: #393531;
+    color: #e0e0e0;
+}
+
+/* Ensure table cells inherit the dark background and light text */
+.table td,
+.table th {
+    background-color: #393531;
+    color: #e0e0e0;
+}
+
+/* Ensure entire table rows have dark background */
+.table tbody tr,
+.table thead tr {
+    background-color: #393531!important;
+    color: #e0e0e0 !important;
+}
+
+/* Wrap text in the first column of tables (e.g., notifications) */
+.table td:first-child {
+    white-space: normal;
+    word-break: break-word;
+    max-width: 300px;
+}
+
+/* Wrap text in the third column of tables (hash column) */
+.table td:nth-child(3) {
+    white-space: normal;
+    word-break: break-word;
+    max-width: 300px;
+}
+
+/* Ensure table text remains visible on hover in dark mode */
+/* Form box background color for all pages */
+.form-control {
+    background-color: #6A626F;
+    color: #e0e0e0; /* lighter text for pre‑entered values */
+}
+
+/* Placeholder text color for all input and textarea elements */
+.form-control::placeholder{
+    color: #e0e0e0;
+    opacity: 1;
+}
+
+/* Ensure readonly inputs keep the same background */
+.form-control[readonly] {
+    background-color: #6A626F !important;
+    color: #e0e0e0 !important;
+}
+.table-hover tbody tr:hover,
+.table-hover > tbody > tr:hover > td,
+.table-hover > tbody > tr:hover > th {
+    color: #e0e0e0;
+}
+.modal-content {
+    background-color: #6A626F;
+    color: #e0e0e0;
+}
+
+/* Pagination button dark theme */
+.pagination .page-link {
+    background-color: #464241;
+    color: #e0e0e0;
+    border-color: #2E2832;
+}
+.pagination .page-link:hover {
+    background-color: #393531;
+    color: #ffffff;
+}
+.pagination .page-item.active .page-link {
+    background-color: #393531;
+    color: #e0e0e0;
+    border-color: #2E2832;
+}
+
+/* Disabled pagination button dark theme */
+.pagination .page-item.disabled .page-link {
+    background-color: #464241;
+    color: #e0e0e0;
+    border-color: #2E2832;
+}
+
+/* Nav tabs dark theme */
+.nav-tabs .nav-link {
+    background-color: #464241;
+    color: #e0e0e0;
+    border-color: #2E2832;
+}
+.nav-tabs .nav-link.active,
+.nav-tabs .nav-item.show .nav-link {
+    background-color: #393531;
+    color: #e0e0e0;
+    border-color: #2E2832;
+}
+.nav-tabs .nav-link:hover {
+    background-color: #393531;
+    color: #e0e0e0;
+    border-color: #2E2832;
+}
+
+/* Settings page button styling */
+.btn-default, .btn-default:hover{
+    color: #e0e0e0;
+    background-color: #393531;
+    border-color: #464241;
+}
+
+/* Global table dark theme overrides */
+.table,
+.table *,
+.table-borderless,
+.table-borderless * {
+    background-color: #393531;
+    color: #e0e0e0 !important;
+}
+
+/* Additional overrides for table sections to ensure full dark theme */
+.table thead,
+.table tbody,
+.table tfoot,
+.table thead * ,
+.table tbody * ,
+.table tfoot * {
+    background-color: #393531;
+    color: #e0e0e0 !important;
+}
+
+/* Ensure all table cells (including borderless tables) use dark background and light text */
+.table th,
+.table td,
+.table-borderless th,
+.table-borderless td {
+    background-color: #393531 !important;
+    color: #e0e0e0 !important;
+}
+
+/* Ensure borderless tables rows also adopt the dark background */
+.table-borderless tbody tr,
+.table-borderless thead tr {
+    background-color: #393531 !important;
+    color: #e0e0e0 !important;
+}
+
+/* Info modal tables background to match modal */
+.modal-body .table,
+.modal-body .table td,
+.modal-body .table th {
+    background-color: #6A626F !important;
+    color: #e0e0e0 !important;
+}
+
+/* Custom dropdown styling */
+.dropdown-menu {
+    background-color: #6A626F !important;
+    color: #e0e0e0 !important;
+}
+.dropdown-item {
+    background-color: #6A626F !important;
+    color: #e0e0e0 !important;
+}
+.dropdown-item:hover {
+    background-color: #534B52 !important;
+    color: #e0e0e0 !important;
+}
+
+/* Position carousel navigation arrows outside of the cards */
+#carouselExampleIndicators .carousel-control-prev,
+#carouselExampleIndicators .carousel-control-next {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 5%;
+    height: 5rem;
+    background: none;
+    color: #e0e0e0;
+    /* Ensure icons are visible */
+    z-index: 2;               /* bring controls above cards */
+    cursor: pointer;
+}
+#carouselExampleIndicators .carousel-control-prev {
+    left: -60px;               /* move farther left, outside card */
+}
+#carouselExampleIndicators .carousel-control-next {
+    right: -60px;              /* move farther right, outside card */
+}
+#carouselExampleIndicators .carousel-inner {
+    overflow: visible;
+}
+
+.steps-horizontal {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    width: 100%;
+    max-width: none;
+    position: relative;
+    padding: 0 1rem;
+    margin: 0 auto;
+}
+
+.steps-horizontal::before {
+    content: '';
+    position: absolute;
+    top: 24px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #e0e0e0;
+    z-index: 1;
+}
+
+.step-horizontal {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+}
+
+.step-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #6A626F;
+    border: 2px solid #6A626F;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px;
+    font-size: 20px;
+    color: #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+.step-title {
+    font-size: 14px;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+
+.step-description {
+    font-size: 12px;
+    color: #adb5bd;
+    max-width: 150px;
+    margin: 0 auto;
+}
+
+.step-horizontal.active .step-icon {
+    background: #2F497D;
+    border-color: #4361ee;
+    color: white;
+    box-shadow: 0 0 0 5px rgba(67, 97, 238, 0.2);
+}
+
+.step-horizontal.complete .step-icon {
+    background: #198754;
+    border-color: #2ecc71;
+    color: white;
+}
+
+.list-group{
+    --bs-list-group-bg: #393531
+}
+
+/* Toggle Switch Styles */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #6c757d;
+    border: 1px solid #495057;
+    transition: .3s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+}
+
+input:checked + .slider {
+    background-color: #198754;
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px #198754;
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+.slider.round {
+    border-radius: 20px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* Sortable table header styling */
+.table thead th a {
+    color: #e0e0e0 !important;
+    text-decoration: none !important;
+    display: inline-block;
+    width: 100%;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.table thead th a:hover {
+    color: #90caf9 !important;
+}
+
+.table thead th a i.fa-sort {
+    opacity: 0.3;
+    margin-left: 5px;
+}
+
+.table thead th a i.fa-sort-asc,
+.table thead th a i.fa-sort-desc {
+    opacity: 1;
+    margin-left: 5px;
+    color: #90caf9;
 }

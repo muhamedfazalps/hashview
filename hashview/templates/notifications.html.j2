@@ -1,9 +1,7 @@
 {% extends "layout.html.j2" %}
 {% block header %}
 <br>
-<h1>Notifications</h1>
 <br>
-These are your notifications.
 <br>
 <br>
 <br>
@@ -11,34 +9,28 @@ These are your notifications.
 {% block content %}
     <article class="media content-section">
         <div class="media-body">
-            <legend class="border-bottom mb-4">Job Notifications</legend>
-            <table class="table">
-                <thead>
-                <tr>
-                    <th scope="col">Job Name</th>
-                    <th scope="col">Hash File</th>
-                    <th scope="col">Method</th>
-                    <th scope="col">Control</th>
-                </tr>
-                </thead>
-                <tbody>
-                    {% for job_notification in job_notifications %}
+            <div class="card">
+                <h4 class="card-header">Job Notifications</h4>
+                <div class="card-body">
+                    <table class="table">
+                        <thead>
                         <tr>
-                            <td>
-                                {% for job in jobs %}
-                                    {% if job.id == job_notification.job_id %}
-                                        {{job.name}}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>
-                                {% for job in jobs %}
-                                    {% if job.id == job_notification.job_id %}
-                                        {% for hashfile in hashfiles %}
-                                            {% if hashfile.id == job.hashfile_id %}
-                                                {{hashfile.name}}
+                            <th scope="col">Job Name</th>
+                            <th scope="col">Hash File</th>
+                            <th scope="col">Method</th>
+                            <th scope="col">Control</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                            {% for job_notification in job_notifications %}
+                                <tr>
+                                    <td>
+                                        {% for job in jobs %}
+                                            {% if job.id == job_notification.job_id %}
+                                                {{job.name}}
                                             {% endif %}
                                         {% endfor %}
+<<<<<<< HEAD:hashview/templates/notifications.html.j2
                                     {% endif %}
                                 {% endfor %}
                             </td>
@@ -83,6 +75,67 @@ These are your notifications.
                     {% endfor %}
                 </tbody>
             </table>
+=======
+                                    </td>
+                                    <td>
+                                        {% for job in jobs %}
+                                            {% if job.id == job_notification.job_id %}
+                                                {% for hashfile in hashfiles %}
+                                                    {% if hashfile.id == job.hashfile_id %}
+                                                        {{hashfile.name}}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td>{{ job_notification.method }}</td>
+                                    <td>
+                                        <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteJobNotificationModal{{job_notification.id}}" title=Delete></button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <br>
+            <div class="card">
+                <h4 class="card-header">Hash Notifications</h4>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th scope="col">Hash</th>
+                        <th scope="col">Hashtype</th>
+                        <th scope="col">Method</th>
+                        <th scope="col">Control</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for hash_notification in hash_notifications %}
+                            <tr>
+                                <td>
+                                    {% for hash in hashes %}
+                                        {% if hash_notification.hash_id == hash.id %}
+                                            {{ hash.ciphertext }} 
+                                            </td>
+                                            <td>
+                                            {{ hash.hash_type }}
+                                        {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    {{hash_notification.method}}
+                                </td>
+                                <td>
+                                    <a class="fa fa-trash btn btn-danger" href="/notifications/delete/hash/{{hash_notification.id}}" role="button", title=Delete></a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+>>>>>>> origin/internal-features:hashview/templates/notifications.html
         </div>
     </article>
     {% for job_notification in job_notifications %}
@@ -91,11 +144,11 @@ These are your notifications.
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-            <h5 class="modal-title" id="deleteJobNotificationModal{{job_notification.id}}Label">Delete: {{job_notification.name}} ?</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-            </div>
+                <h5 class="modal-title" id="deleteJobNotificationModal{{job_notification.id}}Label">Delete: {{job_notification.name}} ?</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>   
             <div class="modal-body">
                 Are you sure you want to delete the notification for this job?
             </div>

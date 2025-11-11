@@ -5,10 +5,11 @@ from flask import Blueprint, render_template, redirect, flash
 from flask_login import login_required, current_user
 from sqlalchemy import or_, and_
 
-from hashview.models import Jobs, JobTasks, Users, Customers, Tasks, Agents, HashfileHashes, Hashes, Hashfiles
+from hashview.models import Jobs, JobTasks, Users, Customers, Tasks, Agents, HashfileHashes, Hashes, Hashfiles, Settings
 from hashview.utils.utils import update_job_task_status
 from hashview.models import db
 
+from datetime import datetime, timedelta
 from datetime import datetime, timedelta
 
 main = Blueprint('main', __name__)
@@ -25,6 +26,7 @@ def home():
     job_tasks = JobTasks.query.all()
     tasks = Tasks.query.all()
     agents = Agents.query.all()
+    settings = Settings.query.first()
 
     recovered_list = {}
     time_estimated_list = {}
@@ -59,7 +61,7 @@ def home():
     for job in jobs:
         collapse_all = collapse_all + "collapse" + str(job.id) + " "
 
-    return render_template('home.html.j2', jobs=jobs, running_jobs=running_jobs, queued_jobs=queued_jobs, users=users, customers=customers, job_tasks=job_tasks, tasks=tasks, agents=agents, recovered_list=recovered_list, time_estimated_list=time_estimated_list, collapse_all=collapse_all, timestamp=timestamp, datetime=datetime, timedelta=timedelta, fig1_labels=fig1_labels, fig1_values=fig1_values)
+    return render_template('home.html.j2', jobs=jobs, running_jobs=running_jobs, queued_jobs=queued_jobs, users=users, customers=customers, job_tasks=job_tasks, tasks=tasks, agents=agents, recovered_list=recovered_list, time_estimated_list=time_estimated_list, collapse_all=collapse_all, timestamp=timestamp, datetime=datetime, timedelta=timedelta, fig1_labels=fig1_labels, fig1_values=fig1_values, settings=settings)
 
 @main.route("/job_task/stop/<int:job_task_id>")
 @login_required

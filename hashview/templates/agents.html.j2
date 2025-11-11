@@ -1,9 +1,7 @@
-{% extends "layout.html.j2" %}
+{% extends "layout.html"%}
 {% block header %}
 <br>
-<h1>Agents</h1>
 <br>
-Agents are remote workers that process distributed hashcat jobs.
 <br>
 <br>
 <br>
@@ -14,6 +12,7 @@ Agents are remote workers that process distributed hashcat jobs.
             <div class="card">
                 <h4 class="card-header">
                     Agents 
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Agents are remote workers that process distributed hashcat jobs." style="margin-left:5px;"></i>
                     <a class="fa fa-download btn btn-sm btn-success pull-right" href="/agents/download" role="button" title=Download></a>
                 </h4>
                 <div class="card-body ">  
@@ -25,18 +24,18 @@ Agents are remote workers that process distributed hashcat jobs.
                             <th scope="col">IP</th>
                             <th scope="col">Speed</th>
                             <th scope="col">Last Heartbeat</th>
-                            <th scope="col">Control</th>                   
+                            <th style="width:140px" scope="col">Control</th>                  
                         </tr>
                         </thead>
                         <tbody>
                             {% for agent in agents %}
                                 <tr>
-                                    <td>{{ agent.name }}</td>
-                                    <td>{{ agent.status }}</td>
-                                    <td>{{ agent.src_ip }}</td>
-                                    <td>{{ agent.benchmark }}</td>
-                                    <td>{{ agent.last_checkin}}</td>
-                                    <td>
+                                    <td style=vertical-align:middle;>{{ agent.name }}</td>
+                                    <td style=vertical-align:middle;>{{ agent.status }}</td>
+                                    <td style=vertical-align:middle;>{{ agent.src_ip }}</td>
+                                    <td style=vertical-align:middle;>{{ agent.benchmark }}</td>
+                                    <td style=vertical-align:middle;>{{ agent.last_checkin}}</td>
+                                    <td style=vertical-align:middle;>
                                         {% if agent.status == 'Pending' %}
                                             <a class="fa fa-check btn btn-success" href="/agents/{{agent.id}}/authorize" role="button" title=Authorize></a>
                                         {% else %}

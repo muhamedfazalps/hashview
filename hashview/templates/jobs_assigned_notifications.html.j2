@@ -1,28 +1,69 @@
 {% extends "layout.html.j2" %}
 {% block header %}
 <br>
-<h1>Notifications</h1>
 <br>
-Would you like to be notified when the job completes AND/OR when specific hashes are cracked. Note, cracked hash notifications will persist after job has been completed or removed.
 <br>
 <br>
 <br>
 {% endblock header %}
 {% block content %}
-<div class="content-section">
-    <form method="POST" action="">
-        {{ form.hidden_tag() }}
-        <fieldset class="form-group">
-           <div class="form-group">
-                {{ form.job_completion.label(class="form-control-label") }}
-
-                {% if form.job_completion.errors %}
-                    {{ form.job_completion(class="form-control form-control-lg is-invalid") }}
-                    <div class="invalid-feedback">
-                        {% for error in form.job_completion.errors %}
-                            <span>{{ error }}</span>
-                        {% endfor %}
+<article class="media content-section">
+    <div class="media-body">
+        <div class="card">
+            <h4 class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    Notifications
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Would you like to be notified when the job completes AND/OR when specific hashes are cracked. Note, cracked hash notifications will persist after job has been completed or removed." style="margin-left:5px;"></i>
+                </div>
+            </h4>
+            <br>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                    <div class="steps-horizontal">
+                        <div class="step-horizontal complete">
+                            <div class="step-icon">
+                                <i class="fa fa-briefcase"></i>
+                            </div>
+                            <div class="step-title">Step 1</div>
+                            <div class="step-description">Job Information</div>
+                        </div>
+                        <div class="step-horizontal complete">
+                            <div class="step-icon">
+                                <i class="fa fa-file-text"></i>
+                            </div>
+                            <div class="step-title">Step 2</div>
+                            <div class="step-description">Hashfile Assignment</div>
+                        </div>
+                        <div class="step-horizontal complete">
+                            <div class="step-icon">
+                                <i class="fa fa-database"></i>
+                            </div>
+                            <div class="step-title">Step 3</div>
+                            <div class="step-description">Previously Cracked</div>
+                        </div>
+                        <div class="step-horizontal active">
+                            <div class="step-icon">
+                                <i class="fa fa-bell"></i>
+                            </div>
+                            <div class="step-title">Step 4</div>
+                            <div class="step-description">Notifications</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-list"></i>
+                            </div>
+                            <div class="step-title">Step 5</div>
+                            <div class="step-description">Tasks</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-check"></i>
+                            </div>
+                            <div class="step-title">Step 6</div>
+                            <div class="step-description">Review</div>
+                        </div>                
                     </div>
+<<<<<<< HEAD:hashview/templates/jobs_assigned_notifications.html.j2
                 {% else %}
                     {{ form.job_completion(class="form-control form-control-lg") }}
                 {% endif %}
@@ -47,7 +88,47 @@ Would you like to be notified when the job completes AND/OR when specific hashes
             <!--<a class="btn btn-secondary" href="{{ url_for('jobs.jobs_list_tasks', job_id = job.id) }}">Back</a>-->
             <a class="btn btn-secondary" href="{{ url_for('jobs.jobs_assigned_hashfile', job_id=job.id) }}">Back</a>
             {{ form.submit(class="btn btn-primary pull-right")}}
+=======
+                </li>   
+            </ul>   
+            <div class="card-body ">
+                <br>
+                <div class="content-section">
+                    <form method="POST" action="">
+                        {{ form.hidden_tag() }}
+                        <fieldset class="form-group">
+                        <div class="d-flex justify-content-center">
+                            <div class="form-group">
+                                <div class="form-check form-switch">
+                                    {{ form.job_completion_email(class="form-check-input", type="checkbox", role="switch", id="job_completion_email")}}
+                                    {{ form.job_completion_email.label(class="form-control-label text-end") }}
+                                </div>  
+                                <div class="form-check form-switch">
+                                    {{ form.job_completion_pushover(class="form-check-input", type="checkbox", role="switch", id="job_completion_pushover")}}
+                                    {{ form.job_completion_pushover.label(class="form-control-label text-end") }}
+                                </div>  
+                                <div class="form-check form-switch">
+                                    {{ form.hash_completion_email(class="form-check-input", type="checkbox", role="switch", id="hash_completion_email")}}
+                                    {{ form.hash_completion_email.label(class="form-control-label text-end") }}
+                                </div>  
+                                <div class="form-check form-switch">
+                                    {{ form.hash_completion_pushover(class="form-check-input", type="checkbox", role="switch", id="hash_completion_pushover")}}
+                                    {{ form.hash_completion_pushover.label(class="form-control-label text-end") }}
+                                </div>                                       
+                            </div>
+                        </div>
+                        </fieldset>
+                        <br>
+                        <div class="form-group">
+                            <!--<a class="btn btn-secondary" href="{{ url_for('jobs.jobs_list_tasks', job_id = job.id) }}">Back</a>-->
+                            <a class="btn btn-secondary" href="{{ url_for('jobs.jobs_assigned_hashfile', job_id=job.id) }}">Back</a>
+                            {{ form.submit(class="btn btn-primary pull-right")}}
+                        </div>
+                    </form>
+                </div>
+            </div>
+>>>>>>> origin/internal-features:hashview/templates/jobs_assigned_notifications.html
         </div>
-    </form>
-</div>
+    </div>
+</article>
 {% endblock content %}

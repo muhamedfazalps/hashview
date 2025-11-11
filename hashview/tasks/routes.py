@@ -1,8 +1,8 @@
 """Flask routes to handle Tasks"""
-from flask import Blueprint, render_template, redirect, url_for, flash
+from flask import Blueprint, render_template, redirect, url_for, flash, abort, request
 from flask_login import login_required, current_user
 from hashview.tasks.forms import TasksForm
-from hashview.models import TaskGroups, Tasks, Wordlists, Rules, Users, Jobs, JobTasks
+from hashview.models import TaskGroups, Tasks, Wordlists, Rules, Users, Jobs, JobTasks, Hashes
 from hashview.models import db
 
 tasks = Blueprint('tasks', __name__)
@@ -11,14 +11,63 @@ tasks = Blueprint('tasks', __name__)
 @login_required
 def tasks_list():
     """Function to list tasks"""
+    
+    # Add pagination to reduce load time when many tasks exist
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # Adjust as needed
 
-    tasks = Tasks.query.all()
+    # Get sorting parameters
+    sort_by = request.args.get('sort_by', 'name', type=str)
+    sort_order = request.args.get('sort_order', 'asc', type=str)
+
+    # Build the query with sorting
+    if sort_by == 'recovered':
+        # Special case: sort by recovered password count (requires subquery)
+        subquery = db.session.query(
+            Hashes.task_id,
+            db.func.count(Hashes.id).label('recovered_count')
+        ).filter(Hashes.cracked == '1').group_by(Hashes.task_id).subquery()
+
+        query = Tasks.query.outerjoin(subquery, Tasks.id == subquery.c.task_id)
+        if sort_order == 'desc':
+            query = query.order_by(db.func.coalesce(subquery.c.recovered_count, 0).desc())
+        else:
+            query = query.order_by(db.func.coalesce(subquery.c.recovered_count, 0).asc())
+    elif sort_by == 'owner':
+        # Sort by owner's first name
+        query = Tasks.query.join(Users, Tasks.owner_id == Users.id)
+        if sort_order == 'desc':
+            query = query.order_by(Users.first_name.desc())
+        else:
+            query = query.order_by(Users.first_name.asc())
+    elif sort_by == 'type':
+        # Sort by attack mode
+        if sort_order == 'desc':
+            query = Tasks.query.order_by(Tasks.hc_attackmode.desc())
+        else:
+            query = Tasks.query.order_by(Tasks.hc_attackmode.asc())
+    else:
+        # Default: sort by task name
+        if sort_order == 'desc':
+            query = Tasks.query.order_by(Tasks.name.desc())
+        else:
+            query = Tasks.query.order_by(Tasks.name.asc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    tasks = pagination.items
+
     users = Users.query.all()
     jobs = Jobs.query.all()
     job_tasks = JobTasks.query.all()
     wordlists = Wordlists.query.all()
     task_groups = TaskGroups.query.all()
-    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups)
+
+    task_recovery_performance = Hashes.query.with_entities(
+        Hashes.task_id,
+        db.func.count(Hashes.id).label('recovered_count')
+    ).filter(Hashes.cracked == '1').group_by(Hashes.task_id).all()
+
+    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order)
 
 @tasks.route("/tasks/add", methods=['GET', 'POST'])
 @login_required
@@ -115,6 +164,30 @@ def tasks_add():
             )
             db.session.add(task)
             db.session.commit()
+            flash(f'Task {tasksForm.name.data} created!', 'success')
+        # Hybrid Wordlist + Mask or Hybrid Mask + Wordlist
+        elif tasksForm.hc_attackmode.data == '6' or tasksForm.hc_attackmode.data == '7':
+            task = Tasks(   name=tasksForm.name.data,
+                            owner_id=current_user.id,
+                            wl_id=tasksForm.wl_id.data,
+                            rule_id=None,
+                            hc_attackmode=tasksForm.hc_attackmode.data,
+                            hc_mask=tasksForm.mask.data,
+            )
+            db.session.add(task)
+            db.session.commit()
+            flash(f'Task {tasksForm.name.data} created!', 'success')
+        # Hybrid Wordlist + Mask or Hybrid Mask + Wordlist
+        elif tasksForm.hc_attackmode.data == '6' or tasksForm.hc_attackmode.data == '7':
+            task = Tasks(   name=tasksForm.name.data,
+                            owner_id=current_user.id,
+                            wl_id=tasksForm.wl_id.data,
+                            rule_id=None,
+                            hc_attackmode=tasksForm.hc_attackmode.data,
+                            hc_mask=tasksForm.mask.data,
+            )
+            db.session.add(task)
+            db.session.commit()
             flash(f'Task {tasksForm.name.data} created!', 'success')            
         else:
             flash('Attack Mode not supported... yet...', 'danger')
@@ -162,19 +235,16 @@ def task_edit(task_id):
 
         # Populate the choices for wordlists excluding the current value.
         for wordlist in wordlists:
-            tasksForm.wl_id.choices += [(wordlist.id, wordlist.name) for wordlist in wordlists if wordlist.id != task.wl_id]
-            tasksForm.wl_id_2.choices += [(wordlist.id, wordlist.name) for wordlist in wordlists if wordlist.id != task.wl_id]
-        
-        # Populate the choices for rules excluding the current value.
-        tasksForm.rule_id.choices += [(rule.id, rule.name) for rule in rules if rule.id != task.rule_id]
+            tasksForm.wl_id.choices += [(wordlist.id, wordlist.name)]
+            tasksForm.wl_id_2.choices += [(wordlist.id, wordlist.name)]
 
+        for rule in rules:
+            tasksForm.rule_id.choices += [(rule.id, rule.name)]
+        
         tasksForm.submit.label.text = 'Update'
 
         if tasksForm.validate_on_submit():
 
-            if tasksForm.rule_id.data == 'None':
-                tasksForm.rule_id.data = None
-            
             if tasksForm.hc_attackmode.data == '0':
                 task.name = tasksForm.name.data
                 task.wl_id = tasksForm.wl_id.data
@@ -232,12 +302,6 @@ def task_edit(task_id):
             tasksForm.k_rule.data = task.k_rule
             tasksForm.mask.data = task.hc_mask
 
-        tasksForm.name.data = task.name
-        tasksForm.hc_attackmode.data = task.hc_attackmode
-        tasksForm.wl_id.data = (task.wl_id, 'Rockyou.txt')
-        tasksForm.rule_id.data = (task.rule_id, 'bar')
-        tasksForm.mask.data = task.hc_mask
-
         return render_template('tasks_edit.html.j2', title='Tasks Edit', tasksForm=tasksForm, task=task, wordlists=wordlists, rules=rules)
 
     flash('You are unauthorized to edit this task.', 'danger')
@@ -268,6 +332,6 @@ def tasks_delete(task_id):
         db.session.commit()
         flash('Task has been deleted!', 'success')
         return redirect(url_for('tasks.tasks_list'))
-
-    flash('You are unauthorized to delete this task.', 'danger')
-    return redirect(url_for('tasks.tasks_list'))
+    else:
+        flash('You are unauthorized to delete this task.', 'danger')
+        return redirect(url_for('tasks.tasks_list'))

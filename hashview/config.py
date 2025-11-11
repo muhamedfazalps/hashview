@@ -8,6 +8,11 @@ class Config:
 
     file_config.read('hashview/config.conf')
     SECRET_KEY = secrets.token_hex(16)
+
+    # Server Config
+    SERVER_NAME = file_config['SERVER']['SERVER_NAME']
+
+    # MYSQL Config
     SQLALCHEMY_DATABASE_URI = 'mysql+mysqlconnector://' + file_config['database']['username'] + ':' + file_config['database']['password'] + '@' + file_config['database']['host'] + '/hashview'
  
     # SMTP Config

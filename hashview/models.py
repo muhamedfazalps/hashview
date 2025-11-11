@@ -125,6 +125,7 @@ class Jobs(db.Model):
     hashfile_id = db.Column(db.Integer, nullable=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    limit_recovered = db.Column(db.Boolean, nullable=False, default=False) # This is for one-and-done cracks
 
 class JobTasks(db.Model):
     """Class object to represent JobTasks"""

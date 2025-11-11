@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from sqlalchemy.sql import exists
 from hashview.models import Hashfiles, Customers, Jobs, HashfileHashes, HashNotifications, Hashes
 from hashview.models import db
+from sqlalchemy.sql import exists
 
 hashfiles = Blueprint('hashfiles', __name__)
 
@@ -46,12 +47,28 @@ def hashfiles_delete(hashfile_id):
                 flash('Error: Hashfile currently associated with a job.', 'danger')
                 return redirect(url_for('hashfiles.hashfiles_list'))
             else:
-                HashfileHashes.query.filter_by(hashfile_id = hashfile_id).delete()
-                Hashfiles.query.filter_by(id = hashfile_id).delete()
-                Hashes.query.filter(~exists().where(Hashes.id == HashfileHashes.hash_id)).filter(Hashes.cracked == 0).delete(synchronize_session='fetch')
-                #Hashes.query.filter().where(~exists().where(Hashes.id == HashfileHashes.hash_id)).where(Hashes.cracked == 0).delete(synchronize_session='fetch')
-                HashNotifications.query.filter(~exists().where(HashNotifications.hash_id == HashfileHashes.hash_id)).filter(Hashes.cracked == 0).delete(synchronize_session='fetch')
+                # Remove hashifle hash
+                deleted_count = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).delete(synchronize_session=False)
+                print(f"[DEBUG] Deleted {deleted_count} Hashfile Hashes entries for hashfile ID {hashfile.id}")
                 db.session.commit()
+
+                # # remove hashfile 
+                db.session.delete(hashfile)
+                db.session.commit()
+
+                # Remove all uncracked hashes not associated to a hashfile hash.
+                deleted_count = Hashes.query.filter(
+                    Hashes.cracked == 0
+                ).filter(
+                    ~exists().where(HashfileHashes.hash_id == Hashes.id)
+                ).delete(synchronize_session=False)
+
+                db.session.commit()
+                print(f"[DEBUG] Deleted {deleted_count} orphaned uncracked hashes")
+
+                # Remove notifications
+                deleted_count = HashNotifications.query.filter(~exists().where(Hashes.id == HashNotifications.hash_id)).delete(synchronize_session=False)
+
                 flash('Hashfile has been deleted!', 'success')
                 return redirect(url_for('hashfiles.hashfiles_list'))
         else:

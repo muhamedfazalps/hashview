@@ -1,9 +1,7 @@
-{% extends "layout.html.j2" %}
+{% extends "layout.html"%}
 {% block header %}
 <br>
-<h1>Wordlists</h1>
 <br>
-These are plaintext, newline delimited files that you can upload to hashview and then assign to a task. The Dynamic Wordlist is automatically generated for you.
 <br>
 <br>
 <br>
@@ -14,6 +12,7 @@ These are plaintext, newline delimited files that you can upload to hashview and
             <div class="card">
                 <h4 class="card-header">
                     Static Wordlists
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="These are plaintext, newline delimited files that you can upload to hashview and then assign to a task." style="margin-left:5px;"></i>
                     <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('wordlists.wordlists_add') }}">Add</a>
                 </h4>
                 <div class="card-body ">              
@@ -24,27 +23,25 @@ These are plaintext, newline delimited files that you can upload to hashview and
                             <th scope="col">Size</th>
                             <th scope="col">Owner</th>
                             <th scope="col">Last Updated</th>
-                            <th scope="col">Control</th>
+                            <th style="width:110px" scope="col">Control</th> 
                         </tr>
                         </thead>
                         <tbody>
                             {% for wordlist in static_wordlists %}
                                 <tr>
-                                    <td>{{ wordlist.name }}</td>
-                                    <td>{{ wordlist.size }}</td>
-                                    <td>
+                                    <td style="vertical-align:middle;">{{ wordlist.name }}</td>
+                                    <td style="vertical-align:middle;">{{ wordlist.size }}</td>
+                                    <td style="vertical-align:middle;">
                                         {% for user in users %}
                                             {% if user.id == wordlist.owner_id %}
                                                 {{ user.first_name }} {{ user.last_name }}
                                             {% endif %}
                                         {% endfor %}
                                     </td>
-                                    <td>
-                                        {{ wordlist.last_updated }}
-                                    </td>
-                                    <td>
-                                        <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{wordlist.id}}" title=Info></button>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{wordlist.id}}" title=Delete></button>
+                                    <td style="vertical-align:middle;">{{ wordlist.last_updated }}</td>
+                                    <td style="vertical-align:middle;">
+                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{wordlist.id}}" title=Info></button>
+                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{wordlist.id}}" title=Delete></button>
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -56,6 +53,7 @@ These are plaintext, newline delimited files that you can upload to hashview and
             <div class="card">
                 <h4 class="card-header">
                     Dynamic Wordlists 
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="The Dynamic Wordlist are automatically generated for you. They will update anytime new data is added to the system." style="margin-left:5px;"></i>
                 </h4>
                 <div class="card-body "> 
                     <table class="table">
@@ -64,19 +62,17 @@ These are plaintext, newline delimited files that you can upload to hashview and
                             <th scope="col">Name</th>
                             <th scope="col">Size</th>
                             <th scope="col">Last Updated</th>
-                            <th scope="col">Control</th>
+                            <th style="width:110px" scope="col">Control</th> 
                         </tr>
                         </thead>
                         <tbody>
                             {% for wordlist in dynamic_wordlists %}
                                 <tr>
-                                    <td>{{ wordlist.name }}</td>
-                                    <td>{{ wordlist.size }}</td>
-                                    <td>
-                                        {{ wordlist.last_updated }}
-                                    </td>
-                                    <td>
-                                        <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{wordlist.id}}" title=Info></button>
+                                    <td style="vertical-align:middle;">{{ wordlist.name }}</td>
+                                    <td style="vertical-align:middle;">{{ wordlist.size }}</td>
+                                    <td style="vertical-align:middle;">{{ wordlist.last_updated }}</td>
+                                    <td style="vertical-align:middle;">
+                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{wordlist.id}}" title=Info></button>
                                         <a class="fa fa-undo btn btn-warning" href="/wordlists/update/{{wordlist.id}}" role="button" title=Update></a>
                                     </td>
                                 </tr>
@@ -92,11 +88,11 @@ These are plaintext, newline delimited files that you can upload to hashview and
     <div class="modal fade" id="infoModal{{wordlist.id}}" tabindex="-1" aria-labelledby="infoModal{{wordlist.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-            <h5 class="modal-title" id="infoModal{{wordlist.id}}Label">Info: {{wordlist.name}}</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+            <div class="modal-header d-flex align-items-center">
+                <h5 class="modal-title" id="infoModal{{wordlist.id}}Label">Info: {{wordlist.name}}</h5>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
             </div>
             <div class="modal-body">
             The following tasks are using this wordlist.<br>
@@ -108,7 +104,7 @@ These are plaintext, newline delimited files that you can upload to hashview and
                 {% endfor %}
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
         </div>
@@ -119,19 +115,19 @@ These are plaintext, newline delimited files that you can upload to hashview and
     <div class="modal fade" id="deleteModal{{wordlist.id}}" tabindex="-1" aria-labelledby="deleteModal{{wordlist.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-            <h5 class="modal-title" id="deleteModal{{wordlist.id}}Label">Delete: {{wordlist.name}} ?</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+            <div class="modal-header d-flex align-items-center">
+                <h5 class="modal-title" id="deleteModal{{wordlist.id}}Label">Delete: {{wordlist.name}} ?</h5>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
             </div>
             <div class="modal-body">
-            This will permanantly delete the account. Are you sure you want to continue?
+                This will permanantly delete the account. Are you sure you want to continue?
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
-            <form action="{{ url_for('wordlists.wordlists_delete', wordlist_id=wordlist.id) }}" method="POST">
-                <input class="btn btn-danger" type="submit" value="Delete">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <form action="{{ url_for('wordlists.wordlists_delete', wordlist_id=wordlist.id) }}" method="POST">
+                    <input class="btn btn-danger" type="submit" value="Delete">
                 </form>
             </div>
         </div>

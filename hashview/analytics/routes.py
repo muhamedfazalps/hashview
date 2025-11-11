@@ -2,9 +2,19 @@
 import operator
 import re
 from flask import Blueprint, render_template, request, redirect, send_from_directory
+from flask import Blueprint, render_template, request, redirect, send_from_directory
 from flask_login import login_required
 from hashview.models import Customers, HashfileHashes, Hashes, Hashfiles
 from hashview.models import db
+from sqlalchemy import func, select
+import re
+import operator
+import os
+
+# TODO
+# This whole things is a mess
+# Each graph should be its own route
+
 
 analytics = Blueprint('analytics', __name__)
 
@@ -260,7 +270,7 @@ def get_analytics():
     fig4_labels.append('Other: ' + str(fig4_other))
     fig4_values.append(fig4_other)
 
-    # Figure 4 (Passwords by Length)
+    # Figure 5 (Passwords by Length)
     if customer_id:
         # we have a customer
         if hashfile_id:
@@ -290,7 +300,7 @@ def get_analytics():
         else:
             break
 
-    # Figure 5 (Top 10 Passwords)
+    # Figure 6 (Top 10 Passwords)
     if customer_id:
         # we have a customer
         if hashfile_id:
@@ -327,7 +337,7 @@ def get_analytics():
         else:
             break
 
-    # Figure 6 (Top 10 Masks)
+    # Figure 7 (Top 10 Masks)
     # Using Fig 5 data for this
     fig7_values = {}
     fig7_data = {}
@@ -375,13 +385,74 @@ def get_analytics():
             # check if username has domain in it
             if '\\' in bytes.fromhex(entry[1]).decode('latin-1'):
                 username = bytes.fromhex(entry[1]).decode('latin-1').split('\\')[1]
-            # check if username has astrix in it (found with some kerb tickets)
             elif '*' in  bytes.fromhex(entry[1]).decode('latin-1'):
                 username = bytes.fromhex(entry[1]).decode('latin-1').split('*')[1]
             else:
                 username = bytes.fromhex(entry[1]).decode('latin-1')
             if bytes.fromhex(entry[0]).decode('latin-1') == username:
                 fig8_table.append(bytes.fromhex(entry[0]).decode('latin-1'))
+    
+    # Figure 9 (Users that share the same Password. Note some users may not have had their password recoverd to show up in this list)
+    if customer_id:
+        # we have a customer & hashfile
+        if hashfile_id:
+            fig9_hashes_ids = db.session.query(HashfileHashes) \
+                .where(HashfileHashes.hashfile_id == hashfile_id) \
+                .group_by(HashfileHashes.hash_id) \
+                .having(func.count() > 1) \
+                .with_entities(HashfileHashes.hash_id) \
+                .subquery()
+            
+            fig9_usernames = (
+            db.session.execute(
+                select(HashfileHashes.username)
+                    .where(HashfileHashes.hashfile_id == hashfile_id)
+                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
+                    .distinct()
+            )
+            .scalars()
+            .all()
+        )
+        else:
+            # just a customer, no specific hashfile
+            fig9_hashes_ids = db.session.query(HashfileHashes) \
+                .group_by(HashfileHashes.hash_id) \
+                .having(func.count() > 1) \
+                .with_entities(HashfileHashes.hash_id) \
+                .subquery()
+            
+            fig9_usernames = (
+            db.session.execute(
+                select(HashfileHashes.username).join(Hashfiles, HashfileHashes.hashfile_id == Hashfiles.id)
+                    .where(Hashfiles.customer_id == customer_id)
+                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
+                    .distinct()
+            )
+            .scalars()
+            .all()
+        )
+    else:
+        fig9_hashes_ids = db.session.query(HashfileHashes).with_entities(HashfileHashes.username, HashfileHashes.hash_id) \
+            .group_by(HashfileHashes.hash_id) \
+            .having(func.count() > 1) \
+            .with_entities(HashfileHashes.hash_id) \
+            .subquery()  
+        
+        fig9_usernames = (
+            db.session.execute(
+                select(HashfileHashes.username)
+                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
+                    .distinct()
+            )
+            .scalars()
+            .all()
+        )
+
+    fig9_table = []
+    for entry in fig9_usernames:
+        if entry != None:
+            fig9_table.append(bytes.fromhex(entry).decode('latin-1'))
+        #print(f"Username: {bytes.fromhex(entry).decode('latin-1')}")
 
 
     return render_template('analytics.html.j2',
@@ -403,6 +474,7 @@ def get_analytics():
                             fig7_values=fig7_values,
                             fig7_total=fig7_total,
                             fig8_table=fig8_table,
+                            fig9_table=fig9_table,
                             customers=customers,
                             hashfiles=hashfiles,
                             hashfile_id=hashfile_id,
@@ -433,7 +505,8 @@ def analytics_download_hashes():
         customer_id = None
     if request.args.get("hashfile_id"):
         hashfile_id = request.args["hashfile_id"]
-        filename += '_' + customer_id
+        # Append the hashfile identifier to the filename (not the customer id)
+        filename += '_' + hashfile_id
     else:
         hashfile_id = None
         filename += '_all'
@@ -472,6 +545,187 @@ def analytics_download_hashes():
     outfile.close()
     return send_from_directory('control/tmp', filename, as_attachment=True)
 
-def format_display(number):
-    """Function to commas to the number after every thousand places"""
+# Download the list of accounts that share the same password or password hash (fig9)
+@analytics.route('/analytics/download/fig9', methods=['GET'])
+@login_required
+def analytics_download_fig9():
+    """
+    Generate a plain‑text file containing every username that appears in the
+    fig9_table (accounts that share the same password or password hash) and
+    serve it as a downloadable attachment.
+    """
+    # Build a filename that reflects any filters applied
+    filename = 'fig9_shared_passwords'
+
+    # Preserve any customer or hashfile filters for consistency with the
+    # main analytics view
+    if request.args.get("customer_id"):
+        customer_id = request.args["customer_id"]
+        filename += '_' + customer_id
+    else:
+        customer_id = None
+    if request.args.get("hashfile_id"):
+        hashfile_id = request.args["hashfile_id"]
+        filename += '_' + hashfile_id
+    else:
+        hashfile_id = None
+
+    filename += '.txt'
+
+    # Gather the usernames from fig9_table logic (same as in the template)
+    fig9_usernames = []
+
+    if customer_id:
+        # we have a customer
+        if hashfile_id:
+            # Specific hashfile
+            fig9_hashes_ids = db.session.query(HashfileHashes) \
+                .where(HashfileHashes.hashfile_id == hashfile_id) \
+                .group_by(HashfileHashes.hash_id) \
+                .having(func.count() > 1) \
+                .with_entities(HashfileHashes.hash_id) \
+                .subquery()
+
+            fig9_usernames = (
+                db.session.execute(
+                    select(HashfileHashes.username)
+                        .where(HashfileHashes.hashfile_id == hashfile_id)
+                        .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
+                        .distinct()
+                )
+                .scalars()
+                .all()
+            )
+        else:
+            # All hashfiles for the customer
+            fig9_hashes_ids = db.session.query(HashfileHashes) \
+                .join(Hashfiles, HashfileHashes.hashfile_id == Hashfiles.id) \
+                .where(Hashfiles.customer_id == customer_id) \
+                .group_by(HashfileHashes.hash_id) \
+                .having(func.count() > 1) \
+                .with_entities(HashfileHashes.hash_id) \
+                .subquery()
+
+            fig9_usernames = (
+                db.session.execute(
+                    select(HashfileHashes.username)
+                        .join(Hashfiles, HashfileHashes.hashfile_id == Hashfiles.id)
+                        .where(Hashfiles.customer_id == customer_id)
+                        .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
+                        .distinct()
+                )
+                .scalars()
+                .all()
+            )
+    else:
+        # No customer filter – all hashfiles
+        fig9_hashes_ids = db.session.query(HashfileHashes) \
+            .group_by(HashfileHashes.hash_id) \
+            .having(func.count() > 1) \
+            .with_entities(HashfileHashes.hash_id) \
+            .subquery()
+
+        fig9_usernames = (
+            db.session.execute(
+                select(HashfileHashes.username)
+                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
+                    .distinct()
+            )
+            .scalars()
+            .all()
+        )
+
+    # Write usernames to the file
+    outfile_path = os.path.join('hashview', 'control', 'tmp', filename)
+    with open(outfile_path, 'w') as outfile:
+        for entry in fig9_usernames:
+            if entry:
+                # Decode possible hex‑encoded usernames
+                try:
+                    decoded = bytes.fromhex(entry).decode('latin-1')
+                except Exception:
+                    decoded = entry
+                outfile.write(f"{decoded}\n")
+
+    return send_from_directory('control/tmp', filename, as_attachment=True)
+
+@analytics.route('/analytics/download/fig8', methods=['GET'])
+@login_required
+def analytics_download_fig8():
+    """
+    Generate a plain‑text file containing every username whose password matches the username
+    (fig8) and serve it as a downloadable attachment.
+    """
+    # Build a filename that reflects any filters applied
+    filename = 'fig8_same_user_pass'
+
+    if request.args.get("customer_id"):
+        customer_id = request.args["customer_id"]
+        filename += '_' + customer_id
+    else:
+        customer_id = None
+
+    if request.args.get("hashfile_id"):
+        hashfile_id = request.args["hashfile_id"]
+        filename += '_' + hashfile_id
+    else:
+        hashfile_id = None
+
+    filename += '.txt'
+
+    # Gather the usernames where password == username using the same logic as fig8_table
+    fig8_usernames = []
+
+    if customer_id:
+        if hashfile_id:
+            # Specific hashfile
+            fig8_cracked_hashes = db.session.query(Hashes, HashfileHashes) \
+                .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+                .filter(Hashes.cracked == '1') \
+                .filter(HashfileHashes.hashfile_id == hashfile_id) \
+                .with_entities(Hashes.plaintext, HashfileHashes.username) \
+                .all()
+        else:
+            # All hashfiles for the customer
+            fig8_cracked_hashes = db.session.query(Hashes, HashfileHashes) \
+                .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+                .join(Hashfiles, HashfileHashes.hashfile_id == Hashfiles.id) \
+                .filter(Hashfiles.customer_id == customer_id) \
+                .filter(Hashes.cracked == '1') \
+                .with_entities(Hashes.plaintext, HashfileHashes.username) \
+                .all()
+    else:
+        # No customer filter – all hashfiles
+        fig8_cracked_hashes = db.session.query(Hashes, HashfileHashes) \
+            .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+            .filter(Hashes.cracked == '1') \
+            .with_entities(Hashes.plaintext, HashfileHashes.username) \
+            .all()
+
+    for entry in fig8_cracked_hashes:
+        if entry[1] and entry[0]:
+            # Decode username (handle possible domain delimiters)
+            raw_username = bytes.fromhex(entry[1]).decode('latin-1')
+            if '\\' in raw_username:
+                username = raw_username.split('\\')[1]
+            elif '*' in raw_username:
+                username = raw_username.split('*')[1]
+            else:
+                username = raw_username
+
+            # Decode password
+            password = bytes.fromhex(entry[0]).decode('latin-1')
+
+            if username == password:
+                fig8_usernames.append(username)
+
+    # Write usernames to the file
+    outfile_path = os.path.join('hashview', 'control', 'tmp', filename)
+    with open(outfile_path, 'w') as outfile:
+        for uname in fig8_usernames:
+            outfile.write(f"{uname}\n")
+
+    return send_from_directory('control/tmp', filename, as_attachment=True)
+
+def formatDisplay(number): # add commas to the number after every thousand places
     return "{:,}".format(number)

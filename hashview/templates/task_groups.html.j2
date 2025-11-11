@@ -1,9 +1,11 @@
 {% extends "layout.html.j2" %}
 {% block header %}
 <br>
-<h1>Task Groups</h1>
 <br>
+<<<<<<< HEAD:hashview/templates/task_groups.html.j2
 Task Groups are a set of tasks that can be assigned to job.
+=======
+>>>>>>> origin/internal-features:hashview/templates/task_groups.html
 <br>
 <br>
 <br>
@@ -14,30 +16,52 @@ Task Groups are a set of tasks that can be assigned to job.
             <div class="card">
                 <h4 class="card-header">
                     Task Groups 
+<<<<<<< HEAD:hashview/templates/task_groups.html.j2
                     <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('task_groups.task_groups_add') }}">Add</a>
                 </h4>
                 <div class="card-body ">               
                     <table class="table table-sm">
+=======
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Task Groups are a set of tasks that can be assigned to job." style="margin-left:5px;"></i>
+                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('task_groups.task_groups_add') }}">Add</a>
+                </h4>
+                <div class="card-body ">               
+                    <table class="table table-hover table-sm">
+>>>>>>> origin/internal-features:hashview/templates/task_groups.html
                         <thead>
                         <tr>
                             <th scope="col">Task Group Name</th>
                             <th scope="col">Owner</th>
+<<<<<<< HEAD:hashview/templates/task_groups.html.j2
                             <th scope="col">Control</th>
+=======
+                            <th style="width:140px" scope="col">Control</th>
+>>>>>>> origin/internal-features:hashview/templates/task_groups.html
                         </tr>
                         </thead>
                         <tbody>
                             {% for task_group in task_groups %}
                                 <tr>
+<<<<<<< HEAD:hashview/templates/task_groups.html.j2
                                     <td>{{ task_group.name }}</td>
                                     <td>
+=======
+                                    <td style="vertical-align:middle;">{{ task_group.name }}</td>
+                                    <td style="vertical-align:middle;">
+>>>>>>> origin/internal-features:hashview/templates/task_groups.html
                                         {% for user in users %}
                                             {% if user.id == task_group.owner_id %}
                                                 {{user.first_name}} {{user.last_name}}
                                             {% endif %}
                                         {% endfor %}
                                     </td>
+<<<<<<< HEAD:hashview/templates/task_groups.html.j2
                                     <td>
                                         <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{task_group.id}}" title=Info></button>
+=======
+                                    <td style="text-align:right; vertical-align:middle;">
+                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{task_group.id}}" title=Info></button>
+>>>>>>> origin/internal-features:hashview/templates/task_groups.html
                                         <a class="fa fa-edit btn btn-warning" href="/task_groups/assigned_tasks/{{task_group.id}}" role="button" title=Edit></a>
                                         <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{task_group.id}}" title=Delete></button>
                                     </td>
@@ -54,9 +78,9 @@ Task Groups are a set of tasks that can be assigned to job.
     <div class="modal fade" id="infoModal{{task_group.id}}" tabindex="-1" aria-labelledby="infoModal{{task_group.id}}Label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header d-flex align-items-center">
             <h5 class="modal-title" id="infoModal{{task_group.id}}Label">Info: {{task_group.name}}</h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                 <span aria-hidden="true">&times;</span>
             </button>
             </div>
@@ -92,7 +116,7 @@ Task Groups are a set of tasks that can be assigned to job.
                   </table>
             </div>
             <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
         </div>
@@ -103,9 +127,9 @@ Task Groups are a set of tasks that can be assigned to job.
         <div class="modal fade" id="resetModal{{task_group.id}}" tabindex="-1" aria-labelledby="editModal{{task_group.id}}Label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header d-flex align-items-center">
                 <h5 class="modal-title" id="resetModal{{task_group.id}}Label">Edit task_group: {{task_group.name}}</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>
@@ -113,7 +137,7 @@ Task Groups are a set of tasks that can be assigned to job.
                 ...
                 </div>
                 <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-primary">Understood</button>
                 </div>
             </div>
@@ -125,9 +149,9 @@ Task Groups are a set of tasks that can be assigned to job.
         <div class="modal fade" id="deleteModal{{task_group.id}}" tabindex="-1" aria-labelledby="deleteModal{{task_group.id}}Label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header d-flex align-items-center">
                 <h5 class="modal-title" id="deleteModal{{task_group.id}}Label">Delete: {{task_group.name}} ?</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
                 </div>

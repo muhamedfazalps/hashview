@@ -1,11 +1,8 @@
-"""Flask routes to handle Rules"""
 import os
-from datetime import datetime
-
 from flask import Blueprint, render_template, flash, url_for, redirect, current_app, request
 from flask_login import login_required, current_user
 from hashview.models import Rules, Tasks, Jobs, JobTasks, Users
-from hashview.rules.forms import RulesForm, RulesEditForm
+from hashview.rules.forms import RulesForm
 from hashview.utils.utils import save_file, get_linecount, get_filehash
 from hashview.models import db
 
@@ -19,18 +16,16 @@ rules = Blueprint('rules', __name__)
 @rules.route("/rules", methods=['GET'])
 @login_required
 def rules_list():
-    """Function to return list of rules"""
     rules = Rules.query.all()
     tasks = Tasks.query.all()
     jobs = Jobs.query.all()
     jobtasks = JobTasks.query.all()
     users = Users.query.all()
-    return render_template('rules.html.j2', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users)
+    return render_template('rules.html', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users)
 
 @rules.route("/rules/add", methods=['GET', 'POST'])
 @login_required
 def rules_add():
-    """Function to rules file"""
     form = RulesForm()
     if form.validate_on_submit():
         if form.rules.data:
@@ -43,74 +38,47 @@ def rules_add():
                             checksum=get_filehash(rules_path))
             db.session.add(rule)
             db.session.commit()
-            flash('Rules File created!', 'success')
+            flash(f'Rules File created!', 'success')
             return redirect(url_for('rules.rules_list'))
-    return render_template('rules_add.html.j2', title='Rules Add', form=form)
+    return render_template('rules_add.html', title='Rules Add', form=form)
 
 @rules.route("/rules/edit/<int:rule_id>", methods=['GET', 'POST'])
 @login_required
-def rules_edit(rule_id):
-
-    rules = Rules.query.get(rule_id)
-    tasks = Tasks.query.get(rule_id=rule_id)
-    for task in tasks:
-        jobtasks = JobTasks.query.get(task_id=task.id)
-        for jobtask in jobtasks:
-            if jobtask.status == 'Queued':
-                flash('Rule is in a Tasks that is Queued for processing. Please wait for Job to be completed before editing.', 'danger')
-                return redirect(url_for('rules.rules_list'))
-
-    if not rules:
-        flash('Invalid Rule File')
+def rules_view(rule_id):
+    rule = Rules.query.get_or_404(rule_id)
+    # Read file content
+    try:
+        with open(rule.path, 'r') as f:
+            content = f.read()
+    except Exception as e:
+        flash(f'Error reading file: {e}', 'danger')
         return redirect(url_for('rules.rules_list'))
 
-    if current_user.admin or rules.owner_id == current_user.id:
+    can_edit = current_user.admin or rule.owner_id == current_user.id
 
-        form = RulesEditForm()
-        if request.method == 'GET':
-            with open(rules.path, "r") as file:
-                S = file.read()
-
-            form.name.data = rules.name
-            form.content.data = S
-
-
-        elif request.method == 'POST':
-
-            if not form.name.data:
-                flash('Rules file requires a name.')
-                return redirect(url_for('rules.rules_edit'))
-            if not form.content.data:
-                flash('Rule data must be populated')
-                return redirect(url_for('rules.rules_edit'))
-
-            # remove old rules file
-            os.remove(rules.path)
-
-            # create new file
-            rules_file = open(rules.path, 'w+')
-            rules_file.write(form.content.data)
-            rules_file.close()
-
-            rules.name = form.name.data
-            rules.size = get_linecount(rules.path)
-            rules.checksum = get_filehash(rules.path)
-            rules.last_updated = datetime.utcnow()
+    if request.method == 'POST':
+        if not can_edit:
+            flash('Unauthorized action!', 'danger')
+            return redirect(url_for('rules.rules_view', rule_id=rule.id))
+        new_content = request.form.get('content')
+        try:
+            with open(rule.path, 'w') as f:
+                f.write(new_content)
+            # Update metadata
+            rule.size = get_linecount(rule.path)
+            rule.checksum = get_filehash(rule.path)
             db.session.commit()
+            flash('Rule file updated.', 'success')
+        except Exception as e:
+            flash(f'Error saving file: {e}', 'danger')
+        return redirect(url_for('rules.rules_view', rule_id=rule.id))
 
-            flash('Rules updated', 'success')
-            return redirect(url_for('rules.rules_list'))
-
-
-        return render_template('rules_edit.html.j2', title='Rules Edit', form=form, rules_name = rules.name)
-    else:
-        flash('Unauthorzed Action!', 'danger')
-        return redirect(url_for('rules.rules_list'))
+    return render_template('rules_edit.html', rule=rule, content=content, can_edit=can_edit)
+ 
 
 @rules.route("/rules/delete/<int:rule_id>", methods=['GET', 'POST'])
 @login_required
 def rules_delete(rule_id):
-    """Function to rules file"""
     rule = Rules.query.get(rule_id)
     if current_user.admin or rule.owner_id == current_user.id:
         # Check if part of a task

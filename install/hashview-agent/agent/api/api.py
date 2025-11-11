@@ -20,6 +20,15 @@ def heartbeat(agent_status, hc_status):
         print('we got an unexpected response type')
         print(str(decoded_response['type']))
 
+def server_settings():
+    response = http.get('/v1/admin/settings')
+    if(json.loads(response)['status'] == 426):
+        print('[ERROR] Our agent version is older than the servers. You need to upgrade your agent before continuing.')
+        exit()
+    else:
+        decoded_response = json.loads(response)['settings']
+        return decoded_response
+
 def rules_list():
     response =  http.get('/v1/rules')
     if(json.loads(response)['status'] == 426):
@@ -86,10 +95,11 @@ def updateDynamicWordlists(wordlist_id):
 def get_hashfile(hashfile_id):
     return http.get('/v1/hashfiles/' + str(hashfile_id))
 
-def uploadCrackFile(file_path, hash_type):
+def uploadCrackFile(file_path, job_task_id):
     with open(file_path, 'r') as file:
     # we use jobtask to determin hashtype server side. 
-        response =  http.post('/v1/uploadCrackFile/' + str(hash_type), data={'file': file.read()})
+        #response =  http.post('/v1/uploadCrackFile/' + str(task_id) + "/" + str(hash_type), data={'file': file.read()})
+        response = http.post('/v1/uploadCrackFile/' + str(job_task_id), data = {'file': file.read()})
         decoded_response = json.loads(response)
         if decoded_response['type'] == 'message' and decoded_response['status'] == 200:
             return decoded_response
@@ -118,6 +128,7 @@ def updateJobTask(job_task_id, task_status):
         'job_task_id': job_task_id
     }
 
+<<<<<<< HEAD
     try:
         response = http.post('/v1/jobtask/status', json.loads(json.dumps(message)))
         decoded_response = json.loads(response)
@@ -133,3 +144,34 @@ def updateJobTask(job_task_id, task_status):
     except Exception as e:
         print(e)
         return
+=======
+    response = http.post('/v1/jobtask/status', json.loads(json.dumps(message)))
+    decoded_response = json.loads(response)
+    if decoded_response['type'] == 'message' and decoded_response['status'] == 200:
+        return decoded_response
+    elif decoded_response['type'] == 'message' and decoded_response['status'] == 426:
+        print('Our agent version is older than the servers. You need to upgrade your agent before continuing.')
+        exit()
+    else:
+        print('We got an unexpected response type or status code.')
+        print('Type: ' + str(decoded_response['type']))
+        print('Code: ' + str(decoded_response['status']))
+        return decoded_response
+
+def sendError(error_message):
+    message = {
+            'error': error_message
+    }
+    response = http.post('/v1/error', json.loads(json.dumps(message)))
+    decoded_response = json.loads(response)
+    if decoded_response['type'] == 'message' and decoded_response['status'] == 200:
+        return decoded_response
+    elif decoded_response['type'] == 'message' and decoded_response['status'] == 426:
+        print('Our agent version is older than the servers. You need to upgrade your agent before continuing.')
+        exit()
+    else:
+        print('We got an unexpected response type or status code.')
+        print('Type: ' + str(decoded_response['type']))
+        print('Code: ' + str(decoded_response['status']))
+        return decoded_response
+>>>>>>> origin/internal-features

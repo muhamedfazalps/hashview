@@ -6,9 +6,9 @@ import re
 import _md5
 import requests
 from datetime import datetime
-from hashview.models import Rules, Wordlists, Hashfiles, HashfileHashes, Hashes, Tasks, Jobs, JobTasks, JobNotifications, Users, Agents, Customers
 from flask import current_app, url_for
 from hashview.models import db
+from hashview.models import Rules, Wordlists, Hashfiles, HashfileHashes, Hashes, Tasks, Jobs, JobTasks, JobNotifications, Users, Agents, Customers
 from flask_mail import Message
 
 
@@ -148,9 +148,10 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
                     username = None
             elif file_type == 'user_hash':
                 if ':' in line:
-                    if hash_type in ('300', '1731'):
+                    if hash_type == '300' or hash_type == '1731':
                         hash_id = import_hash_only(line=line.lower().rstrip(), hash_type=hash_type)
-                    if hash_type == '2100':
+                        username = line.split(':')[0]
+                    elif hash_type == '2100':
                         line = line.split(':',1)[1].rstrip()
                         line = line.lower()
                         line = line.replace('$dcc2$', '$DCC2$')
@@ -167,7 +168,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
             elif file_type == 'pwdump':
                 # do we let user select LM so that we crack those instead of NTLM?
                 # First extracting usernames so we can filter out machine accounts
-                if re.search("\$$", line.split(':')[0]):
+                if re.search("\$$", line.split(':')[0]) or re.search("\$_history", line.split(':')[0]):
                 #if '$' in line.split(':')[0]:
                     continue
                 else:
@@ -212,9 +213,6 @@ def update_dynamic_wordlist(wordlist_id):
     """Function to update dynamic wordlist"""
 
     wordlist = Wordlists.query.get(wordlist_id)
-    hashes = Hashes.query.filter_by(cracked=True).distinct('plaintext')
-    usernames = HashfileHashes.query.distinct('username')
-    customers = Customers.query.distinct('name');
     
 
     # Do we delete the original file, or overwrite it?
@@ -223,10 +221,12 @@ def update_dynamic_wordlist(wordlist_id):
     # is there a file lock on a wordlist when in use by hashcat? Could we just create a temp file and replace after generation?
     # Open file
     file = open(wordlist.path, 'wt')
-    if 'Hashes' in wordlist.name:
-        for entry in hashes:
+    if 'Passwords' in wordlist.name:
+        plains = Hashes.query.filter_by(cracked=True).distinct('plaintext').with_entities(Hashes.plaintext)
+        for entry in plains:
             file.write(str(bytes.fromhex(entry.plaintext).decode('latin-1')) + '\n')
     elif 'Usernames' in wordlist.name:
+        usernames = HashfileHashes.query.distinct('username')
         username_set = set()
         for entry in usernames:
             if entry.username:
@@ -244,11 +244,17 @@ def update_dynamic_wordlist(wordlist_id):
         for entry in username_set:
             file.write(entry + '\n')
     elif 'Customers' in wordlist.name:
+        customers = Customers.query.distinct('name')
         customer_set = set()
         for entry in customers:
             customer_set.add(entry.name.lower())
         for entry in customer_set:
             file.write(entry + '\n')
+    elif 'NTLM' in wordlist.name:
+        hashes = Hashes.query.filter_by(hash_type='1000').with_entities(Hashes.ciphertext)
+        for entry in hashes:
+            file.write(str(entry.ciphertext) + '\n')
+
     file.close()
 
     # update line count
@@ -362,7 +368,7 @@ def update_job_task_status(jobtask_id, status):
         return False
 
     jobtask.status = status
-    if status == 'Completed':
+    if status == 'Completed' or status == 'Canceled':
         jobtask.agent_id = None
         agent = Agents.query.get(jobtask.agent_id)
         if agent:
@@ -517,14 +523,14 @@ def validate_kerberos_hashfile(hashfile_path, hash_type):
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REQ Pre-Auth (2)'
                 if line.split('$')[2] != '23':
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REQ Pre-Auth (3)'
-            elif hash_type == '13100':
-                if dollar_cnt != 7 and dollar_cnt != 8:
+            elif hash_type == '13100' or hash_type == '35300':
+                if dollar_cnt < 3 or dollar_cnt > 8:
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, TGS-REP (1)'
                 if line.split('$')[1] != 'krb5tgs':
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, TGS-REP (2)'
                 if line.split('$')[2] != '23':
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, TGS-REP (3)'
-            elif hash_type == '18200':
+            elif hash_type == '18200' or hash_type == '35400':
                 if dollar_cnt != 4 and dollar_cnt != 5:
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REP (1)'
                 if line.split('$')[1] != 'krb5asrep':
@@ -683,7 +689,7 @@ def validate_hash_only_hashfile(hashfile_path, hash_type):
                     return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: bcrypt'
             if hash_type == '5700':
                 if len(line.rstrip()) != 43:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 43'
+                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 43'   
             if hash_type == '7100':
                 if '$' not in line:
                     return 'Error line ' + str(line_number) + ' is missing a $ character. Mac OSX 10.8+ ($ml$) hashes should have these.'

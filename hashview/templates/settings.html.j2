@@ -1,13 +1,13 @@
 {% extends "layout.html.j2" %}
 {% block header %}
 <br>
-<h1>Settings</h1>
 <br>
 <br>
 <br>
 <br>
 {% endblock header %}
 {% block content %}
+<<<<<<< HEAD:hashview/templates/settings.html.j2
     <nav>
         <div class="nav nav-tabs" id="nav-tab" role="tablist">
             <a class="nav-link active" id="nav-hashview-tab" data-toggle="tab" href="#nav-hashview" role="tab" aria-controls="nav-hashview" aria-selected="true">Hashview</a>
@@ -78,37 +78,127 @@
                     <div class="form-group">
                         {{ HashviewForm.submit(class="btn btn-primary pull-right") }}
                         <a class="btn btn-success " href="{{ url_for('users.send_test_email') }}">Test Email</a>
+=======
+    <article class="media content-section">
+        <div class="media-body">
+            <div class="card">
+                <h4 class="card-header">
+                    Settings
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Set the global settings for the application here." style="margin-left:5px;"></i>
+                </h4>
+                <div class="card-body">
+                <nav>
+                    <div class="nav nav-tabs" id="nav-tab" role="tablist">
+                        <a class="nav-link active" id="nav-hashview-tab" data-bs-toggle="tab" href="#nav-hashview" role="tab" aria-controls="nav-hashview" aria-selected="true">Hashview</a>
+                        <a class="nav-link" id="nav-data-tab" data-bs-toggle="tab" href="#nav-data" role="tab" aria-controls="nav-data" aria-selected="false">Data Management</a>
+                        <a class="nav-link" id="nav-info-tab" data-bs-toggle="tab" href="#nav-info" role="tab" aria-controls="nav-info" aria-selected="false">Information</a>
+>>>>>>> origin/internal-features:hashview/templates/settings.html
                     </div>
-                </form>
-            </div>
-        </div>
-        <div class="tab-pane fade" id="nav-data" role="tabpanel" aria-labelledby="nav-data-tab">
-            <br>
-            <div class="content-section">
-                <table class="table">
-                    <tbody>
-                        <tr>
-                            <td>Clear Temp Folder</td>
-                            <td>{{tmp_folder_size}} bytes</td>
-                            <td>
-                                <a class="fa fa-trash btn btn-danger" href="/settings/clear_temp" role="button" title='Clear Temp'></a>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="tab-pane fade" id="nav-info" role="tabpanel" aria-labelledby="nav-info-tab">
-            <br>
-            <div class="content-section">
-                <dl>
-                    <dt>Application Version:</dt>
-                    <dd>{{ application_version }}</dd>
+                </nav>
+                <div class="tab-content" id="nav-tabContent">
+                    <div class="tab-pane fade show active" id="nav-hashview" role="tabpanel" aria-labelledby="nav-hashview-tab">
+                        <br>
+                        <div class="content-section">
+                            <form method="POST" action="">
+                                {{ HashviewForm.hidden_tag() }}
+                                <fieldset class="form-group">
+                                    <div class="form-group">
+                                        {{ HashviewForm.retention_period.label(class="form-control-label") }}
+                                        {% if HashviewForm.retention_period.errors %}
+                                            {{ HashviewForm.retention_period(class="form-control form-control-lg is-invalid") }}
+                                            <div class="invalid-feedback">
+                                                {% for error in HashviewForm.retention_period.errors %}
+                                                    <span>{{ error }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            {{ HashviewForm.retention_period(class="form-control form-control-lg") }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="form-group">
+                                        {{ HashviewForm.max_runtime_jobs.label(class="form-control-label") }}
+                                        {% if HashviewForm.max_runtime_jobs.errors %}
+                                            {{ HashviewForm.max_runtime_jobs(class="form-control form-control-lg is-invalid") }}
+                                            <div class="invalid-feedback">
+                                                {% for error in HashviewForm.max_runtime_jobs.errors %}
+                                                    <span>{{ error }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            {{ HashviewForm.max_runtime_jobs(class="form-control form-control-lg") }}
+                                        {% endif %}
+                                    </div>                        
+                                    <div class="form-group">
+                                        {{ HashviewForm.max_runtime_tasks.label(class="form-control-label") }}
+                                        {% if HashviewForm.max_runtime_tasks.errors %}
+                                            {{ HashviewForm.max_runtime_tasks(class="form-control form-control-lg is-invalid") }}
+                                            <div class="invalid-feedback">
+                                                {% for error in HashviewForm.max_runtime_tasks.errors %}
+                                                    <span>{{ error }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            {{ HashviewForm.max_runtime_tasks(class="form-control form-control-lg") }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="form-group">
+                                        <div class="custom-control custom-switch">
+                                            <label class="custom-control-label" for="enabledJobWeights">
+                                                {{ HashviewForm.enabled_job_weights.label.text }}
+                                            </label>
+                                            <div class="form-check form-switch">
+                                            <!-- {{ HashviewForm.enabled_job_weights(class="custom-control-input", id="enabledJobWeights") }} -->
+                                                {{ HashviewForm.enabled_job_weights(class="form-check-input", type="checkbox", role="switch", id="enabledJobWeights") }}
+                                            </div>
+                                        </div>
+                                        {% if HashviewForm.enabled_job_weights.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {% for error in HashviewForm.enabled_job_weights.errors %}
+                                                    <span>{{ error }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </fieldset>
+                                <br>
+                                <div class="form-group">
+                                    {{ HashviewForm.submit(class="btn btn-primary pull-right") }}
+                                    <a class="btn btn-success " href="{{ url_for('users.send_test_email') }}">Test Email</a>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="nav-data" role="tabpanel" aria-labelledby="nav-data-tab">
+                        <br>
+                        <div class="content-section">
+                            <table class="table">
+                                <tbody>
+                                    <tr>
+                                        <td>Clear Temp Folder</td>
+                                        <td>{{tmp_folder_size}} bytes</td>
+                                        <td>
+                                            <a class="fa fa-trash btn btn-danger" href="/settings/clear_temp" role="button" title='Clear Temp'></a>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="nav-info" role="tabpanel" aria-labelledby="nav-info-tab">
+                        <br>
+                        <div class="content-section">
+                            <dl>
+                                <dt>Application Version:</dt>
+                                <dd>{{ application_version }}</dd>
 
-                    <dt>Database Version:</dt>
-                    <dd>{{ database_version }}</dd>
-                </dl>
+                                <dt>Database Version:</dt>
+                                <dd>{{ database_version }}</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+                </div>
             </div>
         </div>
-    </div>
+    </article>
 {% endblock content %}
