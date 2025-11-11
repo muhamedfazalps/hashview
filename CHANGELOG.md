@@ -7,15 +7,32 @@ Notable changes will be documented here
 - Added Support For attack modes 1, 6 and 7.
 - New Dynamic wordlists, Usernames and Customer Names
 - Added Wrapped ;)
+- API Documentation under API.MD
+- Three new dynamic word lists, one for all customer names, one for all usernames, and one for all loaded NTLM hashes
+- Added mouse over on running jobs and tasks on home page to show time remaining (useful for when theres a max runtime for jobs/tasks)
+- Added new figure in Analytics page to show users with the same password or password hash
+- Added new API endpoints
+    - get settings
+    - get customers
+    - add cusotomer
+    - add wordlist
+    - add job
+    - start job
+    - upload large hashfile
+- Added crack support for 31500, 31600, 34300, 34301, 9400, 9500, 9600, 19900, 35300, 35400
+- added filter on jobs list to only show your jobs
+- Added feature for jobs where they stop after first recovered crack (one and done)
+- Added concept of dynamic tasks. i.e. assign 10 tasks that have previously been successful in recovering passwords for the given hashtype.
+- Added new figure to home page for passwords recovered in the past week or so.
+- You can now edit rules within the gui
+- Task list is not pagenated for quicker load times, and columns are now sortable
 ### Changed
-- UI updates to following pages:
-    - agents
-    - wordlists
-    - rules
-    - jobs
-    - homepage
-    - hashfile
-    - customers
+- New UI theme
+- Server Name and port are not defined in config file
+- Jobs page is not pagenated, for quicker load times
+- Now recording which task successfully recovered which password. 
+- Now recording date, time, and user who successfully recovered a password
+- switch agent to communicate via json
 ### Fixed
 - Fixed analytics bug where username/password matching figure was not considering user names listed in kerb tickets.
 - Fixed input txt box when creating new job and copying/pasting hashes to dynamically grow.
@@ -23,6 +40,11 @@ Notable changes will be documented here
 - So many stability issues with the Agents. Report any i may have missed please
 - Fixed Bug in search form where, when referenced by hash_id, no results would be returned.
 - Fixed bug where name of the hashfile when uploaded during job creation was not getting populated in db.
+- Fixed bug where two agents requesting the same dynamic wordlist would result in collision and both failing.
+- fixed bug where, when deleting a hashfile from the hashfiles menue it would remove all instances of that hash, regardless if it was used in another hashfile. Also improved the speed of this step.
+- Tasks, when being assigned to a job, shoud only be allowed once, unless task uses a dynamic wordlist
+- Hopefully fixed bug where searching was not returning valid results. 
+- Fixed several parsing bugs when importing hashes
 
 ## [v0.8.1-Beta] - 2023-08-18
 ### Added
