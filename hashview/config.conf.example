@@ -1,5 +1,6 @@
 [SERVER]
 SERVER_NAME = FQDN:PORT
+SECRET_KEY = change-me-to-a-random-string
 
 [database]
 host = localhost

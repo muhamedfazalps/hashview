@@ -7,7 +7,7 @@ class Config:
     """Class representing Config"""
 
     file_config.read('hashview/config.conf')
-    SECRET_KEY = secrets.token_hex(16)
+    SECRET_KEY = file_config['SERVER'].get('SECRET_KEY', secrets.token_hex(16))
 
     # Server Config
     SERVER_NAME = file_config['SERVER']['SERVER_NAME']

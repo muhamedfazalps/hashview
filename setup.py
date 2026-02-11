@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import sys
 import os
+import secrets
 from getpass import getpass
 
 # Step 1
@@ -103,6 +104,7 @@ else:
 config = open("hashview/config.conf", "w")
 config.write('[SERVER]\n')
 config.write("SERVER_NAME = " + str(server_fqdn) + ":" + str(server_port) + "\n")
+config.write("SECRET_KEY = " + secrets.token_hex(32) + "\n\n")
 
 config.write("[database]\n")
 config.write("host = " + str(db_server) + "\n")
