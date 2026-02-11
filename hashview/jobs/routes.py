@@ -329,41 +329,6 @@ def jobs_assign_lucky_task_group(job_id):
         flash('Successfully Added Top 10 Tasks', 'success')
     return redirect("/jobs/" + str(job_id) + "/tasks")
 
-@jobs.route("/jobs/<int:job_id>/assign_task/lucky", methods=['GET'])
-@login_required
-def jobs_assign_lucky_task_group(job_id):
-
-    job = Jobs.query.get(job_id)
-    hashfile = Hashfiles.query.get(job.hashfile_id)
-    hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id=hashfile.id).first()
-    hash = Hashes.query.get(hashfile_hashes.hash_id)
-
-
-    # Get top 10 effective tasks
-    most_effective_tasks_raw = db.session.query(func.count(Hashes.id).label("row_count"), Hashes.task_id, Tasks.name,).join(Tasks, Hashes.task_id == Tasks.id) \
-        .filter(Hashes.cracked == '1') \
-        .filter(Hashes.task_id is not None) \
-        .filter(Hashes.task_id != '0') \
-        .filter(Hashes.hash_type == hash.hash_type) \
-        .group_by(Hashes.task_id) \
-        .order_by(func.count(Hashes.id).desc()) \
-        .limit(10) \
-        .all()
-
-    if len(most_effective_tasks_raw) == 0:
-        flash('Not enough data to generate top tasks.', 'danger')
-    else:
-    # for each effective task 
-        for entry in most_effective_tasks_raw:
-            job_tasks = JobTasks.query.filter_by(job_id=job_id).all()
-            if entry.task_id not in {job_task.task_id for job_task in job_tasks}:
-                job_task = JobTasks(job_id=job_id, task_id=entry.task_id, status='Not Started')
-                db.session.add(job_task)
-                db.session.commit()
-
-    flash('Successfully Added Top 10 Tasks', 'success')
-    return redirect("/jobs/" + str(job_id) + "/tasks")
-
 @jobs.route("/jobs/<int:job_id>/move_task_up/<int:task_id>", methods=['GET'])
 @login_required
 def jobs_move_task_up(job_id, task_id):
