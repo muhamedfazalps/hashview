@@ -7,29 +7,6 @@
 <br>
 {% endblock header %}
 {% block content %}
-<<<<<<< HEAD:hashview/templates/jobs_assigned_hashfiles_cracked.html.j2
-    <article class="media content-section">
-        <div class="media-body">
-            <table class="table">
-                <thead>
-                  <tr>
-                    <th scope="col">Username</th>
-                    <th scope="col">Cipher Text</th>
-                    <th scope="col">Plaintext</th>
-                  </tr>
-                </thead>
-                <tbody>
-                    {% if cracked_hashfiles_hashes|length > 0%}
-                        {% for entry in cracked_hashfiles_hashes %}
-                            <tr>
-                                <td>
-                                    {% if entry[1].username %}
-                                        {{entry[1].username | jinja_hex_decode}}
-                                    {% else %}
-                                        <i>None</i>
-                                    {% endif %}
-                                </td>
-=======
 <article class="media content-section">
     <div class="media-body">
         <div class="card">
@@ -108,7 +85,6 @@
                                             <i>None</i>
                                         {% endif %}
                                     </td>
->>>>>>> origin/internal-features:hashview/templates/jobs_assigned_hashfiles_cracked.html
 
                                     <td>{{entry[0].ciphertext}}</td>
                                     <td>

@@ -9,7 +9,7 @@
     }
     .download_btn:hover{
         color: #007bff;
-    }
+    }   
     #config_options .content-section{
         margin-right: 20px;
     }
@@ -21,7 +21,7 @@
     }
     #config_options .input-group-text{
         background-color: white;
-        border: none;
+        border: none;      
     }
     #toggle_icons{
         color: #007bff;
@@ -37,7 +37,7 @@
     /*Limit how big the dropdown can get with large amounts of data*/
     .dropdown-menu{
         max-height: 350px;
-        overflow-y: auto;
+        overflow-y: auto;    
     }
     </style>
 <style>
@@ -83,15 +83,10 @@
             //Center text
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
-            var value = this.chart.options.percent ? this.chart.options.percent : "";
+            var value = this.chart.options.percent ? this.chart.options.percent : "";             
             ctx.fillText(value, (chartArea.right + chartArea.left) / 2, (chartArea.bottom + chartArea.top) / 2)
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-
-            //Set chart background color to white
-=======
             
             //Set chart background color to #6A626f
->>>>>>> origin/internal-features:hashview/templates/analytics.html
             ctx.globalCompositeOperation = 'destination-over';
             //ctx.fillStyle = '#393531';
             ctx.fillStyle = '#ffffff';
@@ -99,38 +94,38 @@
         };
     }
 
-    function chart_download(id) {
+    function chart_download(id) {       
             var chart = doughNut;
             document.getElementById(dict[id]).onclick = function () {
-            //The title is not part of the graph canvas so it would not show up in the image download
-            //So we add a hidden title, and only show it when downloading the image.
+            //The title is not part of the graph canvas so it would not show up in the image download 
+            //So we add a hidden title, and only show it when downloading the image. 
             chart.options.animation.duration = 0;
             chart.options.plugins.title.display = true;
-            chart.update();
+            chart.update();    
             //Create a download link
             var a = document.createElement('a');
             a.href = chart.toBase64Image();
             a.download = dict[id] + '.png';
-            a.click();
+            a.click();         
             //Hide the title again
             chart.options.plugins.title.display = false;
             chart.update();
-            //Turn back on animations
+            //Turn back on animations 
             chart.options.animation.duration = 1000;
-            chart.update();
+            chart.update();          
         };
     }
 
     function get_chart(id){
         document.getElementById(dict[id]).click();
     }
-
+    
     function chart_download_all(){
         if(confirm("This will download all charts on the page")){
             for(var i=1;i<6;i++){
-                get_chart(i);
-            }
-        }
+                get_chart(i); 
+            } 
+        }   
     }
 
     function show_hide(){
@@ -138,7 +133,7 @@
             document.querySelectorAll('.download_btn').forEach(function(el) {
                 el.style.display = 'block';
             });
-            document.getElementById("toggle_icons").style.color = "#007bff";
+            document.getElementById("toggle_icons").style.color = "#007bff";         
             toggle = false;
         }
         else{
@@ -155,14 +150,6 @@
 {% block content %}
 <br>
 <br>
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-<div id="config_options" class="form-row">
-    <div class="col-auto mb-1">
-        <span>Customers &nbsp;</h4>
-        <div class="content-section btn btn-outline-secondary">
-            <div class="dropdown">
-                <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"
-=======
 <div class="container"></div>
     <div class="col" align="center"></div>
         <div id="config_options" class="form-row d-flex align-items-center">
@@ -170,7 +157,6 @@
                 <span>Customers:&nbsp;</span>
                 <div class="dropdown ml-2">
                 <button class="btn btn-default dropdown-toggle" type="button" id="customerDropdownButton" data-bs-toggle="dropdown"
->>>>>>> origin/internal-features:hashview/templates/analytics.html
                     aria-haspopup="true" aria-expanded="false">
                     {% if customer_id %}
                         {% for customer in customers %}
@@ -188,11 +174,7 @@
                         <div class="dropdown-divider"></div>
                     {% endif %}
 
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-                    {% for customer in customers %}
-=======
                     {% for customer in customers %}  
->>>>>>> origin/internal-features:hashview/templates/analytics.html
                         <a class="dropdown-item" href="/analytics?customer_id={{customer.id}}"> {{customer.name}} </a>
                     {% endfor %}
                 </div>
@@ -260,48 +242,13 @@
                 <div class="dropdown-divider"></div>
                 <button class="dropdown-item" onclick="get_chart(6)">Top 10 Passswords</button>
             </div>
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="ml-auto mr-2">
-        <div class="input-group">
-
-            <div class="dropdown btn btn-outline-secondary" aria-describedby="basic-addon1">
-                <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown"
-                    aria-haspopup="true" aria-expanded="false">Download Charts</button>
-                <div class="dropdown-menu">
-                    <button class="dropdown-item" onclick="chart_download_all()">All Charts</button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" onclick=get_chart(1)>Recovered Accounts</button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" onclick=get_chart(2)>Password Complexity</button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" onclick=get_chart(3)>Recovered Hashes</button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" onclick=get_chart(4)>Composition Makeup</button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" onclick=get_chart(5)>Passwords Count by Length</button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" onclick=get_chart(6)>Top 10 Passswords</button>
-                </div>
-            </div>
-=======
->>>>>>> origin/internal-features:hashview/templates/analytics.html
             <div class="input-group-append">
                 <span class="input-group-text" id="basic-addon1">
                     <i id="toggle_icons" class="fa fa-eye-slash" role="button" onclick="show_hide()" title="Show/Hide Icons"></i>
                 </span>
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-              </div>
-          </div>
-      </div>
-=======
             </div>
         </div>
     </div>
->>>>>>> origin/internal-features:hashview/templates/analytics.html
     </div>
 </div>
 
@@ -315,7 +262,7 @@
     <div class="row">
         <div class="col" align="center">
             <div class="card">
-
+               
                 <h5 class="card-header">Recovered Accounts
                     <a id="recovered_accounts" class="fa fa-download download_btn" role="button" title="Download Chart"></a>
                 </h5>
@@ -333,11 +280,11 @@
                                 backgroundColor: ['rgba(192, 0, 0, 0.5)', 'rgba(0, 128, 0, 0.5)']
                                 }]
                             },
-                            options: {
+                            options: { 
                                 percent: {{fig1_percent | safe}}, // Custom variable to store the value in the middle of the chart
                                 responsive: false,
                                     plugins: {
-
+                                   
                                     legend: {
                                         position: 'bottom',
                                     },
@@ -377,7 +324,7 @@
             <div class="card">
                 <h5 class="card-header">Password Complexity
                     <a id="password_complexity" class="fa fa-download download_btn" role="button" title="Download Chart"></a>
-                </h5>
+                </h5>    
                 <div class="card-body">
                     <canvas id="Complexity" width="300" height="300">
                         <script>
@@ -447,11 +394,11 @@
                                 backgroundColor: ['rgba(192, 0, 0, 0.5)', 'rgba(0, 128, 0, 0.5)']
                                 }]
                             },
-                            options: {
+                            options: { 
                                 percent: {{fig3_percent | safe}}, // Custom variable to store the value in the middle of the chart
                                 responsive: false,
                                     plugins: {
-
+                                   
                                     legend: {
                                         position: 'bottom',
                                     },
@@ -491,7 +438,7 @@
             <div class="card">
                 <h5 class="card-header">Composition Makeup
                     <a id="composition_makeup" class="fa fa-download download_btn" role="button" title="Download Chart"></a>
-                </h5>
+                </h5> 
                 <div class="card-body">
                     <canvas id="CharSet" width="300" height="300">
                         <script>
@@ -544,7 +491,7 @@
         <div class="col" align="center">
             <br>
         </div>
-    </div>
+    </div>    
     <div class="row">
         <div class="col" align="center">
             <div class="card">
@@ -577,15 +524,15 @@
                                 </td>
                                 <td>
                                     {% if total_runtime > 604800 %}
-                                        {{ (total_runtime/604800)|round|int }} week(s)<br>
+                                        {{ (total_runtime/604800)|round|int }} week(s)<br>  
                                     {% elif total_runtime > 86400 %}
-                                        {{ (total_runtime/86400)|round|int }} day(s)<br>
+                                        {{ (total_runtime/86400)|round|int }} day(s)<br>    
                                     {% elif total_runtime > 3600 %}
                                         {{ (total_runtime/3600)|round|int }} hour(s)<br>
                                     {% elif total_runtime > 60 %}
                                         {{ (total_runtime/60)|round|int }} minute(s)<br>
                                     {% elif total_runtime < 60 %}
-                                        < 1 minute<br>
+                                        < 1 minute<br>                                        
                                     {% endif %}
                                 </td>
                             </tr>
@@ -638,7 +585,7 @@
             <div class="card">
                 <h5 class="card-header">Passwords Count by Length
                     <a id="passwords_count_len" class="fa fa-download download_btn" role="button" title="Download Chart"></a>
-                </h5>
+                </h5> 
                 <div class="card-body">
                     <canvas id="PasswordsCountByLength" width="1000" height="300">
                         <script>
@@ -652,20 +599,16 @@
                                 data: {{ fig5_values | safe }},
                                 backgroundColor: ['rgba(0, 128, 0, 0.5)']
                                     }]
-                                },
+                                },  
                             plugins: [{
                                 beforeDraw: function(chart,args,options){
                                         const c = chart.ctx
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-                                        c.fillStyle = 'white';
-=======
                                         c.fillStyle = '#ffffff';
->>>>>>> origin/internal-features:hashview/templates/analytics.html
                                         c.fillRect(0, 0, chart.width, chart.height);
                                    }
                                 }],
                             options: {
-                                responsive: true, //Resizes the chart canvas when its container does
+                                responsive: true, //Resizes the chart canvas when its container does 
                                     plugins: {
                                     legend: {
                                         display: false,
@@ -703,7 +646,7 @@
             <div class="card">
                 <h5 class="card-header">Top 10 Passwords
                     <a id="top_10_passswords" class="fa fa-download download_btn" role="button" title="Download Chart"></a>
-                </h5>
+                </h5> 
                 <div class="card-body">
                     <canvas id="Top10Passwords" width="1000%" height="300">
                         <script>
@@ -717,20 +660,16 @@
                                 data: {{ fig6_values | safe }},
                                 backgroundColor: ['rgba(0, 128, 0, 0.5)']
                                     }]
-                                },
+                                }, 
                             plugins: [{
                                 beforeDraw: function(chart,args,options){
                                         const c = chart.ctx
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-                                        c.fillStyle = 'white';
-=======
                                         c.fillStyle = '#ffffff';
->>>>>>> origin/internal-features:hashview/templates/analytics.html
                                         c.fillRect(0, 0, chart.width, chart.height);
                                    }
                                 }],
                             options: {
-                                responsive: true, //Resizes the chart canvas when its container does
+                                responsive: true, //Resizes the chart canvas when its container does 
                                     plugins: {
                                     legend: {
                                         display: false,
@@ -832,8 +771,6 @@
                                 {% endif %}
                             {% endfor %}
                             </tr>
-<<<<<<< HEAD:hashview/templates/analytics.html.j2
-=======
                         </tbody>
                     </table>
                 </div>
@@ -869,14 +806,13 @@
                                 {% endif %}
                             {% endfor %}
                             </tr>
->>>>>>> origin/internal-features:hashview/templates/analytics.html
                         </tbody>
                     </table>
                 </div>
             </div>
 
         </div>
-    </div>
+    </div>    
     <div class="row">
         <div class="col" align="center">
             <br>

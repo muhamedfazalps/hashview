@@ -30,52 +30,6 @@
                                                 {{job.name}}
                                             {% endif %}
                                         {% endfor %}
-<<<<<<< HEAD:hashview/templates/notifications.html.j2
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>{{ job_notification.method }}</td>
-                            <td>
-                                <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteJobNotificationModal{{job_notification.id}}" title=Delete></button>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <legend class="border-bottom mb-4">Hash Notifications</legend>
-            <table class="table">
-                <thead>
-                <tr>
-                    <th scope="col">Hash</th>
-                    <th scope="col">Hashtype</th>
-                    <th scope="col">Method</th>
-                    <th scope="col">Control</th>
-                </tr>
-                </thead>
-                <tbody>
-                    {% for hash_notification in hash_notifications %}
-                        <tr>
-                            <td>
-                                {% for hash in hashes %}
-                                    {% if hash_notification.hash_id == hash.id %}
-                                        {{ hash.ciphertext }}
-                                        </td>
-                                        <td>
-                                        {{ hash.hash_type }}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                            <td>
-                                {{hash_notification.method}}
-                            </td>
-                            <td>
-                                <a class="fa fa-trash btn btn-danger" href="/notifications/delete/hash/{{hash_notification.id}}" role="button", title=Delete></a>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-=======
                                     </td>
                                     <td>
                                         {% for job in jobs %}
@@ -135,7 +89,6 @@
                     </tbody>
                 </table>
             </div>
->>>>>>> origin/internal-features:hashview/templates/notifications.html
         </div>
     </article>
     {% for job_notification in job_notifications %}

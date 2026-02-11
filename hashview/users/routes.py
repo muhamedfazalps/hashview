@@ -103,15 +103,10 @@ def users_add():
             db.session.commit()
             flash(f'Account created for {form.email.data}!', 'success')
             return redirect(url_for('users.users_list'))
-<<<<<<< HEAD
         return render_template('users_add.html.j2', title='User Add', form=form)
-    abort(403)
-=======
-        return render_template('users_add.html', title='User Add', form=form)
     else:
         flash('Unauthorized to add users account.', 'danger')
         return redirect(url_for('users.users_list'))
->>>>>>> origin/internal-features
 
 @users.route("/users/delete/<int:user_id>", methods=['POST'])
 @login_required
@@ -124,13 +119,9 @@ def users_delete(user_id):
         db.session.commit()
         flash('User has been deleted!', 'success')
         return redirect(url_for('users.users_list'))
-<<<<<<< HEAD
-    abort(403)
-=======
     else:
         flash('Unauthorized to delete users account.', 'danger')
         return redirect(url_for('users.users_list'))
->>>>>>> origin/internal-features
 
 @users.route("/profile", methods=['GET', 'POST'])
 @login_required
@@ -152,12 +143,8 @@ def profile():
     elif request.method == 'GET':
         form.first_name.data = current_user.first_name
         form.last_name.data = current_user.last_name
-<<<<<<< HEAD
-    return render_template('profile.html.j2', title='Profile', form=form, current_user=current_user)
-=======
         form.email.data = current_user.email_address
-    return render_template('profile.html', title='Profile', form=form, current_user=current_user)
->>>>>>> origin/internal-features
+    return render_template('profile.html.j2', title='Profile', form=form, current_user=current_user)
 
 @users.route("/profile/send_test_pushover", methods=['GET'])
 @login_required
@@ -202,18 +189,11 @@ def reset_request():
         if user:
             token = user.get_reset_token()
             subject = 'Password Reset Request.'
-<<<<<<< HEAD
-            message = dedent(f'''\
-                To reset your password, vist the following link:
-=======
             message = f'''To reset your password, vist the following link:
     {url_for('users.reset_token', user_id=user.id, token=token, _external=False)}
->>>>>>> origin/internal-features
 
-                {url_for('users.reset_token', user_id=user.id, token=token, _external=True)}
-
-                If you did not make this request... then something phishy is going on.
-            ''')
+    If you did not make this request... then something phishy is going on.
+    '''
             send_email(user, subject, message)
         flash('An email has been sent to '+  form.email.data, 'info')
         return redirect(url_for('users.login_get'))
@@ -259,13 +239,6 @@ def reset_token(user_id :int, token :str):
     if not form.validate_on_submit():
         return render_template('reset_token.html.j2', title='Reset Password', form=form)
 
-<<<<<<< HEAD
-    hashed_password = bcrypt.generate_password_hash(form.password.data)
-    user.password = hashed_password
-    db.session.commit()
-    flash('Your password has been updated! You are now able to login.', 'success')
-    return redirect(url_for('users.login_get'))
-=======
     else:
         hashed_password = bcrypt.generate_password_hash(form.password.data)
         user.password = hashed_password
@@ -296,4 +269,3 @@ def demote_user(user_id):
     db.session.commit()
     flash(f'User {user.email_address} demoted to regular user.', 'success')
     return redirect(url_for('users.users_list'))
->>>>>>> origin/internal-features

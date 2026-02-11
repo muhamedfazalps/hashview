@@ -7,23 +7,6 @@
 <br>
 {% endblock header %}
 {% block content %}
-<<<<<<< HEAD:hashview/templates/jobs_summary.html.j2
-    <article class="media content-section">
-        <div class="media-body">
-            <form method="POST" action="">
-                {{ form.hidden_tag() }}
-                <table class="table">
-                    <tbody>
-                            <tr>
-                                <td>Job Name:</td>
-                                <td>{{ job.name }}</td>
-                            </tr>
-                            <tr>
-                                <td>Customer:</td>
-                                <td>{{ customer.name }}</td>
-                            </tr>
-                            {% if settings.enabled_job_weights %}
-=======
 <article class="media content-section">
     <div class="media-body">
         <div class="card">
@@ -81,7 +64,6 @@
                     {{ form.hidden_tag() }}
                     <table class="table">
                         <tbody>
->>>>>>> origin/internal-features:hashview/templates/jobs_summary.html
                                 <tr>
                                     <td>Job Name:</td>
                                     <td>{{ job.name }}</td>

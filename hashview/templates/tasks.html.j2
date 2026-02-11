@@ -2,10 +2,6 @@
 {% block header %}
 <br>
 <br>
-<<<<<<< HEAD:hashview/templates/tasks.html.j2
-Task are predefined hashcat commands. Any number of tasks can be assigned to a Job.
-=======
->>>>>>> origin/internal-features:hashview/templates/tasks.html
 <br>
 <br>
 <br>
@@ -16,18 +12,6 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
             <div class="card">
                 <h4 class="card-header">
                     Tasks 
-<<<<<<< HEAD:hashview/templates/tasks.html.j2
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('tasks.tasks_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">            
-                    <table class="table table-sm">
-                    <thead>
-                    <tr>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Owner</th>
-                        <th scope="col">Type</th>
-                        <th scope="col">Control</th>
-=======
                     <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Tasks are predefined hashcat commands. Any number of tasks can be assigned to a job" style="margin-left:5px;"></i>
                     <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('tasks.tasks_add') }}">Add</a>
                 </h4>
@@ -76,30 +60,20 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                             </a>
                         </th>
                         <th style="width:140px" scope="col">Control</th>
->>>>>>> origin/internal-features:hashview/templates/tasks.html
                     </tr>
                     </thead>
                     <tbody>
                         {% for task in tasks %}
                             <tr>
-<<<<<<< HEAD:hashview/templates/tasks.html.j2
-                                <td>{{ task.name }}</td>
-                                <td>
-=======
                                 <td style="vertical-align:middle;">{{ task.name }}</td>
                                 <td style="vertical-align:middle;">
->>>>>>> origin/internal-features:hashview/templates/tasks.html
                                     {% for user in users %}
                                         {% if user.id == task.owner_id %}
                                             {{ user.first_name }} {{ user.last_name }}
                                         {% endif %}
                                     {% endfor %}
                                 </td>
-<<<<<<< HEAD:hashview/templates/tasks.html.j2
-                                <td>
-=======
                                 <td style="vertical-align:middle;">
->>>>>>> origin/internal-features:hashview/templates/tasks.html
                                     {% if task.hc_attackmode == 0 %}
                                         Straight (Wordlist + Rules)
                                     {% elif task.hc_attackmode == 1 %}
@@ -114,12 +88,6 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                                         UNDEF?
                                     {% endif %}
                                 </td>
-<<<<<<< HEAD:hashview/templates/tasks.html.j2
-                                <td>
-                                    <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{task.id}}" title=Info></button>
-                                    <a class="fa fa-edit btn btn-warning" href="/tasks/edit/{{task.id}}" role="button" title=Edit></a>
-                                    <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{task.id}}" title=Delete></button>
-=======
                                 <td style="vertical-align:middle;">
                                     {% set ns = namespace(recovered_count=0) %}
                                     {% for performance in task_recovery_performance %}
@@ -132,15 +100,12 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                                     <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{task.id}}" title=Info></button>
                                     <a class="fa fa-edit btn btn-warning" href="/tasks/edit/{{task.id}}" role="button" title=Edit></a>
                                     <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{task.id}}" title=Delete></button>
->>>>>>> origin/internal-features:hashview/templates/tasks.html
                                 </td>
                             </tr>
                         {% endfor %}
                     </tbody>
                     </table>
                 </div>
-<<<<<<< HEAD:hashview/templates/tasks.html.j2
-=======
                 <!-- Pagination Controls -->
         <nav aria-label="Tasks pagination">
             <ul class="pagination justify-content-center">
@@ -181,7 +146,6 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                 {% endif %}
             </ul>
         </nav>
->>>>>>> origin/internal-features:hashview/templates/tasks.html
             </div>
         </div>
     </article>
@@ -228,13 +192,13 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                                             {% set associated_wordlists.value = 1 %}
                                             {{ wordlist.name }} <br>
                                         {% endif %}
-                                    {% endfor %}
+                                    {% endfor %}    
                                     {% if associated_wordlists.value == 0 %}
                                         <i>none</i><br>
                                     {% endif %}
                                 </td>
                                 </tr>
-                                <tr>
+                                <tr>                              
                                 <th scope="row">Associated Task Groups</th>
                                 <td>
                                     {% set associated_task_groups = namespace(value=0) %}
@@ -246,7 +210,7 @@ Task are predefined hashcat commands. Any number of tasks can be assigned to a J
                                     {% endfor %}
                                     {% if associated_task_groups.value == 0 %}
                                         <i>none</i><br>
-                                    {% endif %}
+                                    {% endif %}                                    
                                 </td>
                                 </tr>
                             </tbody>

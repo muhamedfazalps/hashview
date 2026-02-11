@@ -22,22 +22,6 @@
                         <div class="form-group">
                                 {{ taskGroupsForm.name.label(class="form-control-label") }}
 
-<<<<<<< HEAD:hashview/templates/task_groups_add.html.j2
-                {% if taskGroupsForm.name.errors %}
-                    {{ taskGroupsForm.name(class="form-control form-control-lg is-invalid") }}
-                    <div class="invalid-feedback">
-                        {% for error in taskGroupsForm.name.errors %}
-                            <span>{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    {{ taskGroupsForm.name(class="form-control form-control-lg") }}
-                {% endif %}
-           </div>
-        </fieldset>
-        <div class="form-group">
-            {{ taskGroupsForm.submit(class="btn btn-outline-info")}}
-=======
                                 {% if taskGroupsForm.name.errors %}
                                     {{ taskGroupsForm.name(class="form-control form-control-lg is-invalid") }}
                                     <div class="invalid-feedback">
@@ -57,7 +41,6 @@
                     </form>
                 </div>
             </div>
->>>>>>> origin/internal-features:hashview/templates/task_groups_add.html
         </div>
     </div>
 </article>

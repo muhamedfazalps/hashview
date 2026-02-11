@@ -11,18 +11,11 @@
         <div class="media-body">
             <div class="card">
                 <h4 class="card-header">
-<<<<<<< HEAD:hashview/templates/customers.html.j2
-                    Customers 
-                </h4>
-                <div class="card-body ">              
-                    <table class="table table-sm">
-=======
                     Customers
                     <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="The following are a list of customers currently configured in Hashview. All Jobs, passwords and hashes will be assigned to a single customer. Deleting a customer will remove ALL data from the system." style="margin-left:5px;"></i>
                 </h4>
                 <div class="card-body ">              
                     <table class="table table-hover table-sm">
->>>>>>> origin/internal-features:hashview/templates/customers.html
                         <thead>
                         <tr>
                             <th scope="col">Name</th>
@@ -33,17 +26,10 @@
                             {% for customer in customers %}
                                 <tr>
                                     <td>{{ customer.name }}</td>
-<<<<<<< HEAD:hashview/templates/customers.html.j2
-                                    <td>
-                                        <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{customer.id}}" title=Info></button> 
-                                        <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{customer.id}}" role="button" title=Analytics></a> 
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{customer.id}}" title=Delete></button>
-=======
                                     <td style="text-align: right;">
                                         <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{customer.id}}" title=Info></button> 
                                         <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{customer.id}}" role="button" title=Analytics></a> 
                                         <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{customer.id}}" title=Delete></button>
->>>>>>> origin/internal-features:hashview/templates/customers.html
                                     </td>
                                 </tr>
                             {% endfor %}
@@ -82,7 +68,7 @@
                                     {% if hashfile.customer_id == customer.id %}
                                         {{ hashfile.name }} <br>
                                     {% endif %}
-                                {% endfor %}
+                                {% endfor %}    
                             </td>
                           </tr>
                       </tbody>

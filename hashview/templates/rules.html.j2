@@ -2,10 +2,6 @@
 {% block header %}
 <br>
 <br>
-<<<<<<< HEAD:hashview/templates/rules.html.j2
-Rules are a set of instructions to be combined with Wordlists. Hashview comes preloaded with common rules, but you can upload more by clicking the 'Add' button.
-=======
->>>>>>> origin/internal-features:hashview/templates/rules.html
 <br>
 <br>
 <br>
@@ -16,10 +12,7 @@ Rules are a set of instructions to be combined with Wordlists. Hashview comes pr
             <div class="card">
                 <h4 class="card-header">
                     Rules 
-<<<<<<< HEAD:hashview/templates/rules.html.j2
-=======
                     <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Rules are a set of instructions to be combined with Wordlists. Hashview comes preloaded with common rules, but you can upload more by clicking the 'Add' button." style="margin-left:5px;"></i>
->>>>>>> origin/internal-features:hashview/templates/rules.html
                     <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('rules.rules_add') }}">Add</a>
                 </h4>
                 <div class="card-body ">
@@ -30,39 +23,21 @@ Rules are a set of instructions to be combined with Wordlists. Hashview comes pr
                                 <th scope="col">Size</th>
                                 <th scope="col">Owner</th>
                                 <th scope="col">Last Updated</th>
-<<<<<<< HEAD:hashview/templates/rules.html.j2
-                                <th scope="col">Control</th>
-=======
                                 <th style="text-align:center;" scope="col">Control</th>
->>>>>>> origin/internal-features:hashview/templates/rules.html
                             </tr>
                         </thead>
                         <tbody>
                             {% for rule in rules %}
                                 <tr>
-<<<<<<< HEAD:hashview/templates/rules.html.j2
-                                    <td>{{ rule.name }}</td>
-                                    <td>{{ rule.size }}</td>
-                                    <td>
-=======
                                     <td style="vertical-align:middle;">{{ rule.name }}</td>
                                     <td style="vertical-align:middle;">{{ rule.size }}</td>
                                     <td style="vertical-align:middle;">
->>>>>>> origin/internal-features:hashview/templates/rules.html
                                         {% for user in users %}
                                             {% if user.id == rule.owner_id %}
                                                 {{ user.first_name }} {{ user.last_name }}
                                             {% endif %}
                                         {% endfor %}
                                     </td>
-<<<<<<< HEAD:hashview/templates/rules.html.j2
-                                    <td>
-                                        {{ rule.last_updated }}
-                                    </td>
-                                    <td>
-                                        <button type="button" class="fa fa-info btn btn-info" data-toggle="modal" data-target="#infoModal{{rule.id}}" title=Info></button>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{rule.id}}" title=Delete></button>
-=======
                                     <td style="vertical-align:middle;">
                                         {{ rule.last_updated }}
                                     </td>
@@ -70,7 +45,6 @@ Rules are a set of instructions to be combined with Wordlists. Hashview comes pr
                                         <a class="btn btn-warn btn-sm" href="{{ url_for('rules.rules_view', rule_id=rule.id) }}" title="View/Edit"><i class="fa fa-edit"></i></a>
                                         <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{rule.id}}" title="Info"></i></button>
                                         <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{rule.id}}" title="Delete"></i></button>
->>>>>>> origin/internal-features:hashview/templates/rules.html
                                     </td>
                                 </tr>
                             {% endfor %}
