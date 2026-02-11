@@ -102,7 +102,7 @@ else:
 # Write config file
 config = open("hashview/config.conf", "w")
 config.write('[SERVER]\n')
-config.write("SERVER_NAME = ") + str(server_fqdn) + ":" + str(server_port) + "\n\n"
+config.write("SERVER_NAME = " + str(server_fqdn) + ":" + str(server_port) + "\n")
 
 config.write("[database]\n")
 config.write("host = " + str(db_server) + "\n")
