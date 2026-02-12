@@ -10,7 +10,6 @@ from hashview.utils.utils import update_job_task_status
 from hashview.models import db
 
 from datetime import datetime, timedelta
-from datetime import datetime, timedelta
 
 main = Blueprint('main', __name__)
 
@@ -18,7 +17,7 @@ main = Blueprint('main', __name__)
 @login_required
 def home():
     """Function to return the home page"""
-    jobs = Jobs.query.filter(or_((Jobs.status.like('Running')),(Jobs.status.like('Queued'))))
+    jobs = Jobs.query.filter(or_((Jobs.status.like('Running')),(Jobs.status.like('Queued')))).all()
     running_jobs = Jobs.query.filter_by(status = 'Running').order_by(Jobs.priority.desc(), Jobs.queued_at.asc()).all()
     queued_jobs = Jobs.query.filter_by(status = 'Queued').order_by(Jobs.priority.desc(), Jobs.queued_at.asc()).all()
     users = Users.query.all()
