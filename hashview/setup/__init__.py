@@ -94,7 +94,7 @@ def add_default_static_wordlist(db :SQLAlchemy):
 
 
 def default_dynamic_wordlists_need_added(db :SQLAlchemy) -> bool:
-    return (3 == db.session.query(Wordlists).filter_by(type='dynamic').count())
+    return (0 == db.session.query(Wordlists).filter_by(type='dynamic').count())
 
 
 def add_default_dynamic_wordlists(db :SQLAlchemy):
