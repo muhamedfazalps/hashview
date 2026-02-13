@@ -163,8 +163,12 @@ def add_admin_user(db :SQLAlchemy, bcrypt :Bcrypt):
 
 
 def admin_pass_needs_changed(db :SQLAlchemy, bcrypt :Bcrypt) -> bool:
-    current_password_hash, *_ = db.session.query(Users.password).filter_by(id=1).first()
-    return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
+    result = db.session.query(Users.password).filter_by(id=1).first()
+    if (result is None):
+        return True
+    else:
+        current_password_hash, *_ = result
+        return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
 
 
 def settings_needs_added(db :SQLAlchemy) -> bool:
