@@ -2,49 +2,92 @@
 Notable changes will be documented here
 
 ## Current Release
-## [v0.8.2-Beta] - 2024-XX-XX
+## [v0.8.2-Beta] - 2026-XX-XX
+
 ### Added
-- Added Support For attack modes 1, 6 and 7.
-- New Dynamic wordlists, Usernames and Customer Names
-- Added Wrapped ;)
-- API Documentation under API.MD
-- Three new dynamic word lists, one for all customer names, one for all usernames, and one for all loaded NTLM hashes
-- Added mouse over on running jobs and tasks on home page to show time remaining (useful for when theres a max runtime for jobs/tasks)
-- Added new figure in Analytics page to show users with the same password or password hash
-- Added new API endpoints
-    - get settings
-    - get customers
-    - add cusotomer
-    - add wordlist
-    - add job
-    - start job
-    - upload large hashfile
-- Added crack support for 31500, 31600, 34300, 34301, 9400, 9500, 9600, 19900, 35300, 35400
-- added filter on jobs list to only show your jobs
-- Added feature for jobs where they stop after first recovered crack (one and done)
-- Added concept of dynamic tasks. i.e. assign 10 tasks that have previously been successful in recovering passwords for the given hashtype.
-- Added new figure to home page for passwords recovered in the past week or so.
-- You can now edit rules within the gui
-- Task list is not pagenated for quicker load times, and columns are now sortable
+
+**Attack Modes**
+- Combinator attack (mode 1): combine two wordlists with optional `-j` and `-k` rules per task
+- Hybrid Wordlist+Mask attack (mode 6) and Hybrid Mask+Wordlist attack (mode 7)
+
+**Dynamic Wordlists**
+- New auto-generated "All Usernames" dynamic wordlist, built from all uploaded hashfiles (splits `DOMAIN\user` into both components)
+- New auto-generated "All Customers" dynamic wordlist, built from all customer names
+- New auto-generated NTLM ciphertext dynamic wordlist
+
+**"I'm Feeling Lucky" Task Assignment**
+- One-click button on job creation that auto-assigns the top 10 historically most effective tasks for the job's hash type
+
+**"One and Done" Job Mode**
+- New checkbox when creating a job to automatically stop after the first hash is recovered, saving compute time when you only need to prove one credential is crackable
+
+**Home Page Activity Graph**
+- Dashboard now shows a line chart of passwords recovered over the past 7 days
+
+**Hashview Wrapped**
+- Year-in-review statistics page showing longest recovered passwords, most effective tasks, per-user leaderboards, and hash-type breakdowns for the previous calendar year
+
+**Analytics: Shared Password Detection**
+- New analytics figure identifying accounts that share the same password hash, with downloadable results
+- Downloadable results for the username-equals-password figure
+
+**Rules Editor**
+- View and edit hashcat rule file contents directly in the browser
+- Rules attached to queued tasks are protected from edits
+
+**API Expansion**
+- `GET /v1/admin/settings` -- retrieve server settings
+- `GET /v1/customers` -- list customers
+- `POST /v1/customers/add` -- create a customer
+- `POST /v1/wordlists/add/<name>` -- upload a wordlist
+- `POST /v1/hashfiles/upload/<customer_id>/<file_format>/<hash_type>/<name>` -- upload hashfiles (all 6 formats supported)
+- `POST /v1/jobs/add` -- create a job with auto-assigned tasks
+- `POST /v1/jobs/start/<job_id>` -- start a job
+- `POST /v1/hashes/import/<hash_type>` -- import pre-cracked hashes
+- `POST /v1/error` -- agents can report errors to admins
+- API documentation added under `API.MD`
+
+**Hash Type Support**
+- DCC/MS Cache NT (31500), DCC2/MS Cache 2 NT (31600)
+- Kerberos 5 etype 23 TGS-REP NT (35300), AS-REP NT (35400)
+- KeePass Argon2 KDBX v4 (34300), KeePass AESKDF KDBX v4 (34301)
+- MS Office 2007 (9400), 2010 (9500), 2013 (9600)
+- NTLM hash-only import (no username required)
+
+**User Management**
+- Admins can promote and demote users between admin and regular roles
+- Users can update their own email address from the profile page
+
+**Notifications**
+- Job notifications now support receiving both email and Pushover simultaneously (previously one or the other)
+
 ### Changed
-- New UI theme
-- Server Name and port are not defined in config file
-- Jobs page is not pagenated, for quicker load times
-- Now recording which task successfully recovered which password. 
-- Now recording date, time, and user who successfully recovered a password
-- switch agent to communicate via json
+- Upgraded to Bootstrap 5.3 from 4.5
+- Server FQDN and port are now collected during first-run setup and stored in config
+- Jobs list is paginated (20 per page) with a "show only mine" filter
+- Tasks list is paginated with sortable columns, including a column showing how many passwords each task has historically recovered
+- Hovering over running jobs/tasks on the home page now shows time remaining
+- Duplicate task assignments in a job are now allowed when the task uses a dynamic wordlist
+- Agent-to-server file manifests switched from pipe-delimited text to JSON
+- PWDump import now filters out Active Directory `$_history` entries
+- Hashfile deletion properly cascades through all related records
+- Uploading a hashfile with zero valid hashes now shows a clear error instead of creating an empty entry
+- Searching for hashes not linked to a hashfile no longer errors; results are shown gracefully
+- Non-admin users attempting restricted actions now see a flash message instead of a bare 403 page
+
 ### Fixed
-- Fixed analytics bug where username/password matching figure was not considering user names listed in kerb tickets.
-- Fixed input txt box when creating new job and copying/pasting hashes to dynamically grow.
-- Fixed raced condition where two agents triggered the generation of a dynamic wordlst stomping on one another
-- So many stability issues with the Agents. Report any i may have missed please
-- Fixed Bug in search form where, when referenced by hash_id, no results would be returned.
-- Fixed bug where name of the hashfile when uploaded during job creation was not getting populated in db.
-- Fixed bug where two agents requesting the same dynamic wordlist would result in collision and both failing.
-- fixed bug where, when deleting a hashfile from the hashfiles menue it would remove all instances of that hash, regardless if it was used in another hashfile. Also improved the speed of this step.
-- Tasks, when being assigned to a job, shoud only be allowed once, unless task uses a dynamic wordlist
-- Hopefully fixed bug where searching was not returning valid results. 
-- Fixed several parsing bugs when importing hashes
+- Sessions and CSRF tokens no longer break on server restart (SECRET_KEY is now persisted in config instead of regenerated randomly on each startup)
+- Agents now report errors back to the server, and admins receive email/Pushover notifications when an agent encounters a failure
+- Fixed race condition where two agents requesting the same dynamic wordlist simultaneously would both fail
+- Fixed hashfile deletion removing hashes that belonged to other hashfiles
+- Fixed search results returning no results when referencing by hash ID
+- Fixed hashfile name not being stored in the database when uploaded during job creation
+- Fixed analytics download filenames using the wrong ID
+- Fixed parenthesis bug in first-run setup that prevented SERVER_NAME from being written to config
+- Fixed crash during first-time setup when no admin user exists yet
+- Fixed dynamic wordlists failing to be added
+- Fixed several template rendering errors from unresolved merge conflicts in settings, jobs, and other pages
+- Fixed several hash import parsing issues
 
 ## [v0.8.1-Beta] - 2023-08-18
 ### Added
