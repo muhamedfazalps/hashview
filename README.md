@@ -43,13 +43,16 @@ exit
 The following are to install hashview after the mysql db has been setup.
 
 ```
-sudo apt-get install python3 python3-pip python3-flask
+sudo apt-get install python3 python3-pip python3-venv
 git clone https://github.com/hashview/hashview
 cd hashview
-pip3 install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ./setup.py
 ./hashview.py # (note you can add a --debug if you are attempting to troubleshoot an issue)
 ```
+Note: run `./setup.py` and `./hashview.py` with the virtual environment active (`source venv/bin/activate`).
 
 #### 4) Log into your hashview server
 Navigate to your server, default port is 8443. https://IP:8443

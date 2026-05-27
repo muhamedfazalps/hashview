@@ -1,5 +1,5 @@
+#!/usr/bin/env python3
 """Main Entry Point when running as standalone script"""
-#!/usr/bin/python3
 import sys
 import logging
 import argparse
