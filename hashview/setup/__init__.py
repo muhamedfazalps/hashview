@@ -27,7 +27,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = '2',
         rule_id       = None,
-        hc_attackmode = 'dictionary',
+        hc_attackmode = '0',
     )
     db.session.add(task)
 
@@ -36,7 +36,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = '3',
         rule_id       = '1',
-        hc_attackmode = 'dictionary',
+        hc_attackmode = '0',
     )
     db.session.add(task)
 
@@ -46,7 +46,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = None,
         rule_id       = None,
-        hc_attackmode = 'maskmode',
+        hc_attackmode = '3',
         hc_mask       = '?a?a?a?a?a?a?a?a',
     )
     db.session.add(task)
