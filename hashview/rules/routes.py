@@ -21,7 +21,7 @@ def rules_list():
     jobs = Jobs.query.all()
     jobtasks = JobTasks.query.all()
     users = Users.query.all()
-    return render_template('rules.html', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users)
+    return render_template('rules.html.j2', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users)
 
 @rules.route("/rules/add", methods=['GET', 'POST'])
 @login_required
@@ -40,7 +40,7 @@ def rules_add():
             db.session.commit()
             flash(f'Rules File created!', 'success')
             return redirect(url_for('rules.rules_list'))
-    return render_template('rules_add.html', title='Rules Add', form=form)
+    return render_template('rules_add.html.j2', title='Rules Add', form=form)
 
 @rules.route("/rules/edit/<int:rule_id>", methods=['GET', 'POST'])
 @login_required
@@ -73,7 +73,7 @@ def rules_view(rule_id):
             flash(f'Error saving file: {e}', 'danger')
         return redirect(url_for('rules.rules_view', rule_id=rule.id))
 
-    return render_template('rules_edit.html', rule=rule, content=content, can_edit=can_edit)
+    return render_template('rules_edit.html.j2', rule=rule, content=content, can_edit=can_edit)
  
 
 @rules.route("/rules/delete/<int:rule_id>", methods=['GET', 'POST'])

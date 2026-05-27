@@ -38,7 +38,7 @@ def jobs_list():
     job_tasks = JobTasks.query.all()
     tasks = Tasks.query.all()
     return render_template(
-        'jobs.html',
+        'jobs.html.j2',
         title='Jobs',
         jobs=jobs,
         customers=customers,

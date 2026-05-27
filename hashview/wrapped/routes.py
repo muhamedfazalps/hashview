@@ -550,7 +550,7 @@ def wrapped_list():
         most_effective_tasks_dcc2_table.append(dict_entry)
 
     # Render the wrapped statistics template with the collected data
-    return render_template('wrapped.html', title='Hashview Wrapped', 
+    return render_template('wrapped.html.j2', title='Hashview Wrapped',
                            previous_year = year,
                            longest_password_all_table=longest_password_all_table,
                            longest_password_personal=longest_password_personal,
