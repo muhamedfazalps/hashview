@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "layout.html.j2" %}
 {% block content %}
 <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js@3.1.0/dist/chart.min.js"></script> -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.js"></script>
@@ -8,10 +8,10 @@
     <br>
     <div class="card">
         <h4 class="card-header">Agent Status</h4>
-        <table class="table table-borderless" style="margin-bottom: 0px;">
-            <tbody>
-                <tr>
-                    {% if agents %}
+        {% if agents %}
+            <table class="table table-borderless" style="margin-bottom: 0px;">
+                <tbody>
+                    <tr>
                         {% for agent in agents %}
                             <td>
                                 {% if (agent.last_checkin + timedelta(hours=1)) < datetime.now() %}
@@ -28,21 +28,21 @@
                                     <div class="card">
                                         <div class="card-header">{{agent.name}}</div>
                                         <div class="card-body ">
-                                            <h7 class="card-text mb-2">Last Seen: </h7> <br>                                           
+                                            <h7 class="card-text mb-2">Last Seen: </h7> <br>
                                             <h7 class="card-text mb-2">{{agent.last_checkin}}</h7>
                                         </div>
-                                    </div>                                
+                                    </div>
                                 {% endif %}
                             </td>
                         {% endfor %}
-                    {% else %}
-                        <p>
-                            No Agents configured. Please <a href="/agents"> add </a> a new agent.
-                        </p>
-                    {% endif %}
-                </tr>
-            </tbody>
-        </table>
+                    </tr>
+                </tbody>
+            </table>
+        {% else %}
+            <div class="card-body">
+                No Agents configured. Please <a href="/agents"> add </a> a new agent.
+            </div>
+        {% endif %}
     </div>
     <br><br>
     <div class="card">

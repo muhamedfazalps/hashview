@@ -49,26 +49,7 @@
                         </div>
                     </form>
                 </div>
-<<<<<<< HEAD:hashview/templates/wordlists_add.html.j2
-            {% else %}
-                {{ form.name(class="form-control form-control-lg") }}
-            {% endif %}
-           </div>
-           <div class="form-group">
-                {{ form.wordlist.label() }}
-                {{ form.wordlist(class="form-control-file") }}
-                {% if form.wordlist.errors %}
-                    {% for error in form.wordlist.errors %}
-                        <span class="text-danger">{{ error }}</span></br>
-                    {% endfor %}
-                {% endif %}
-           </div>
-        </fieldset>
-        <div class="form-group">
-            {{ form.submit(class="btn btn-outline-info")}}
-=======
             </div>
->>>>>>> origin/internal-features:hashview/templates/wordlists_add.html
         </div>
     </div>
 </article>

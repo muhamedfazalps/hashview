@@ -1,8 +1,7 @@
-version: "3.9"
-
 services:
   app:
     build: .
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     links:
       - db
     ports:
@@ -13,6 +12,7 @@ services:
 
   db:
     image: "mysql:8-debian"
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     restart: always
     cap_add:
       - SYS_NICE

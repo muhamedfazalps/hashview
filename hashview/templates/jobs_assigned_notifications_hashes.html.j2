@@ -5,10 +5,10 @@
     var checkbox = document.getElementById('all_cb')
     var checkboxes = document.querySelector('#hash_options').querySelectorAll('input[type="checkbox"]');
     checkbox.addEventListener('change', (event) => {
-        if (event.currentTarget.checked)
+        if (event.currentTarget.checked) 
             set_boxes(checkboxes,true);
-         else
-            set_boxes(checkboxes,false);
+         else 
+            set_boxes(checkboxes,false); 
       })
     });
     function set_boxes(checkboxes, option){
@@ -24,37 +24,6 @@
 <br>
 {% endblock header %}
 {% block content %}
-<<<<<<< HEAD:hashview/templates/jobs_assigned_notifications_hashes.html.j2
-<div class="content-section">
-    <form method="POST" action="">
-        <div class="form-group">
-            <table id="hash_options" class="table">
-                <thead>
-                    <tr>
-                        <th scope="col">
-                            Notify <input id="all_cb" class="mt-1 mr-1" title="Check/uncheck all" style="position: absolute; left:80px;" type="checkbox">
-                        </th>
-                        <th scope="col">
-                            User
-                        </th>
-                        <th scope="col">
-                            Hash
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <div class="form-check">
-                        {% for hash in hashes %}
-                            <tr>
-                                <td>
-                                    <center>
-                                        {% set has_notification = namespace(value=0) %}
-                                        {% for entry in existing_hash_notifications %}
-                                            {% if entry.hash_id |string() == hash[0] |string() %}
-                                                {% set has_notification.value = 1 %}
-                                                <input class="form-check-input center" type="checkbox" name='selected' value="{{hash[0]}}" checked>
-                                            {% endif %}
-=======
 <article class="media content-section">
     <div class="media-body">
         <div class="card">
@@ -157,7 +126,6 @@
                                                     {{ hash[2]}}
                                                 </td>
                                             </tr>
->>>>>>> origin/internal-features:hashview/templates/jobs_assigned_notifications_hashes.html
                                         {% endfor %}
                                     </div>
                                 </tbody>

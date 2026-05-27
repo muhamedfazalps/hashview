@@ -218,7 +218,7 @@ def task_edit(task_id):
 
         wordlists = Wordlists.query.all()
         # Add the current value for wordlist.
-        if task.hc_attackmode == 'dictionary':
+        if task.hc_attackmode == '0':
             edit_task_wl = Wordlists.query.get(task.wl_id)
             if edit_task_wl:
                 tasksForm.wl_id.choices.append((edit_task_wl.id, edit_task_wl.name))

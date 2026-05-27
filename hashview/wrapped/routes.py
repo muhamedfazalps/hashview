@@ -69,7 +69,10 @@ def wrapped_list():
         .filter(Hashes.recovered_by == current_user.id) \
         .first()
 
-    longest_password_personal = bytes.fromhex(longest_password_personal_raw.plaintext).decode('latin-1')
+    if longest_password_personal_raw:
+        longest_password_personal = bytes.fromhex(longest_password_personal_raw.plaintext).decode('latin-1')
+    else:
+        longest_password_personal = ''
 
     # -------------------------------------------------------------------------
     # Determine the personal ranking of the current user's longest password
@@ -84,7 +87,7 @@ def wrapped_list():
         .all()   
     
     #longest_password_personal_rank = 0
-    longest_password_all_cnt = len(longest_password_all_raw) -1
+    longest_password_all_cnt = max(len(longest_password_all_raw) - 1, 0)
     longest_password_personal_rank = 1
     for entry in longest_password_all_raw:
         if entry.recovered_by == current_user.id:
@@ -131,7 +134,7 @@ def wrapped_list():
     personal_group_by_pos = len(total_passwords_recovered) -1
     for entry in total_passwords_recovered:
         if entry.recovered_by == current_user.id:
-            total_passwords_recovered_personal_pct = round(personal_group_by_pos / (len(total_passwords_recovered)-1), 2) * 100
+            total_passwords_recovered_personal_pct = round(personal_group_by_pos / (len(total_passwords_recovered)-1 or 1), 2) * 100
             break
         else:
             personal_group_by_pos -= 1
@@ -183,7 +186,7 @@ def wrapped_list():
     personal_group_by_pos = len(total_ntlm_recovered_all) -1
     for entry in total_ntlm_recovered_all:
         if entry.recovered_by == current_user.id:
-            total_ntlm_recovered_personal_pct = round(personal_group_by_pos / (len(total_ntlm_recovered_all)-1), 2) * 100
+            total_ntlm_recovered_personal_pct = round(personal_group_by_pos / (len(total_ntlm_recovered_all)-1 or 1), 2) * 100
             break
         else:
             personal_group_by_pos -= 1
@@ -233,7 +236,7 @@ def wrapped_list():
     personal_group_by_pos = len(total_ntlmv1_recovered_all) -1
     for entry in total_ntlmv1_recovered_all:
         if entry.recovered_by == current_user.id:
-            total_ntlmv1_recovered_personal_pct = round(personal_group_by_pos / (len(total_ntlmv1_recovered_all)-1), 2) * 100
+            total_ntlmv1_recovered_personal_pct = round(personal_group_by_pos / (len(total_ntlmv1_recovered_all)-1 or 1), 2) * 100
         else:
             personal_group_by_pos -= 1
 
@@ -283,7 +286,7 @@ def wrapped_list():
     personal_group_by_pos = len(total_ntlmv2_recovered_all) -1
     for entry in total_ntlmv2_recovered_all:
         if entry.recovered_by == current_user.id:
-            total_ntlmv2_recovered_personal_pct = round(personal_group_by_pos / (len(total_ntlmv2_recovered_all)-1), 2) * 100
+            total_ntlmv2_recovered_personal_pct = round(personal_group_by_pos / (len(total_ntlmv2_recovered_all)-1 or 1), 2) * 100
         else:
             personal_group_by_pos -= 1
 
@@ -332,7 +335,7 @@ def wrapped_list():
     total_kerberos_recovered_personal_pct = 0
     for entry in total_kerberos_recovered_all:
         if entry.recovered_by == current_user.id:
-            total_kerberos_recovered_personal_pct = round(entry.row_count / (len(total_kerberos_recovered_all)-1), 2) * 100
+            total_kerberos_recovered_personal_pct = round(entry.row_count / (len(total_kerberos_recovered_all)-1 or 1), 2) * 100
 
     # Personal Kerberos
     total_kerberos_recovered_personal_cnt = db.session.query(Hashes.id) \
@@ -378,7 +381,7 @@ def wrapped_list():
     total_dcc2_recovered_personal_pct = 0
     for entry in total_dcc2_recovered_all:
         if entry.recovered_by == current_user.id:
-            total_dcc2_recovered_personal_pct = round(entry.row_count / (len(total_dcc2_recovered_all)-1), 2) * 100
+            total_dcc2_recovered_personal_pct = round(entry.row_count / (len(total_dcc2_recovered_all)-1 or 1), 2) * 100
 
     # Personal Kerberos
     total_kerberos_dcc2_personal_cnt = db.session.query(Hashes.id) \
@@ -550,7 +553,7 @@ def wrapped_list():
         most_effective_tasks_dcc2_table.append(dict_entry)
 
     # Render the wrapped statistics template with the collected data
-    return render_template('wrapped.html', title='Hashview Wrapped', 
+    return render_template('wrapped.html.j2', title='Hashview Wrapped',
                            previous_year = year,
                            longest_password_all_table=longest_password_all_table,
                            longest_password_personal=longest_password_personal,

@@ -27,7 +27,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = '2',
         rule_id       = None,
-        hc_attackmode = 'dictionary',
+        hc_attackmode = '0',
     )
     db.session.add(task)
 
@@ -36,7 +36,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = '3',
         rule_id       = '1',
-        hc_attackmode = 'dictionary',
+        hc_attackmode = '0',
     )
     db.session.add(task)
 
@@ -46,7 +46,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = None,
         rule_id       = None,
-        hc_attackmode = 'maskmode',
+        hc_attackmode = '3',
         hc_mask       = '?a?a?a?a?a?a?a?a',
     )
     db.session.add(task)
@@ -94,7 +94,7 @@ def add_default_static_wordlist(db :SQLAlchemy):
 
 
 def default_dynamic_wordlists_need_added(db :SQLAlchemy) -> bool:
-    return (3 == db.session.query(Wordlists).filter_by(type='dynamic').count())
+    return (0 == db.session.query(Wordlists).filter_by(type='dynamic').count())
 
 
 def add_default_dynamic_wordlists(db :SQLAlchemy):
@@ -163,8 +163,12 @@ def add_admin_user(db :SQLAlchemy, bcrypt :Bcrypt):
 
 
 def admin_pass_needs_changed(db :SQLAlchemy, bcrypt :Bcrypt) -> bool:
-    current_password_hash, *_ = db.session.query(Users.password).filter_by(id=1).first()
-    return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
+    result = db.session.query(Users.password).filter_by(id=1).first()
+    if (result is None):
+        return True
+    else:
+        current_password_hash, *_ = result
+        return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
 
 
 def settings_needs_added(db :SQLAlchemy) -> bool:

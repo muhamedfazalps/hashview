@@ -43,13 +43,16 @@ exit
 The following are to install hashview after the mysql db has been setup.
 
 ```
-sudo apt-get install python3 python3-pip python3-flask
+sudo apt-get install python3 python3-pip python3-venv
 git clone https://github.com/hashview/hashview
 cd hashview
-pip3 install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ./setup.py
 ./hashview.py # (note you can add a --debug if you are attempting to troubleshoot an issue)
 ```
+Note: run `./setup.py` and `./hashview.py` with the virtual environment active (`source venv/bin/activate`).
 
 #### 4) Log into your hashview server
 Navigate to your server, default port is 8443. https://IP:8443
@@ -103,3 +106,7 @@ A basic docker setup for development is provided. It is not meant to be producti
 ### 1) Create a `./hashview/config.conf`file, customizing it as needed. Note the hostname should changed to `db` so that the app container can find the right host
 ### 2) Be sure to change the MYSQL_PASSWORD in `docker-compose.yml` (and match it with the value in `config.conf`).
 ### 3) Run `docker compose up`
+
+## Testing
+
+See `TESTING.md` for local and CI test workflows (including dev Docker containers and Playwright E2E).

@@ -168,7 +168,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
             elif file_type == 'pwdump':
                 # do we let user select LM so that we crack those instead of NTLM?
                 # First extracting usernames so we can filter out machine accounts
-                if re.search("\$$", line.split(':')[0]) or re.search("\$_history", line.split(':')[0]):
+                if re.search(r"\$$", line.split(':')[0]) or re.search(r"\$_history", line.split(':')[0]):
                 #if '$' in line.split(':')[0]:
                     continue
                 else:
@@ -183,7 +183,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
             elif file_type == 'NetNTLM':
                 # First extracting usernames so we can filter out machine accounts
                 # 5600, domain is case sensitve. Hashcat returns username in upper case.
-                if re.search("\$$", line.split(':')[0]):
+                if re.search(r"\$$", line.split(':')[0]):
                 #if '$' in line.split(':')[0]:
                     continue
                 else:
