@@ -42,7 +42,7 @@
                                         {{ rule.last_updated }}
                                     </td>
                                     <td style="text-align:right; vertical-align:middle;">
-                                        <a class="btn btn-warn btn-sm" href="{{ url_for('rules.rules_view', rule_id=rule.id) }}" title="View/Edit"><i class="fa fa-edit"></i></a>
+                                        <a class="fa fa-edit btn btn-warning" href="{{ url_for('rules.rules_view', rule_id=rule.id) }}" title="View/Edit"></a>
                                         <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{rule.id}}" title="Info"></i></button>
                                         <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{rule.id}}" title="Delete"></i></button>
                                     </td>
