@@ -1,0 +1,18 @@
+services:
+  agent-test:
+    image: python:3.11-slim
+    profiles:
+      - test
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      HASHVIEW_API_URL: http://app:5000
+      HASHVIEW_AGENT_NAME: test-agent
+      HASHVIEW_AGENT_VERSION: 0.8.1
+      HASHVIEW_AGENT_MAX_SECONDS: 30
+      HASHVIEW_AGENT_POLL_INTERVAL: 1.0
+    depends_on:
+      app:
+        condition: service_started
+    command: ["python", "tests/agent/sim.py"]

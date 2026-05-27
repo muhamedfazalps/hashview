@@ -103,3 +103,7 @@ A basic docker setup for development is provided. It is not meant to be producti
 ### 1) Create a `./hashview/config.conf`file, customizing it as needed. Note the hostname should changed to `db` so that the app container can find the right host
 ### 2) Be sure to change the MYSQL_PASSWORD in `docker-compose.yml` (and match it with the value in `config.conf`).
 ### 3) Run `docker compose up`
+
+## Testing
+
+See `TESTING.md` for local and CI test workflows (including dev Docker containers and Playwright E2E).
