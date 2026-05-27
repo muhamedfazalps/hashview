@@ -727,5 +727,5 @@ def analytics_download_fig8():
 
     return send_from_directory('control/tmp', filename, as_attachment=True)
 
-def formatDisplay(number): # add commas to the number after every thousand places
+def format_display(number): # add commas to the number after every thousand places
     return "{:,}".format(number)
