@@ -117,7 +117,7 @@ def tasks_add():
 
         # What attack mode are we dealing with
         # Straight Dictionary with optional rules
-        if tasksForm.hc_attackmode.data == '0':
+        if tasksForm.hc_attackmode.data == 0:
             task = Tasks(   name=tasksForm.name.data,
                             owner_id=current_user.id,
                             wl_id=tasksForm.wl_id.data,
@@ -128,7 +128,7 @@ def tasks_add():
             db.session.commit()
             flash(f'Task {tasksForm.name.data} created!', 'success')
         # Combinator
-        elif tasksForm.hc_attackmode.data == '1':
+        elif tasksForm.hc_attackmode.data == 1:
             task = Tasks(   name=tasksForm.name.data,
                             owner_id=current_user.id,
                             wl_id=tasksForm.wl_id.data,
@@ -142,7 +142,7 @@ def tasks_add():
             db.session.commit()
             flash(f'Task {tasksForm.name.data} created!', 'success')
         # Bruteforce Mask mode
-        elif tasksForm.hc_attackmode.data == '3':
+        elif tasksForm.hc_attackmode.data == 3:
             task = Tasks(   name=tasksForm.name.data,
                             owner_id=current_user.id,
                             wl_id=None,
@@ -154,7 +154,7 @@ def tasks_add():
             db.session.commit()
             flash(f'Task {tasksForm.name.data} created!', 'success')
         # Hybrid Wordlist + Mask or Hybrid Mask + Wordlist
-        elif tasksForm.hc_attackmode.data == '6' or tasksForm.hc_attackmode.data == '7':
+        elif tasksForm.hc_attackmode.data == 6 or tasksForm.hc_attackmode.data == 7:
             task = Tasks(   name=tasksForm.name.data,
                             owner_id=current_user.id,
                             wl_id=tasksForm.wl_id.data,
@@ -166,7 +166,7 @@ def tasks_add():
             db.session.commit()
             flash(f'Task {tasksForm.name.data} created!', 'success')
         # Hybrid Wordlist + Mask or Hybrid Mask + Wordlist
-        elif tasksForm.hc_attackmode.data == '6' or tasksForm.hc_attackmode.data == '7':
+        elif tasksForm.hc_attackmode.data == 6 or tasksForm.hc_attackmode.data == 7:
             task = Tasks(   name=tasksForm.name.data,
                             owner_id=current_user.id,
                             wl_id=tasksForm.wl_id.data,
@@ -178,7 +178,7 @@ def tasks_add():
             db.session.commit()
             flash(f'Task {tasksForm.name.data} created!', 'success')
         # Hybrid Wordlist + Mask or Hybrid Mask + Wordlist
-        elif tasksForm.hc_attackmode.data == '6' or tasksForm.hc_attackmode.data == '7':
+        elif tasksForm.hc_attackmode.data == 6 or tasksForm.hc_attackmode.data == 7:
             task = Tasks(   name=tasksForm.name.data,
                             owner_id=current_user.id,
                             wl_id=tasksForm.wl_id.data,
@@ -218,7 +218,7 @@ def task_edit(task_id):
 
         wordlists = Wordlists.query.all()
         # Add the current value for wordlist.
-        if task.hc_attackmode == '0':
+        if task.hc_attackmode == 0:
             edit_task_wl = Wordlists.query.get(task.wl_id)
             if edit_task_wl:
                 tasksForm.wl_id.choices.append((edit_task_wl.id, edit_task_wl.name))
@@ -245,7 +245,7 @@ def task_edit(task_id):
 
         if tasksForm.validate_on_submit():
 
-            if tasksForm.hc_attackmode.data == '0':
+            if tasksForm.hc_attackmode.data == 0:
                 task.name = tasksForm.name.data
                 task.wl_id = tasksForm.wl_id.data
                 task.rule_id = tasksForm.rule_id.data
@@ -256,7 +256,7 @@ def task_edit(task_id):
                 db.session.commit()
                 flash(f'Task {tasksForm.name.data} updated!', 'success')
             # Combinator
-            elif tasksForm.hc_attackmode.data == '1':
+            elif tasksForm.hc_attackmode.data == 1:
                 task.name = tasksForm.name.data
                 task.wl_id = tasksForm.wl_id.data
                 task.wl_id_2 = tasksForm.wl_id_2.data
@@ -268,7 +268,7 @@ def task_edit(task_id):
                 db.session.commit()
                 flash(f'Task {tasksForm.name.data} updated!', 'success')
             # Mask mode
-            elif tasksForm.hc_attackmode.data == '3':
+            elif tasksForm.hc_attackmode.data == 3:
                 task.name = tasksForm.name.data
                 task.wl_id = None
                 task.rule_id = None
@@ -279,7 +279,7 @@ def task_edit(task_id):
                 db.session.commit()
                 flash(f'Task {tasksForm.name.data} updated!', 'success')
             # Hybrid Wordlist + Mask or Hybrid Mask + Wordlist
-            elif tasksForm.hc_attackmode.data == '6' or tasksForm.hc_attackmode.data == '7':
+            elif tasksForm.hc_attackmode.data == 6 or tasksForm.hc_attackmode.data == 7:
                 task.name = tasksForm.name.data
                 task.wl_id = tasksForm.wl_id.data
                 task.rule_id = None

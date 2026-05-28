@@ -203,7 +203,7 @@ class Tasks(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    hc_attackmode = db.Column(db.String(25), nullable=False) # 0, 1, 3, 6, 7 
+    hc_attackmode = db.Column(db.Integer, nullable=False) # 0, 1, 3, 6, 7
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     wl_id = db.Column(db.Integer)
     wl_id_2 = db.Column(db.Integer)

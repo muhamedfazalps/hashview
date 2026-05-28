@@ -12,6 +12,7 @@ import signal
 import builtins
 import time
 import subprocess
+from contextlib import suppress
 from threading import Thread
 from datetime import datetime, timedelta
 
