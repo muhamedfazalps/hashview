@@ -430,8 +430,18 @@ def updateJobTask(job_task_id, task_status):
     return api.updateJobTask(job_task_id, task_status)    
 
 def data_retention_cleanup():
-    response = api.server_settings()
-    server_settings = json.loads(response)
+    try:
+        response = api.server_settings()
+        server_settings = json.loads(response)
+    except (KeyError, ValueError, TypeError):
+        print('[INFO] hashview-agent.py->data_retention_cleanup() Skipping cleanup: '
+              'server returned an unauthorized or unexpected response (agent may not be approved yet).')
+        return
+
+    if not server_settings or 'retention_period' not in server_settings[0]:
+        print('[INFO] hashview-agent.py->data_retention_cleanup() Skipping cleanup: '
+              'no retention_period in server settings.')
+        return
 
     # if a value is set then we process
     if server_settings[0]['retention_period'] != 0:
