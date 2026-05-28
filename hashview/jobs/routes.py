@@ -79,7 +79,7 @@ def jobs_add():
                     status = 'Incomplete',
                     customer_id = customer_id,
                     owner_id = current_user.id,
-                    limit_recovered = jobsForm.limit_recovered.data)
+                    limit_recovered = jobs_form.limit_recovered.data)
         db.session.add(job)
         db.session.commit()
         return redirect(str(job.id)+"/assigned_hashfile/")
@@ -201,7 +201,7 @@ def jobs_assigned_hashfile(job_id):
         for error in jobs_new_hashfile_form.submit.errors:
             print(str(error))
 
-    return render_template('jobs_assigned_hashfiles.html.j2', title='Jobs Assigned Hashfiles', hashfiles=hashfiles, job=job, jobs_new_hashfile_form=jobs_new_hashfile_form, hashfile_cracked_rate=hashfile_cracked_rate)
+    return render_template('jobs_assigned_hashfiles.html.j2', title='Jobs Assigned Hashfiles', hashfiles=hashfiles, job=job, jobsNewHashFileForm=jobs_new_hashfile_form, hashfile_cracked_rate=hashfile_cracked_rate)
 
 @jobs.route("/jobs/<int:job_id>/assigned_hashfile/<int:hashfile_id>", methods=['GET'])
 @login_required
