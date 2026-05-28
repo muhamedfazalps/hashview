@@ -16,7 +16,7 @@ def test_login_success(page, live_server, test_user_credentials):
     page.goto(f"{live_server}/login", wait_until="domcontentloaded")
     page.get_by_label("Email").fill(test_user_credentials["email"])
     page.get_by_label("Password").fill(test_user_credentials["password"])
-    page.get_by_role("button", name="Login").click()
+    page.get_by_role("button", name="Crack the planet!").click()
     if page.get_by_role("link", name="Jobs").is_visible():
         return
     pytest.skip(
@@ -29,5 +29,5 @@ def test_login_failure_shows_message(page, live_server, test_user_credentials):
     page.goto(f"{live_server}/login", wait_until="domcontentloaded")
     page.get_by_label("Email").fill(test_user_credentials["email"])
     page.get_by_label("Password").fill("incorrect-password")
-    page.get_by_role("button", name="Login").click()
+    page.get_by_role("button", name="Crack the planet!").click()
     expect(page.get_by_text("Login Unsuccessful", exact=False)).to_be_visible()

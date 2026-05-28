@@ -5,6 +5,7 @@ from flask import Flask
 from flask import request
 from flask import url_for
 from flask import redirect
+from jinja2 import select_autoescape
 from pathlib import Path
 from functools import partial
 from logging.config import dictConfig as loggingDictConfig
@@ -145,6 +146,14 @@ def jinja_hex_decode(text):
 
 def create_app():
     app = Flask(__name__)
+    # Templates use the .html.j2 extension, which Flask's default
+    # select_autoescape() does not cover. Without this, every {{ var }}
+    # in every template renders raw - stored XSS via any user-supplied
+    # field (job name, customer name, agent name, etc.).
+    app.jinja_env.autoescape = select_autoescape(
+        enabled_extensions=("html", "htm", "xml", "xhtml", "j2"),
+        default_for_string=True,
+    )
 
     # https://flask.palletsprojects.com/en/2.2.x/logging/
     # When you want to configure logging for your project, you should do it as

@@ -29,7 +29,7 @@ def _login(page, live_server, email, password):
     page.goto(f"{live_server}/login", wait_until="domcontentloaded")
     page.get_by_label("Email").fill(email)
     page.get_by_label("Password").fill(password)
-    page.get_by_role("button", name="Login").click()
+    page.get_by_role("button", name="Crack the planet!").click()
     if not page.get_by_role("link", name="Jobs").is_visible():
         pytest.skip("Login failed against external server.")
 
@@ -40,7 +40,7 @@ def test_customer_name_xss_is_escaped(page, live_server, login):
     payload = "<svg onload=alert(1)>"
 
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     page.locator("input[name='name']").fill(f"E2E XSS Customer {uuid.uuid4().hex[:6]}")
@@ -92,7 +92,7 @@ def test_task_name_xss_is_escaped(page, live_server, login):
         pytest.skip("No supported attack modes available.")
 
     page.get_by_role("button", name=re.compile(r"Add|Submit|Create", re.I)).click()
-    expect(page.get_by_role("heading", name="Tasks")).to_be_visible()
+    expect(page.get_by_role("heading", name="Agents")).to_be_visible()
 
     assert page.locator(f"script#{element_id}").count() == 0
     content = page.content()
@@ -137,7 +137,7 @@ def test_login_next_param_not_open_redirect(page, live_server, test_user_credent
     )
     page.get_by_label("Email").fill(test_user_credentials["email"])
     page.get_by_label("Password").fill(test_user_credentials["password"])
-    page.get_by_role("button", name="Login").click()
+    page.get_by_role("button", name="Crack the planet!").click()
     if os.getenv("HASHVIEW_E2E_ENFORCE_OPEN_REDIRECT", "0") in {"1", "true", "yes"}:
         assert page.url.startswith(live_server)
     else:
@@ -166,7 +166,7 @@ def test_job_idor_access_denied_for_other_user(
         test_user_credentials["password"],
     )
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E IDOR Job")
