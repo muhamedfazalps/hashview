@@ -6,13 +6,13 @@
 
 ## Server Requirements
 
-1. Python 3.7+
+1. Python 3.10+
 2. Mysql DB installed with known username/password
 3. Access to a SMTP email service (used for password resets and notifications)
 
 ## Agent Requirements
 
-1. Python 3.7+
+1. Python 3.10+
 2. Hashcat 6.2.x+
 
 ## Installation
