@@ -83,7 +83,8 @@ disable=raw-checker-failed,
         deprecated-pragma,
         use-symbolic-message-instead,
         import-outside-toplevel,
-        too-few-public-methods
+        too-few-public-methods,
+        broad-exception-caught
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
@@ -287,16 +288,7 @@ contextmanager-decorators=contextlib.contextmanager
 # List of members which are set dynamically and missed by pylint inference
 # system, and so shouldn't trigger E1101 when accessed. Python regular
 # expressions are accepted.
-# Flask-SQLAlchemy's db.session is a scoped_session proxy whose dynamically
-# routed methods pylint can't introspect; list them so they aren't flagged.
-generated-members=scoped_session.add,
-                  scoped_session.add_all,
-                  scoped_session.commit,
-                  scoped_session.delete,
-                  scoped_session.execute,
-                  scoped_session.flush,
-                  scoped_session.query,
-                  scoped_session.rollback
+generated-members=Flask.apscheduler
 
 # Tells whether missing members accessed in mixin class should be ignored. A
 # class is considered mixin if its name matches the mixin-class-rgx option.
@@ -317,7 +309,11 @@ ignore-on-opaque-inference=yes
 # List of class names for which member attributes should not be checked (useful
 # for classes with dynamically set attributes). This supports the use of
 # qualified names.
-ignored-classes=optparse.Values,thread._local,_thread._local
+# Flask-SQLAlchemy's db.session is a scoped_session proxy whose dynamically
+# routed methods (query/add/commit/delete/etc.) pylint can't introspect.
+ignored-classes=optparse.Values,thread._local,_thread._local,
+                scoped_session,
+                sqlalchemy.orm.scoping.scoped_session
 
 # List of module names for which member attributes should not be checked
 # (useful for modules/projects where namespaces are manipulated during runtime

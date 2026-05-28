@@ -17,21 +17,19 @@ from hashview import create_app
 
 def ensure_authlib():
     """Ensuring authlib module is installed"""
-
-    try:
-        import authlib.jose  # noqa: F401  pylint: disable=unused-import
-    except Exception:
-        print('\nPlease make sure that your dependencies are up to date (including installing authlib).')
+    import importlib.util
+    if importlib.util.find_spec('authlib.jose') is None:
+        print('\nPlease make sure that your dependencies are up to date '
+              '(including installing authlib).')
         sys.exit(1)
 
 
 def ensure_requests():
     """Ensuring requests module is installed"""
-
-    try:
-        import requests  # noqa: F401  pylint: disable=unused-import
-    except Exception:
-        print('\nPlease make sure that your dependencies are up to date (including installing requests).')
+    import importlib.util
+    if importlib.util.find_spec('requests') is None:
+        print('\nPlease make sure that your dependencies are up to date '
+              '(including installing requests).')
         sys.exit(1)
 
 
@@ -43,7 +41,8 @@ def ensure_flask_bcrypt():
         if '1.0.1' >= flask_bcrypt.__version__:
             raise RuntimeError('old version')
     except Exception:
-        print('\nPlease make sure that your dependencies are up to date (including replacing Flask-Bcrypt with Bcrypt-Flask).')
+        print('\nPlease make sure that your dependencies are up to date '
+              '(including replacing Flask-Bcrypt with Bcrypt-Flask).')
         #sys.exit(1)
 
 
@@ -61,8 +60,11 @@ def ensure_admin_account_cli(db, bcrypt):
         return
 
     else:
-        print('\nInitial setup detected. Hashview will now prompt you to setup an Administrative account.\n')
-        admin_email = input('Enter Email address for the Administrator account. You will use this to log into the app: ')
+        print('\nInitial setup detected. Hashview will now prompt you to setup '
+              'an Administrative account.\n')
+        admin_email = input(
+            'Enter Email address for the Administrator account. '
+            'You will use this to log into the app: ')
         while len(admin_email) == 0:
             print('Error: You must provide an email address.')
             admin_email = input("Invalid email address. Try again: ")
@@ -91,7 +93,13 @@ def ensure_admin_account_cli(db, bcrypt):
         print('\nProvisioning account in database.')
         hashed_password = bcrypt.generate_password_hash(admin_password).decode('utf-8')
 
-        user = Users(first_name=admin_firstname, last_name=admin_lastname, email_address=admin_email, password=hashed_password, admin=True)
+        user = Users(
+            first_name=admin_firstname,
+            last_name=admin_lastname,
+            email_address=admin_email,
+            password=hashed_password,
+            admin=True,
+        )
         db.session.add(user)
         db.session.commit()
 
@@ -110,7 +118,9 @@ def ensure_settings_cli(db):
         while 1 > retention_period_int > 65535:
             if retention_period_raw:
                 print('Error: Retention must be between 1 day and 65535 days')
-            retention_period_raw = input("Enter how long data should be retained in DB in days. (note: cracked hashes->plaintext will be be safe from retention culling): ")
+            retention_period_raw = input(
+                "Enter how long data should be retained in DB in days. "
+                "(note: cracked hashes->plaintext will be safe from retention culling): ")
             retention_period_int = int(retention_period_raw)
 
         max_runtime_tasks_int :int = 0
@@ -129,8 +139,13 @@ def ensure_dynamic_wordlist(db):
     from hashview.models import Wordlists
     from hashview.utils.utils import get_filehash
 
-    dynamic_wordlist_count = Wordlists.query.filter_by(type='dynamic').filter_by(name='(DYNAMIC) All Recovered Passwords').count()
-    if (0 < dynamic_wordlist_count):
+    dynamic_wordlist_count = (
+        Wordlists.query
+        .filter_by(type='dynamic')
+        .filter_by(name='(DYNAMIC) All Recovered Passwords')
+        .count()
+    )
+    if dynamic_wordlist_count > 0:
         print(f'✓ Dynamic Wordlist exist in database. Count({dynamic_wordlist_count})')
         return
 
@@ -158,7 +173,7 @@ def ensure_static_wordlist(db):
     from hashview.utils.utils import get_linecount
 
     static_wordlist_count = Wordlists.query.filter_by(type='static').count()
-    if (0 < static_wordlist_count):
+    if static_wordlist_count > 0:
         print(f'✓ Static Wordlist exist in database. Count({static_wordlist_count})')
         return
 
@@ -185,7 +200,7 @@ def ensure_rules(db):
     from hashview.utils.utils import get_linecount
 
     rule_count = Rules.query.count()
-    if (0 < rule_count):
+    if rule_count > 0:
         print(f'✓ Rules exist in database. Count({rule_count})')
         return
 
@@ -209,7 +224,7 @@ def ensure_tasks(db):
     from hashview.models import Tasks
 
     task_count = Tasks.query.count()
-    if (0 < task_count):
+    if task_count > 0:
         print(f'✓ Tasks exist in database. Count({task_count})')
         return
 
@@ -255,14 +270,15 @@ def ensure_version_alignment():
 
 def data_retention_cleanup(app):
     with app.app_context():
-        import os
-
         from datetime import datetime, timedelta
 
         from hashview.models import db
         db.init_app(app)
 
-        from hashview.models import Users, Settings, Jobs, JobTasks, JobNotifications, HashfileHashes, HashNotifications, Hashes, Hashfiles
+        from hashview.models import (
+            Users, Settings, Jobs, JobTasks, JobNotifications,
+            HashfileHashes, HashNotifications, Hashes, Hashfiles,
+        )
         from hashview.utils.utils import send_email
 
         print('[DEBUG] Im retaining all the data: ' + str(datetime.now()))
@@ -277,7 +293,11 @@ def data_retention_cleanup(app):
             # Send email saying we've deleted their job
             user = Users.query.get(job.owner_id)
             subject = 'Hashview removed an old job: ' + str(job.name)
-            message = 'Hello ' + str(user.first_name) + ', \n\n In accordance to the data retention policy of ' + str(retention_period) + ' days, your job "' + str(job.name) + '" was deleted.'
+            message = (
+                f'Hello {user.first_name}, \n\n In accordance to the data '
+                f'retention policy of {retention_period} days, your job '
+                f'"{job.name}" was deleted.'
+            )
             send_email(user, subject, message)
 
             JobTasks.query.filter_by(job_id=job.id).delete()
@@ -288,7 +308,8 @@ def data_retention_cleanup(app):
 
             print("[DEBUG] Job Name: " + str(job.name) + '  Owner ID: ' + str(job.owner_id))
 
-        # Remove Hashfiles (note hashfiles might be associated to a job thats < retention period. Those jobs should be removed too)
+        # Remove Hashfiles (jobs younger than retention period that reference
+        # these hashfiles get removed too).
         hashfiles = Hashfiles.query.filter(Hashfiles.uploaded_at < filter_after).all()
         for hashfile in hashfiles:
 
@@ -297,8 +318,16 @@ def data_retention_cleanup(app):
             for job in jobs:
                 print("[DEBUG] Hashfile->jobs: Job Name: " +str(job.name))
                 user = Users.query.get(job.owner_id)
-                subject = 'Hashview removed a job that was associated to an old hash file: ' + str(job.name)
-                message = 'Hello ' + str(user.first_name) + ', \n\n In accordance to the data retention policy of ' + str(retention_period) + ' days, your hashfile "' + str(hashfile.name) + '" was associated with a job "' + str(job.name) + '". This job was deleted.'
+                subject = (
+                    'Hashview removed a job that was associated to an old hash file: '
+                    + str(job.name)
+                )
+                message = (
+                    f'Hello {user.first_name}, \n\n In accordance to the data '
+                    f'retention policy of {retention_period} days, your hashfile '
+                    f'"{hashfile.name}" was associated with a job '
+                    f'"{job.name}". This job was deleted.'
+                )
                 send_email(user, subject, message)
 
                 JobTasks.query.filter_by(job_id=job.id).delete()
@@ -308,23 +337,33 @@ def data_retention_cleanup(app):
                 db.session.commit()
 
             # Hashfiles, HashfileHashes and Hash notifications
-            print('[DEBUG] Hashfile Name: ' + str(hashfile.name) + '    Owner ID: ' + str(hashfile.owner_id))
+            print(
+                f'[DEBUG] Hashfile Name: {hashfile.name}    '
+                f'Owner ID: {hashfile.owner_id}'
+            )
             print('[DEBUG] Hashfile ID: ' + str(hashfile.id))
             user = Users.query.get(hashfile.owner_id)
             subject = 'Hashview removed an old Hashfile: ' + str(hashfile.name)
-            message = 'Hello ' + str(user.first_name) + ', \n\n In accordance to the data retention policy of ' + str(retention_period) + ' days, your hashfile "' + str(hashfile.name) + '" was removed.'
+            message = (
+                f'Hello {user.first_name}, \n\n In accordance to the data '
+                f'retention policy of {retention_period} days, your hashfile '
+                f'"{hashfile.name}" was removed.'
+            )
             send_email(user, subject, message)
 
             hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).all()
             for hashfile_hash in hashfile_hashes:
                 hashes = Hashes.query.filter_by(id=hashfile_hash.hash_id).filter_by(cracked=0).all()
-                for hash in hashes:
-                    # Check to see if our hashfile is the ONLY hashfile that has this hash
-                    # if duplicates exist, they can still be removed. Once the hashfile_hash entry is remove,
-                    # the total number of matching hash_id's will be reduced to < 2 and then can be deleted
-                    hashfile_cnt = HashfileHashes.query.filter_by(hash_id=hash.id).distinct('hashfile_id').count()
+                for hash_entry in hashes:
+                    # Only delete this hash if it isn't shared with another
+                    # hashfile. Duplicates drop to < 2 once the hashfile_hash
+                    # entry is removed, allowing later deletion.
+                    hashfile_cnt = (
+                        HashfileHashes.query.filter_by(hash_id=hash_entry.id)
+                        .distinct('hashfile_id').count()
+                    )
                     if hashfile_cnt < 2:
-                        db.session.delete(hash)
+                        db.session.delete(hash_entry)
                         db.session.commit()
                         HashNotifications.query.filter_by(hash_id=hashfile_hash.hash_id).delete()
                 db.session.delete(hashfile_hash)
@@ -336,9 +375,12 @@ def data_retention_cleanup(app):
             print('[DEBUG] hashview.py->data_retention_cleanup() ' + file)
             if file == '.gitignore':
                 print('Found Git Ignore!')
-            if os.stat('hashview/control/tmp/' + file).st_mtime < time.time() - retention_period * 86400 and file != '.gitignore':
-                os.remove('hashview/control/tmp/' + file)
-                print('[DEBUG] hashview.py->data_retention_cleanup() Removed: hashview/control/tmp/' + file)
+            tmp_path = 'hashview/control/tmp/' + file
+            age_limit = time.time() - retention_period * 86400
+            if os.stat(tmp_path).st_mtime < age_limit and file != '.gitignore':
+                os.remove(tmp_path)
+                print('[DEBUG] hashview.py->data_retention_cleanup() '
+                      f'Removed: {tmp_path}')
 
         print('[DEBUG] ==============')
 
@@ -376,8 +418,12 @@ def cli(args) -> int:
 
             scheduler = app.apscheduler
             scheduler.remove_all_jobs()
-            #scheduler.add_job(id='DATA_RETENTION', func=partial(data_retention_cleanup, app), trigger='cron', minute='*') #hour=1
-            scheduler.add_job(id='DATA_RETENTION', func=partial(data_retention_cleanup, app), trigger='cron', hour='*')
+            scheduler.add_job(
+                id='DATA_RETENTION',
+                func=partial(data_retention_cleanup, app),
+                trigger='cron',
+                hour='*',
+            )
 
         if parsed_args.debug:
             builtins.state = 'debug'
@@ -391,7 +437,13 @@ def cli(args) -> int:
             app.run(debug=parsed_args.debug)
 
         else:
-            app.run(host='0.0.0.0', port=8443, ssl_context=('./hashview/ssl/cert.pem', './hashview/ssl/key.pem'), debug=parsed_args.debug)
+            app.run(
+                host='0.0.0.0',
+                port=8443,
+                ssl_context=('./hashview/ssl/cert.pem',
+                             './hashview/ssl/key.pem'),
+                debug=parsed_args.debug,
+            )
 
     except Exception as ex:
         print(f'Exception!: {ex}', file=sys.stderr)

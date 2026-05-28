@@ -59,7 +59,7 @@ class Users(db.Model, UserMixin):
         header = dict(alg='HS512')
 
         issued_at = int(datetime.today().timestamp())
-        expiration_time = (issued_at + expires_sec)
+        expiration_time = issued_at + expires_sec
         payload = dict(
             user_id = self.id,
             iat     = issued_at,
@@ -115,17 +115,20 @@ class Jobs(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
-    priority = db.Column(db.Integer, nullable=False, default=3) # 5 = highest priority. 1 = lowest priority
+    # priority: 5 = highest, 1 = lowest
+    priority = db.Column(db.Integer, nullable=False, default=3)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     queued_at = db.Column(db.DateTime, nullable=True)
-    status = db.Column(db.String(20), nullable=False)           # Running, Paused, Completed, Queued, Canceled, Ready, Incomplete
-    started_at = db.Column(db.DateTime, nullable=True)          # These defaults should be changed
-    ended_at = db.Column(db.DateTime, nullable=True)            # These defaults should be changed
+    # status: Running/Paused/Completed/Queued/Canceled/Ready/Incomplete
+    status = db.Column(db.String(20), nullable=False)
+    started_at = db.Column(db.DateTime, nullable=True)
+    ended_at = db.Column(db.DateTime, nullable=True)
     hashfile_id = db.Column(db.Integer, nullable=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    limit_recovered = db.Column(db.Boolean, nullable=False, default=False) # This is for one-and-done cracks
+    # limit_recovered: one-and-done crack
+    limit_recovered = db.Column(db.Boolean, nullable=False, default=False)
 
 class JobTasks(db.Model):
     """Class object to represent JobTasks"""
@@ -135,7 +138,8 @@ class JobTasks(db.Model):
     task_id = db.Column(db.Integer, nullable=False)
     priority = db.Column(db.Integer, nullable=False, default=3)
     command = db.Column(db.String(1024))
-    status = db.Column(db.String(50), nullable=False)       # Running, Paused, Not Started, Completed, Queued, Canceled, Importing
+    # status: Running/Paused/Not Started/Completed/Queued/Canceled/Importing
+    status = db.Column(db.String(50), nullable=False)
     started_at = db.Column(db.DateTime, nullable=True)      # These defaults should be changed
     agent_id = db.Column(db.Integer, db.ForeignKey('agents.id'))
 
@@ -225,7 +229,9 @@ class Hashes(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     sub_ciphertext = db.Column(db.String(32), nullable=False, index=True)
-    ciphertext = db.Column(db.String(16383), nullable=False) # Setting this to max value for now. If we run into this being a limitation in the future we can revisit changing thist to TEXT or BLOB. https://sheeri.org/max-varchar-size/
+    # Max VARCHAR size for utf8mb4 row; switch to TEXT/BLOB later if needed.
+    # See https://sheeri.org/max-varchar-size/
+    ciphertext = db.Column(db.String(16383), nullable=False)
     hash_type = db.Column(db.Integer, nullable=False, index=True)
     cracked = db.Column(db.Boolean, nullable=False)
     recovered_at = db.Column(db.DateTime, nullable=True)

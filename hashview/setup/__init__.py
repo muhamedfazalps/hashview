@@ -107,7 +107,7 @@ def add_default_dynamic_wordlists(db :SQLAlchemy):
         name     = '(DYNAMIC) All Recovered Passwords',
         owner_id = 1,
         type     = 'dynamic',
-        path     = wordlist_all_recovered_passwords_path,               # Can we make this a relative path?
+        path     = wordlist_all_recovered_passwords_path,  # consider relative path
         checksum = get_filehash(wordlist_all_recovered_passwords_path),
         size     = 0,
     )
@@ -180,13 +180,12 @@ def add_admin_user(db :SQLAlchemy, bcrypt :Bcrypt):
 
 def admin_pass_needs_changed(db :SQLAlchemy, bcrypt :Bcrypt) -> bool:
     result = db.session.query(Users.password).filter_by(id=1).first()
-    if (result is None):
+    if result is None:
         return True
-    else:
-        current_password_hash, *_ = result
-        return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
+    current_password_hash, *_ = result
+    return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
 
 
 def settings_needs_added(db :SQLAlchemy) -> bool:
     settings = db.session.query(Settings).first()
-    return (settings is None)
+    return settings is None

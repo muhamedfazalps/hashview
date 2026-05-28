@@ -39,10 +39,9 @@ def do_gui_setup_if_needed():
 
     else:
         logger.info('Admin password needs changed.')
-        if (url_for('setup.admin_pass_get') != parsed_url.path):
+        if url_for('setup.admin_pass_get') != parsed_url.path:
             return redirect(url_for('setup.admin_pass_get'))
-        else:
-            return
+        return None
 
     from hashview.setup import settings_needs_added
     if not settings_needs_added(db):
@@ -50,10 +49,9 @@ def do_gui_setup_if_needed():
 
     else:
         logger.info('Settings needs created.')
-        if (url_for('setup.settings_get') != parsed_url.path):
+        if url_for('setup.settings_get') != parsed_url.path:
             return redirect(url_for('setup.settings_get'))
-        else:
-            return
+        return None
 
 
 def setup_defaults_if_needed():
@@ -72,7 +70,7 @@ def setup_defaults_if_needed():
         config.attributes['configure_logger'] = False
         alembic.command.upgrade(config, 'head')
         logger.info('Upgrading Database if needed is Complete.')
-    except:
+    except Exception:
         logger.exception('Upgrading Database failed.')
 
     try:
@@ -81,9 +79,14 @@ def setup_defaults_if_needed():
         logger.info('Clearing Scheduled Jobs.')
         scheduler.remove_all_jobs()
         logger.info('Adding Default Scheduled Jobs Progressing.')
-        scheduler.add_job(id='DATA_RETENTION', func=partial(data_retention_cleanup, current_app), trigger='cron', hour='*')
+        scheduler.add_job(
+            id='DATA_RETENTION',
+            func=partial(data_retention_cleanup, current_app),
+            trigger='cron',
+            hour='*',
+        )
         logger.info('Adding Default Scheduled Jobs is Complete.')
-    except:
+    except Exception:
         logger.exception('Adding Default Scheduled Jobs failed.')
 
     try:
@@ -93,7 +96,7 @@ def setup_defaults_if_needed():
         if admin_user_needs_added(db):
             logger.info('Adding Admin User.')
             add_admin_user(db, bcrypt)
-    except:
+    except Exception:
         logger.exception('Adding Admin User failed.')
 
     try:
@@ -102,7 +105,7 @@ def setup_defaults_if_needed():
         if default_dynamic_wordlists_need_added(db):
             logger.info('Adding Default Dynamic Wordlist.')
             add_default_dynamic_wordlists(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Dynamic Wordlists failed.')
 
     try:
@@ -111,7 +114,7 @@ def setup_defaults_if_needed():
         if default_static_wordlist_need_added(db):
             logger.info('Adding Default Static Wordlist.')
             add_default_static_wordlist(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Static Wordlist failed.')
 
     try:
@@ -120,7 +123,7 @@ def setup_defaults_if_needed():
         if default_rules_need_added(db):
             logger.info('Adding Default Rules.')
             add_default_rules(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Rules failed.')
 
     try:
@@ -129,7 +132,7 @@ def setup_defaults_if_needed():
         if default_tasks_need_added(db):
             logger.info('Adding Default Tasks.')
             add_default_tasks(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Tasks failed.')
 
 
@@ -137,8 +140,7 @@ def jinja_hex_decode(text):
     """ jinja2 filter to convert hex to bytes """
     if not text:
         return text #if all hashes in a file are already cracked
-    else:
-        return bytes.fromhex(text).decode('latin-1')
+    return bytes.fromhex(text).decode('latin-1')
 
 
 def create_app():
@@ -151,7 +153,8 @@ def create_app():
         'version': 1,
         'formatters': {
             'default': {
-                'format': '%(asctime)s [%(levelname)-8s] for %(name)s: %(message)s in (%(module)s:%(lineno)d)',
+                'format': ('%(asctime)s [%(levelname)-8s] for %(name)s: '
+                           '%(message)s in (%(module)s:%(lineno)d)'),
             }
         },
         'handlers': {
