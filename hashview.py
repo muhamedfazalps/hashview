@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Main Entry Point when running as standalone script"""
-import sys
-import logging
 import argparse
 import builtins
+import logging
+import os
+import sys
+import time
 import traceback
 
+from functools import partial
 from pathlib import Path
 from typing import Optional
-from functools import partial
 
 from hashview import create_app
 
@@ -17,20 +19,20 @@ def ensure_authlib():
     """Ensuring authlib module is installed"""
 
     try:
-        from authlib import jose
-    except:
+        import authlib.jose  # noqa: F401  pylint: disable=unused-import
+    except Exception:
         print('\nPlease make sure that your dependencies are up to date (including installing authlib).')
-        exit(1)
+        sys.exit(1)
 
 
 def ensure_requests():
     """Ensuring requests module is installed"""
 
     try:
-        import requests
-    except:
+        import requests  # noqa: F401  pylint: disable=unused-import
+    except Exception:
         print('\nPlease make sure that your dependencies are up to date (including installing requests).')
-        exit(1)
+        sys.exit(1)
 
 
 def ensure_flask_bcrypt():
@@ -38,11 +40,11 @@ def ensure_flask_bcrypt():
 
     try:
         import flask_bcrypt
-        if '1.0.1' >=flask_bcrypt.__version__:
-            raise Exception('old version')
-    except:
+        if '1.0.1' >= flask_bcrypt.__version__:
+            raise RuntimeError('old version')
+    except Exception:
         print('\nPlease make sure that your dependencies are up to date (including replacing Flask-Bcrypt with Bcrypt-Flask).')
-        #exit(1)
+        #sys.exit(1)
 
 
 def ensure_admin_account_cli(db, bcrypt):
