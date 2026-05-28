@@ -74,9 +74,7 @@ After you've installed hashview you will need to install a hashview-agent. The a
 You will need to decompress the package and run the `hashview-agent.py` script. Upon initial execution it will prompt you for information about your hashview server.
 ```
 tar -xzvf hashview-agent.<version>.tgz
-cd install/
-cp -r hashview-agent ../
-cd ../hashview-agent
+cd hashview-agent
 pip3 install -r requirements.txt
 python3 ./hashview-agent.py
 ```

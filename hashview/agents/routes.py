@@ -113,7 +113,7 @@ def agents_download():
     """Function to download agent"""
     version = hashview.__version__
     filename = 'hashview-agent.' + version + '.tgz'
-    cmd = 'tar -czf hashview/control/tmp/' + filename + ' install/hashview-agent/*'
+    cmd = 'tar -czf hashview/control/tmp/' + filename + ' -C install hashview-agent'
     os.system(cmd)
 
     return send_from_directory('control/tmp', filename, as_attachment=True)
