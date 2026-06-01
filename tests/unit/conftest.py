@@ -1,0 +1,74 @@
+"""Conftest for unit tests.
+
+Overrides the parent (tests/) autouse fixtures `ensure_setup` and
+`configure_page`, which require Playwright + a live HTTP server. Unit tests
+here use Flask's test_client against an in-memory SQLite app, so those
+e2e-specific fixtures must not run (and must not pull in `live_server`,
+which `pytest.skip(...)`s without `HASHVIEW_E2E_BASE_URL`).
+
+Also provides shared fixtures for unit tests:
+
+- ``app`` — a Flask app built via ``create_app(testing=True, ...)`` with an
+  in-memory SQLite DB, all tables created, CSRF disabled, mail suppressed.
+- ``client`` — Flask's test_client for ``app``.
+- ``db_session`` — convenience access to the SQLAlchemy session bound to
+  ``app``.
+"""
+
+import pytest
+
+from hashview import create_app
+from hashview.models import db as _db
+
+
+@pytest.fixture(autouse=True)
+def ensure_setup():
+    """Override parent autouse so live_server isn't requested for unit tests."""
+    return
+
+
+@pytest.fixture(autouse=True)
+def configure_page():
+    """Override parent autouse so the Playwright `page` fixture isn't pulled."""
+    return
+
+
+def _build_test_app():
+    app = create_app(
+        testing=True,
+        config_overrides={
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+            "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+            "SQLALCHEMY_ENGINE_OPTIONS": {
+                "connect_args": {"check_same_thread": False},
+            },
+            "WTF_CSRF_ENABLED": False,
+            "MAIL_SUPPRESS_SEND": True,
+            "SECRET_KEY": "unit-test-secret",
+            "SERVER_NAME": "localhost.test",
+            "HASHVIEW_SKIP_SETUP": True,
+            "HASHVIEW_SKIP_GUI_SETUP": True,
+            "HASHVIEW_DISABLE_SCHEDULER": True,
+        },
+    )
+    return app
+
+
+@pytest.fixture()
+def app():
+    app = _build_test_app()
+    with app.app_context():
+        _db.create_all()
+        yield app
+        _db.session.remove()
+        _db.drop_all()
+
+
+@pytest.fixture()
+def client(app):
+    return app.test_client()
+
+
+@pytest.fixture()
+def db_session(app):
+    return _db.session

@@ -144,8 +144,10 @@ def jinja_hex_decode(text):
     return bytes.fromhex(text).decode('latin-1')
 
 
-def create_app():
+def create_app(testing=False, config_overrides=None):
     app = Flask(__name__)
+    if testing:
+        app.config["TESTING"] = True
     # Templates use the .html.j2 extension, which Flask's default
     # select_autoescape() does not cover. Without this, every {{ var }}
     # in every template renders raw - stored XSS via any user-supplied
@@ -186,8 +188,11 @@ def create_app():
                 .isoformat(sep="T", timespec="milliseconds")
     )
 
-    from hashview.config import Config
-    app.config.from_object(Config)
+    if not testing:
+        from hashview.config import Config
+        app.config.from_object(Config)
+    if config_overrides:
+        app.config.update(config_overrides)
 
     from hashview.models import db
     db.init_app(app)
@@ -198,7 +203,8 @@ def create_app():
 
     from hashview.scheduler import scheduler
     scheduler.init_app(app)
-    scheduler.start()
+    if not (testing or app.config.get("HASHVIEW_DISABLE_SCHEDULER")):
+        scheduler.start()
 
     from hashview.users.routes import bcrypt
     bcrypt.init_app(app)
@@ -249,9 +255,11 @@ def create_app():
     app.add_template_filter(jinja_hex_decode)
     app.add_template_global(get_application_version, get_application_version.__name__)
 
-    with app.app_context():
-        setup_defaults_if_needed()
+    if not (testing or app.config.get("HASHVIEW_SKIP_SETUP")):
+        with app.app_context():
+            setup_defaults_if_needed()
 
-    app.before_request(do_gui_setup_if_needed)
+    if not app.config.get("HASHVIEW_SKIP_GUI_SETUP"):
+        app.before_request(do_gui_setup_if_needed)
 
     return app

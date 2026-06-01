@@ -1,0 +1,173 @@
+"""Unit tests for hash file parsers in ``hashview.utils.utils``.
+
+These tests pin parser behavior for the file formats the app supports:
+- **pwdump**: filters out machine accounts (``trailing $``) AND ``$_history``
+  entries (the AD-related fix called out in the CHANGELOG)
+- **shadow**: extracts username + crypt-style hash
+- **NetNTLM (5500/5600)**: filters machine accounts, uppercases the
+  username, lowercases the ciphertext parts
+- **hash_only**: handles non-1000 hash types
+
+The parsers commit rows to the DB via ``import_hash_only`` /
+``import_hashfilehashes``, so we use an in-memory SQLite app from the unit
+conftest.
+"""
+
+import pytest
+
+from hashview.models import HashfileHashes, Hashes, Hashfiles, Users, db
+from hashview.utils.utils import import_hashfilehashes
+
+
+def _make_user_and_hashfile() -> int:
+    user = Users(
+        first_name="t",
+        last_name="u",
+        email_address="t@example.com",
+        password="x" * 60,
+        admin=True,
+    )
+    db.session.add(user)
+    db.session.commit()
+    hashfile = Hashfiles(
+        name="t.txt",
+        customer_id=1,
+        owner_id=user.id,
+    )
+    db.session.add(hashfile)
+    db.session.commit()
+    return hashfile.id
+
+
+def _decode_username(stored_hex: str) -> str:
+    return bytes.fromhex(stored_hex).decode("latin-1")
+
+
+def _all_usernames(hashfile_id: int):
+    return {
+        _decode_username(hfh.username)
+        for hfh in HashfileHashes.query.filter_by(hashfile_id=hashfile_id).all()
+        if hfh.username
+    }
+
+
+@pytest.mark.security
+def test_pwdump_filters_machine_accounts_and_history(app, tmp_path):
+    """Lines ending in ``$`` (machine accounts) and ``$_history`` lines should
+    be dropped during pwdump import."""
+    hashfile_id = _make_user_and_hashfile()
+    path = tmp_path / "pwdump.txt"
+    path.write_text(
+        "\n".join([
+            # real user — should land
+            "alice:1001:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c:::",
+            # machine account — should be skipped
+            "WIN10$:1002:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586d:::",
+            # history entry — should be skipped
+            "alice_history0:1003:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586e:::",
+            "alice$_history1:1004:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586f:::",
+        ]) + "\n"
+    )
+
+    import_hashfilehashes(
+        hashfile_id=hashfile_id,
+        hashfile_path=str(path),
+        file_type="pwdump",
+        hash_type="1000",
+    )
+
+    usernames = _all_usernames(hashfile_id)
+    assert "alice" in usernames
+    assert "WIN10$" not in usernames
+    assert not any("_history" in u for u in usernames)
+
+
+@pytest.mark.security
+def test_shadow_imports_username_and_hash(app, tmp_path):
+    hashfile_id = _make_user_and_hashfile()
+    path = tmp_path / "shadow"
+    # username:$6$salt$hash:...
+    path.write_text(
+        "root:$6$rounds=5000$abc$ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ:18000:0:99999:7:::\n"
+        "alice:$6$saltyy$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:18000:0:99999:7:::\n"
+    )
+
+    import_hashfilehashes(
+        hashfile_id=hashfile_id,
+        hashfile_path=str(path),
+        file_type="shadow",
+        hash_type="1800",
+    )
+
+    usernames = _all_usernames(hashfile_id)
+    assert usernames == {"root", "alice"}
+
+
+@pytest.mark.security
+def test_netntlm_filters_machine_accounts_and_uppercases_username(app, tmp_path):
+    """NetNTLMv1/v2 import should drop lines whose username ends in ``$``
+    and store the username uppercased."""
+    hashfile_id = _make_user_and_hashfile()
+    path = tmp_path / "netntlm.txt"
+    # Format: USER::DOMAIN:server_chal:nt_resp:lm_resp
+    path.write_text(
+        "alice::CORP:1122334455667788:"
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+        "1122334455667788AABBCCDDEEFF1122334455667788AABBCCDD\n"
+        "MACHINE$::CORP:1122334455667788:"
+        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:"
+        "1122334455667788AABBCCDDEEFF1122334455667788AABBCCDD\n"
+    )
+
+    import_hashfilehashes(
+        hashfile_id=hashfile_id,
+        hashfile_path=str(path),
+        file_type="NetNTLM",
+        hash_type="5500",
+    )
+
+    usernames = _all_usernames(hashfile_id)
+    assert "ALICE" in usernames
+    assert not any(u.endswith("$") for u in usernames)
+
+
+@pytest.mark.security
+def test_hash_only_non_1000_preserves_case(app, tmp_path):
+    """For hash_type=0 (MD5), import should preserve the input as-is (no
+    lowercasing — that's reserved for NTLM/SHA1)."""
+    hashfile_id = _make_user_and_hashfile()
+    path = tmp_path / "md5.txt"
+    path.write_text("5F4DCC3B5AA765D61D8327DEB882CF99\n")  # md5("password")
+
+    import_hashfilehashes(
+        hashfile_id=hashfile_id,
+        hashfile_path=str(path),
+        file_type="hash_only",
+        hash_type="0",
+    )
+
+    rows = (
+        Hashes.query.join(HashfileHashes, Hashes.id == HashfileHashes.hash_id)
+        .filter(HashfileHashes.hashfile_id == hashfile_id)
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].ciphertext == "5F4DCC3B5AA765D61D8327DEB882CF99"
+
+
+@pytest.mark.security
+def test_hash_only_ntlm_lowercases(app, tmp_path):
+    """hash_type 1000 (NTLM) lower-cases on import (hashcat returns lowercase)."""
+    hashfile_id = _make_user_and_hashfile()
+    path = tmp_path / "ntlm.txt"
+    path.write_text("8846F7EAEE8FB117AD06BDD830B7586C\n")
+
+    import_hashfilehashes(
+        hashfile_id=hashfile_id,
+        hashfile_path=str(path),
+        file_type="hash_only",
+        hash_type="1000",
+    )
+
+    row = Hashes.query.first()
+    assert row.ciphertext == "8846f7eaee8fb117ad06bdd830b7586c"
