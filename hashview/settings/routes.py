@@ -48,10 +48,10 @@ def settings_list():
             database_version = 'error'
 
         return render_template(
-            'settings.html',
+            'settings.html.j2',
             title               = 'settings',
             settings            = settings,
-            hashview_form        = hashview_form,
+            HashviewForm        = hashview_form,
             tmp_folder_size     = tmp_folder_size,
             application_version = hashview.__version__,
             database_version    = database_version,

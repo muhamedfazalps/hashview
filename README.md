@@ -1,4 +1,4 @@
-# Hashview v0.8.1
+# Hashview v0.8.2
 
 >**Hashview** is a tool for security professionals to help organize and automate the repetitious tasks related to password cracking. It is broken into two compoents, the Hashview Server, and Hashview Agent. The Hashview Server is a web application that manages one or more agents, deployed by you on dedicated hardware. (note you can run the server and agent on the same machine). Hashview strives to bring constiency in your hashcat tasks while delivering analytics with pretty pictures ready for ctrl+c, ctrl+v into your reports.
 
@@ -6,13 +6,13 @@
 
 ## Server Requirements
 
-1. Python 3.7+
+1. Python 3.10+
 2. Mysql DB installed with known username/password
 3. Access to a SMTP email service (used for password resets and notifications)
 
 ## Agent Requirements
 
-1. Python 3.7+
+1. Python 3.10+
 2. Hashcat 6.2.x+
 
 ## Installation
@@ -43,13 +43,16 @@ exit
 The following are to install hashview after the mysql db has been setup.
 
 ```
-sudo apt-get install python3 python3-pip python3-flask
+sudo apt-get install python3 python3-pip python3-venv
 git clone https://github.com/hashview/hashview
 cd hashview
-pip3 install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ./setup.py
 ./hashview.py # (note you can add a --debug if you are attempting to troubleshoot an issue)
 ```
+Note: run `./setup.py` and `./hashview.py` with the virtual environment active (`source venv/bin/activate`).
 
 #### 4) Log into your hashview server
 Navigate to your server, default port is 8443. https://IP:8443
@@ -71,9 +74,7 @@ After you've installed hashview you will need to install a hashview-agent. The a
 You will need to decompress the package and run the `hashview-agent.py` script. Upon initial execution it will prompt you for information about your hashview server.
 ```
 tar -xzvf hashview-agent.<version>.tgz
-cd install/
-cp -r hashview-agent ../
-cd ../hashview-agent
+cd hashview-agent
 pip3 install -r requirements.txt
 python3 ./hashview-agent.py
 ```

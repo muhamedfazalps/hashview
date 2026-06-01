@@ -18,8 +18,7 @@ def notifications_list():
     jobs = Jobs.query.all()
     hashes = db.session.query(Hashes).join(HashNotifications, Hashes.id == HashNotifications.hash_id).all()
 
-    return render_template('notifications.html', title='Notifications', job_notifications=job_notifications, hash_notifications=hash_notifications, jobs=jobs, hashes=hashes, hashfiles=hashfiles)
-
+    return render_template('notifications.html.j2', title='Notifications', job_notifications=job_notifications, hash_notifications=hash_notifications, jobs=jobs, hashes=hashes, hashfiles=hashfiles)
 
 @notifications.route("/notifications/delete/job/<int:notification_id>", methods=['GET'])
 @login_required

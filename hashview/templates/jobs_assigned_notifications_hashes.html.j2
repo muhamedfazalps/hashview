@@ -1,0 +1,145 @@
+{% extends "layout.html.j2" %}
+{% block header %}
+<script>
+    document.addEventListener("DOMContentLoaded", function(){
+    var checkbox = document.getElementById('all_cb')
+    var checkboxes = document.querySelector('#hash_options').querySelectorAll('input[type="checkbox"]');
+    checkbox.addEventListener('change', (event) => {
+        if (event.currentTarget.checked) 
+            set_boxes(checkboxes,true);
+         else 
+            set_boxes(checkboxes,false); 
+      })
+    });
+    function set_boxes(checkboxes, option){
+        for(var i=0; i < checkboxes.length; i++)
+            checkboxes[i].checked = option;
+    }
+</script>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+{% endblock header %}
+{% block content %}
+<article class="media content-section">
+    <div class="media-body">
+        <div class="card">
+            <h4 class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    Hash Notifications
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Select the hashes you wish to be notified by once cracked. Note, cracked hash notifications will persist after job has been completed or removed." style="margin-left:5px;"></i>
+                </div>
+            </h4>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                    <div class="steps-horizontal">
+                        <div class="step-horizontal complete">
+                            <div class="step-icon">
+                                <i class="fa fa-briefcase"></i>
+                            </div>
+                            <div class="step-title">Step 1</div>
+                            <div class="step-description">Job Information</div>
+                        </div>
+                        <div class="step-horizontal complete">
+                            <div class="step-icon">
+                                <i class="fa fa-file-text"></i>
+                            </div>
+                            <div class="step-title">Step 2</div>
+                            <div class="step-description">Hashfile Assignment</div>
+                        </div>
+                        <div class="step-horizontal complete">
+                            <div class="step-icon">
+                                <i class="fa fa-database"></i>
+                            </div>
+                            <div class="step-title">Step 3</div>
+                            <div class="step-description">Previously Cracked</div>
+                        </div>
+                        <div class="step-horizontal active">
+                            <div class="step-icon">
+                                <i class="fa fa-bell"></i>
+                            </div>
+                            <div class="step-title">Step 4</div>
+                            <div class="step-description">Notifications</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-list"></i>
+                            </div>
+                            <div class="step-title">Step 5</div>
+                            <div class="step-description">Tasks</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-check"></i>
+                            </div>
+                            <div class="step-title">Step 6</div>
+                            <div class="step-description">Review</div>
+                        </div>                
+                    </div> 
+                </li>
+            </ul>           
+            <div class="card-body ">
+                <div class="content-section">
+                    <form method="POST" action="">
+                        <div class="form-group">
+                            <table id="hash_options" class="table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">
+                                            Notify <input id="all_cb" class="mt-1 mr-1" title="Check/uncheck all" style="position: absolute; left:80px;" type="checkbox"> 
+                                        </th>
+                                        <th scope="col">
+                                            User
+                                        </th>
+                                        <th scope="col">
+                                            Hash
+                                        </th>                 
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <div class="form-check">
+                                        {% for hash in hashes %}
+                                            <tr>
+                                                <td style="vertical-align:middle;">
+                                                    {% set has_notification = namespace(value=0) %}
+                                                    {% for entry in existing_hash_notifications %}
+                                                        {% if entry.hash_id |string() == hash[0] |string() %}
+                                                            {% set has_notification.value = 1 %}
+                                                            <input class="form-check-input center" type="checkbox" name='selected' value="{{hash[0]}}" checked>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                    {% if has_notification.value == 0 %}
+                                                        <input class="form-check-input center" type="checkbox" name='selected' value="{{hash[0]}}">
+                                                    {% endif %}
+                                                </td>
+                                                <td style="vertical-align:middle;">
+                                                    {% if hash[1] %}
+                                                        {{ hash[1] | jinja_hex_decode()}}
+                                                    {% else %}
+                                                        <i>none</i>
+                                                    {% endif %}
+                                                </td>
+                                                <td style="vertical-align:middle; overflow-wrap:break-word; word-break:break-word;">
+                                                    {{ hash[2]}}
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </div>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="form-group">
+                            <a class="btn btn-secondary" href="{{ url_for('jobs.jobs_assign_notifications', job_id = job.id) }}">Back</a>
+                            <input type="submit" class="btn btn-primary pull-right">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</article>
+{% endblock content %}

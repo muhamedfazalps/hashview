@@ -5,12 +5,13 @@ from flask import Flask
 from flask import request
 from flask import url_for
 from flask import redirect
+from jinja2 import select_autoescape
 from pathlib import Path
 from functools import partial
 from logging.config import dictConfig as loggingDictConfig
 
 
-__version__ = '0.8.1'
+__version__ = '0.8.2'
 
 
 def get_application_version() -> str:
@@ -39,10 +40,9 @@ def do_gui_setup_if_needed():
 
     else:
         logger.info('Admin password needs changed.')
-        if (url_for('setup.admin_pass_get') != parsed_url.path):
+        if url_for('setup.admin_pass_get') != parsed_url.path:
             return redirect(url_for('setup.admin_pass_get'))
-        else:
-            return
+        return None
 
     from hashview.setup import settings_needs_added
     if not settings_needs_added(db):
@@ -50,10 +50,9 @@ def do_gui_setup_if_needed():
 
     else:
         logger.info('Settings needs created.')
-        if (url_for('setup.settings_get') != parsed_url.path):
+        if url_for('setup.settings_get') != parsed_url.path:
             return redirect(url_for('setup.settings_get'))
-        else:
-            return
+        return None
 
 
 def setup_defaults_if_needed():
@@ -72,7 +71,7 @@ def setup_defaults_if_needed():
         config.attributes['configure_logger'] = False
         alembic.command.upgrade(config, 'head')
         logger.info('Upgrading Database if needed is Complete.')
-    except:
+    except Exception:
         logger.exception('Upgrading Database failed.')
 
     try:
@@ -81,9 +80,14 @@ def setup_defaults_if_needed():
         logger.info('Clearing Scheduled Jobs.')
         scheduler.remove_all_jobs()
         logger.info('Adding Default Scheduled Jobs Progressing.')
-        scheduler.add_job(id='DATA_RETENTION', func=partial(data_retention_cleanup, current_app), trigger='cron', hour='*')
+        scheduler.add_job(
+            id='DATA_RETENTION',
+            func=partial(data_retention_cleanup, current_app),
+            trigger='cron',
+            hour='*',
+        )
         logger.info('Adding Default Scheduled Jobs is Complete.')
-    except:
+    except Exception:
         logger.exception('Adding Default Scheduled Jobs failed.')
 
     try:
@@ -93,17 +97,17 @@ def setup_defaults_if_needed():
         if admin_user_needs_added(db):
             logger.info('Adding Admin User.')
             add_admin_user(db, bcrypt)
-    except:
+    except Exception:
         logger.exception('Adding Admin User failed.')
 
     try:
-        from hashview.setup import add_default_dynamic_wordlist
-        from hashview.setup import default_dynamic_wordlist_need_added
-        if default_dynamic_wordlist_need_added(db):
+        from hashview.setup import add_default_dynamic_wordlists
+        from hashview.setup import default_dynamic_wordlists_need_added
+        if default_dynamic_wordlists_need_added(db):
             logger.info('Adding Default Dynamic Wordlist.')
-            add_default_dynamic_wordlist(db)
-    except:
-        logger.exception('Adding Default Dynamic Wordlist failed.')
+            add_default_dynamic_wordlists(db)
+    except Exception:
+        logger.exception('Adding Default Dynamic Wordlists failed.')
 
     try:
         from hashview.setup import add_default_static_wordlist
@@ -111,7 +115,7 @@ def setup_defaults_if_needed():
         if default_static_wordlist_need_added(db):
             logger.info('Adding Default Static Wordlist.')
             add_default_static_wordlist(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Static Wordlist failed.')
 
     try:
@@ -120,7 +124,7 @@ def setup_defaults_if_needed():
         if default_rules_need_added(db):
             logger.info('Adding Default Rules.')
             add_default_rules(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Rules failed.')
 
     try:
@@ -129,7 +133,7 @@ def setup_defaults_if_needed():
         if default_tasks_need_added(db):
             logger.info('Adding Default Tasks.')
             add_default_tasks(db)
-    except:
+    except Exception:
         logger.exception('Adding Default Tasks failed.')
 
 
@@ -137,12 +141,19 @@ def jinja_hex_decode(text):
     """ jinja2 filter to convert hex to bytes """
     if not text:
         return text #if all hashes in a file are already cracked
-    else:
-        return bytes.fromhex(text).decode('latin-1')
+    return bytes.fromhex(text).decode('latin-1')
 
 
 def create_app():
     app = Flask(__name__)
+    # Templates use the .html.j2 extension, which Flask's default
+    # select_autoescape() does not cover. Without this, every {{ var }}
+    # in every template renders raw - stored XSS via any user-supplied
+    # field (job name, customer name, agent name, etc.).
+    app.jinja_env.autoescape = select_autoescape(
+        enabled_extensions=("html", "htm", "xml", "xhtml", "j2"),
+        default_for_string=True,
+    )
 
     # https://flask.palletsprojects.com/en/2.2.x/logging/
     # When you want to configure logging for your project, you should do it as
@@ -151,7 +162,8 @@ def create_app():
         'version': 1,
         'formatters': {
             'default': {
-                'format': '%(asctime)s [%(levelname)-8s] for %(name)s: %(message)s in (%(module)s:%(lineno)d)',
+                'format': ('%(asctime)s [%(levelname)-8s] for %(name)s: '
+                           '%(message)s in (%(module)s:%(lineno)d)'),
             }
         },
         'handlers': {
@@ -213,6 +225,7 @@ def create_app():
     from hashview.analytics.routes import analytics
     from hashview.notifications.routes import notifications
     from hashview.searches.routes import searches
+    from hashview.wrapped.routes import wrapped
     from hashview.setup.routes import blueprint as setup_blueprint
 
     app.register_blueprint(agents)
@@ -230,6 +243,7 @@ def create_app():
     app.register_blueprint(analytics)
     app.register_blueprint(notifications)
     app.register_blueprint(searches)
+    app.register_blueprint(wrapped)
     app.register_blueprint(setup_blueprint)
 
     app.add_template_filter(jinja_hex_decode)

@@ -30,22 +30,26 @@ def try_send_email(user, subject :str, plaintext_body :str, mailer :Mail) -> boo
         error = f"failed to send message with mailer: {mailer!r}"
         mailer.send(message)
 
-    except:
+    except Exception:
         return error
 
-    else:
-        return None
+    return None
 
 
 def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
     """ description needed """
+
+    import time
 
     from pathlib import Path
     from datetime import datetime
     from datetime import timedelta
     from textwrap import dedent
 
-    from hashview.models import Users, Settings, Jobs, JobTasks, JobNotifications, HashfileHashes, HashNotifications, Hashes, Hashfiles
+    from hashview.models import (
+        Users, Settings, Jobs, JobTasks, JobNotifications,
+        HashfileHashes, HashNotifications, Hashes, Hashfiles,
+    )
 
     try_send_email_ = partial(try_send_email, mailer=mailer)
 
@@ -64,7 +68,8 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
         message = dedent(f'''\
             Hello {user.first_name},
 
-            In accordance to the data retention policy of {retention_period} days, your job "{job.name}" was deleted.
+            In accordance to the data retention policy of {retention_period} days,
+            your job "{job.name}" was deleted.
         ''')
         if (error := try_send_email_(user, subject, message)):
             logger.error(error)
@@ -77,7 +82,8 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
 
         logger.debug("Job Name: %s  Owner ID: %s has been Deleted", job.name, job.owner_id)
 
-    # Remove Hashfiles (note hashfiles might be associated to a job thats < retention period. Those jobs should be removed too)
+    # Remove Hashfiles (jobs younger than the retention period that reference
+    # these hashfiles get removed too).
     hashfiles = Hashfiles.query.filter(Hashfiles.uploaded_at < filter_after).all()
     for hashfile in hashfiles:
         # Job, jobtask and job notifications
@@ -89,7 +95,9 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
             message = dedent(f'''\
                 Hello ' + str(user.first_name) + ',
 
-                In accordance to the data retention policy of {retention_period} days, your hashfile "{hashfile.name}" was associated with a job "{job.name}". This job was deleted.
+                In accordance to the data retention policy of {retention_period} days,
+                your hashfile "{hashfile.name}" was associated with a job "{job.name}".
+                This job was deleted.
             ''')
             if (error := try_send_email_(user, subject, message)):
                 logger.error(error)
@@ -100,7 +108,11 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
             db.session.delete(job)
             db.session.commit()
 
-            logger.debug("Job Name: %s  Owner ID: %s has been Deleted, it was associated with Hashfile ID: %s, Hashfile Name: %s", job.name, job.owner_id, hashfile.id, hashfile.name)
+            logger.debug(
+                "Job Name: %s  Owner ID: %s has been Deleted, "
+                "it was associated with Hashfile ID: %s, Hashfile Name: %s",
+                job.name, job.owner_id, hashfile.id, hashfile.name,
+            )
 
         # Hashfiles, HashfileHashes and Hash notifications
         logger.debug('Hashfile Name: %s    Owner ID: %s', hashfile.name, hashfile.owner_id)
@@ -110,7 +122,8 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
         message = dedent(f'''\
             Hello {user.first_name},
 
-            In accordance to the data retention policy of {retention_period} days, your hashfile "{hashfile.name}" was removed.
+            In accordance to the data retention policy of {retention_period} days,
+            your hashfile "{hashfile.name}" was removed.
         ''')
         if (error := try_send_email_(user, subject, message)):
             logger.error(error)
@@ -118,36 +131,50 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
         hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).all()
         for hashfile_hash in hashfile_hashes:
             hashes = Hashes.query.filter_by(id=hashfile_hash.hash_id).filter_by(cracked=0).all()
-            for hash in hashes:
-                # Check to see if our hashfile is the ONLY hashfile that has this hash
-                # if duplicates exist, they can still be removed. Once the hashfile_hash entry is remove,
-                # the total number of matching hash_id's will be reduced to < 2 and then can be deleted
-                hashfile_cnt = HashfileHashes.query.filter_by(hash_id=hash.id).distinct('hashfile_id').count()
+            for hash_entry in hashes:
+                # Only delete this hash if it isn't shared with another hashfile.
+                # If duplicates exist they can still be removed once the
+                # hashfile_hash entry is gone and the count drops below 2.
+                hashfile_cnt = (
+                    HashfileHashes.query.filter_by(hash_id=hash_entry.id)
+                    .distinct('hashfile_id').count()
+                )
                 if hashfile_cnt < 2:
-                    db.session.delete(hash)
+                    db.session.delete(hash_entry)
                     db.session.commit()
                     HashNotifications.query.filter_by(hash_id=hashfile_hash.hash_id).delete()
             db.session.delete(hashfile_hash)
         db.session.delete(hashfile)
         db.session.commit()
 
-        logger.debug("Hashfile ID: %s  Hashfile Name: %s has been Deleted", hashfile.id, hashfile.name)
+        logger.debug(
+            "Hashfile ID: %s  Hashfile Name: %s has been Deleted",
+            hashfile.id, hashfile.name,
+        )
 
     # Clean temp folder of files older than RETENTION PERIOD
     tmp_directory = Path('hashview/control/tmp').resolve()
-    retention_limit = datetime.time() - retention_period * 86400
+    retention_limit = time.time() - retention_period * 86400
     for child in tmp_directory.iterdir():
         if '.gitignore' == child.name:
-            logger.debug('DataRetentionCleanup.TempFile Progressing with StepResult(Ignored: %s).', child)
+            logger.debug(
+                'DataRetentionCleanup.TempFile Progressing with StepResult(Ignored: %s).',
+                child,
+            )
             continue
 
         if child.stat().st_mtime < retention_limit:
             child.unlink()
-            logger.debug('DataRetentionCleanup.TempFile Progressing with StepResult(Removed: %s).', child)
+            logger.debug(
+                'DataRetentionCleanup.TempFile Progressing with StepResult(Removed: %s).',
+                child,
+            )
             continue
 
-        else:
-            logger.debug('DataRetentionCleanup.TempFile Progressing with StepResult(LeftAlone: %s).', child)
+        logger.debug(
+            'DataRetentionCleanup.TempFile Progressing with StepResult(LeftAlone: %s).',
+            child,
+        )
 
 
 def data_retention_cleanup(app :Flask):
@@ -163,8 +190,10 @@ def data_retention_cleanup(app :Flask):
             logger = app.logger
             _data_retention_cleanup_inner(db, mailer, logger)
 
-        except:
-            app.logger.exception('DataRetentionCleanup ScheduledJob is Complete with Result(Failure).')
+        except Exception:
+            app.logger.exception(
+                'DataRetentionCleanup ScheduledJob is Complete with Result(Failure).')
 
         else:
-            app.logger.info('DataRetentionCleanup ScheduledJob is Complete with Result(Success).')
+            app.logger.info(
+                'DataRetentionCleanup ScheduledJob is Complete with Result(Success).')

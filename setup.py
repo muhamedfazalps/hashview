@@ -1,16 +1,51 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import sys
 import os
+import re
+import secrets
+import subprocess
+import importlib.metadata
 from getpass import getpass
 
 # Step 1
 # Check version of python
-if sys.version_info.major < 3:
-    print('You must be running python 3.6 or newer')
+if sys.version_info < (3, 10):
+    print('You must be running python 3.10 or newer')
     sys.exit()
-if sys.version_info.minor < 6:
-    print('You must be running python 3.6 or newer')
+
+# Step 1.6
+# Require a virtual environment (PEP 668 externally-managed environments block
+# system-wide pip installs; a venv avoids this and keeps the OS Python clean)
+if sys.prefix == sys.base_prefix:
+    print('Hashview must be installed inside a Python virtual environment.')
+    print('Create and activate one, then re-run setup:')
+    print('  python3 -m venv venv')
+    print('  source venv/bin/activate')
+    print('  pip install -r requirements.txt')
+    print('  ./setup.py')
     sys.exit()
+
+# Step 1.5
+# Check for required python modules and install any that are missing
+def install_and_import(package):
+    try:
+        importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
+
+required_modules = []
+with open('requirements.txt', 'r') as requirements:
+    for entry in requirements:
+        entry = entry.strip()
+        if not entry or entry.startswith('#'):
+            continue
+        name = re.split(r'[<>=!~ ]', entry)[0].strip()
+        if name:
+            required_modules.append(name)
+required_modules += ['transliterate', 'pip']
+
+for module in required_modules:
+    install_and_import(module)
 
 # Step 2
 # Check if running as root
@@ -35,21 +70,16 @@ if step_three_prompt == '1':
     print("See MIGRATION.md")
     sys.exit()
 
-# Install dependencies
-def install_and_import(package):
-    import importlib
-    try:
-        importlib.import_module(package)
-    except ImportError:
-        import pip
-        pip.main(['install', package])
-    finally:
-        globals()[package] = importlib.import_module(package)
+print('\nCollecting Hashview Server Information.')
+server_fqdn = input('Enter the IP or FQDN of the web front end: ')
+while len(server_fqdn) == 0:
+    print('Error: Invalid entry Please try again.')
+    server_fqdn = input('Enter the IP or FQDN of the web front end: ')
 
-
-requirements = open('requirements.txt', 'r')
-for entry in requirements:
-    install_and_import('transliterate')
+server_port = input('Enter the port of the web front end: ')
+while len(server_port) == 0:
+    print('Error: Invalid entry Please try again.')
+    server_port = input('Enter the port of the web front end: ')
 
 print('\nCollecting Hashview Database Configuration Information')
 db_server = input('Enter the IP or hostname of the server running mysql. i.e. 127.0.0.1 or localhost: ')
@@ -90,6 +120,10 @@ else:
 
 # Write config file
 config = open("hashview/config.conf", "w")
+config.write('[SERVER]\n')
+config.write("SERVER_NAME = " + str(server_fqdn) + ":" + str(server_port) + "\n")
+config.write("SECRET_KEY = " + secrets.token_hex(32) + "\n\n")
+
 config.write("[database]\n")
 config.write("host = " + str(db_server) + "\n")
 config.write("username = " + str(db_username) + "\n")
@@ -107,12 +141,19 @@ config.close()
 
 print('Writing hashview config at: hashview/config.conf')
 
+# Create runtime control directories (gitignored, so absent from a fresh clone)
+# that the default-data seeding writes into during the DB build below.
+for control_dir in ('hashview/control/rules', 'hashview/control/wordlists',
+                    'hashview/control/tmp', 'hashview/control/hashes'):
+    os.makedirs(control_dir, exist_ok=True)
+
 # There's probably a better way to do this:
 print('Bulding Database')
 os.system('export FLASK_APP=hashview.py; flask db upgrade')
 
 # Generating SSL Certs
 print('Generating SSL Certificates')
+os.makedirs('hashview/ssl', exist_ok=True)
 os.system('openssl req -x509 -newkey rsa:4096 -nodes -out ./hashview/ssl/cert.pem -keyout ./hashview/ssl/key.pem -days 365')
 
 print('You can now start your instance of hashview by running the following command: ./hashview.py')

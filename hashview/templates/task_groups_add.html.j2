@@ -1,0 +1,47 @@
+{% extends "layout.html.j2" %}
+{% block header %}
+<br>
+<br>
+<br>
+<br>
+<br>
+{% endblock header %}
+{% block content %}
+<article class="media content-section">
+    <div class="media-body">
+        <div class="card">
+            <h4 class="card-header">
+                Create a new Task Group
+                <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Enter the name of the task group." style="margin-left:5px;"></i>
+            </h4>
+            <div class="card-body "> 
+                <div class="content-section">
+                    <form method="POST" action="" enctype="multipart/form-data">
+                        {{ taskGroupsForm.hidden_tag() }}
+                        <fieldset class="form-group">
+                        <div class="form-group">
+                                {{ taskGroupsForm.name.label(class="form-control-label") }}
+
+                                {% if taskGroupsForm.name.errors %}
+                                    {{ taskGroupsForm.name(class="form-control form-control-lg is-invalid") }}
+                                    <div class="invalid-feedback">
+                                        {% for error in taskGroupsForm.name.errors %}
+                                            <span>{{ error }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    {{ taskGroupsForm.name(class="form-control form-control-lg") }}
+                                {% endif %}
+                        </div> 
+                        </fieldset>
+                        <br>
+                        <div class="form-group">
+                            {{ taskGroupsForm.submit(class="btn btn-outline-info pull-right")}}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</article>
+{% endblock content %}

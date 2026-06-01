@@ -23,7 +23,7 @@ def test_login_invalid_email_shows_error(page, live_server):
     page.goto(f"{live_server}/login", wait_until="domcontentloaded")
     page.get_by_label("Email").fill("not-an-email")
     page.get_by_label("Password").fill("not-a-real-password")
-    page.get_by_role("button", name="Login").click()
+    page.get_by_role("button", name="Crack the planet!").click()
     expect(page.get_by_text("Invalid email address", exact=False)).to_be_visible()
 
 
@@ -31,7 +31,7 @@ def test_login_invalid_email_shows_error(page, live_server):
 def test_job_name_required_validation(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     _select_customer(page)
@@ -43,7 +43,7 @@ def test_job_name_required_validation(page, live_server, login):
 def test_job_name_xss_is_escaped(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     xss_payload = '<script id="xss-test">window.__xss=1</script>'
@@ -65,7 +65,7 @@ def test_job_name_xss_is_escaped(page, live_server, login):
 def test_hashfile_validation_rejects_invalid_hash(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Invalid Hash Test")
@@ -88,7 +88,7 @@ def test_hashfile_validation_rejects_invalid_hash(page, live_server, login):
 def test_hashfile_upload_example_file(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Upload Example Hashfile")
@@ -112,7 +112,7 @@ def test_hashfile_upload_example_file(page, live_server, login):
 def test_hashfile_upload_example_pwdump(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Upload Example Pwdump")

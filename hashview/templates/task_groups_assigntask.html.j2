@@ -1,0 +1,75 @@
+{% extends "layout.html.j2" %}
+{% block header %}
+<style>
+    .card-body {
+        overflow: visible !important;
+    }
+    .card {
+        overflow: visible !important;
+    }
+    .media-body {
+        overflow: visible !important;
+    }
+    .content-section {
+        overflow: visible !important;
+    }
+</style>
+<br>
+<br>
+<br>
+<br>
+<br>
+{% endblock header %}
+{% block content %}
+    <article class="media content-section">
+        <div class="media-body">
+            <div class="card">
+                <h4 class="card-header">
+                    Assign Task to Group: {{task_group.name}}
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Each task will be ran once in order selected You can create new tasks by selecting 'tasks' in the above menu." style="margin-left:5px;"></i>
+                </h4>
+                <div class="card-body ">  
+                    <table class="table">
+                    <thead>
+                    <tr>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Type</th>
+                        <th style="text-align:center;" scope="col">Control</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for task_group_task in task_group_tasks %}
+                            {% for task in tasks %}
+                                {% if task_group_task == task.id %}
+                                    <tr>
+                                        <td style="vertical-align:middle;">{{ task.name }}</td>
+                                        <td style="vertical-align:middle;">{{ task.hc_attackmode}}</td>
+                                        <td style="text-align:right; vertical-align:middle;">
+                                            <a class="fa fa-arrow-up btn btn-success btn-sm" href="/task_groups/assigned_tasks/{{task_group.id}}/promote_task/{{task.id}}" role="button" title='Move Up'></a>
+                                            <a class="fa fa-arrow-down btn btn-success btn-sm" href="/task_groups/assigned_tasks/{{task_group.id}}/demote_task/{{task.id}}" role="button" title='Move Down'></a>
+                                            <a class="fa fa-trash btn btn-danger btn-sm" href="/task_groups/assigned_tasks/{{task_group.id}}/remove_task/{{task.id}}" role="button" title=delete></a>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                    </table>
+<div class="d-flex justify-content-between align-items-center" style="margin-bottom: 20px;">
+    <div class="dropdown" style="position: static;">
+<button class="btn btn-success dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+    Add Task
+</button>
+        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" style="position: absolute;">
+            {% for task in tasks %}
+                <a class="dropdown-item" href="/task_groups/assigned_tasks/{{task_group.id}}/add_task/{{task.id}}">{{task.name}}</a>
+            {% endfor %}
+        </div>
+    </div>
+    <a class="btn btn-primary" href="{{url_for('task_groups.task_groups_list')}}" role="button">Done</a>
+</div>
+                </div>
+            </div>
+        </div>
+    </article>
+{% endblock content %}

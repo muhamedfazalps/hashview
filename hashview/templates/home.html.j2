@@ -1,0 +1,348 @@
+{% extends "layout.html.j2" %}
+{% block content %}
+<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js@3.1.0/dist/chart.min.js"></script> -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.js"></script>
+<meta http-equiv="refresh" content="60" >
+<div id="accordion">
+    <br>
+    <br>
+    <div class="card">
+        <h4 class="card-header">Agent Status</h4>
+        {% if agents %}
+            <table class="table table-borderless" style="margin-bottom: 0px;">
+                <tbody>
+                    <tr>
+                        {% for agent in agents %}
+                            <td>
+                                {% if (agent.last_checkin + timedelta(hours=1)) < datetime.now() %}
+                                    <div class="card text-white bg-danger mb-3 pulse">
+                                        <div class="card-header d-flex justify-content-between align-items-center">
+                                            {{agent.name}}  <a class="fa fa-refresh btn btn-warning ms-auto" href="/agents/restart/{{agent.id}}" role="button" title=restart></a>
+                                        </div>
+                                        <div class="card-body ">
+                                            <h7 class="card-text mb-2">Last Seen: </h7><br>
+                                            <h7 class="card-text mb-2">{{agent.last_checkin}}</h7>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="card">
+                                        <div class="card-header">{{agent.name}}</div>
+                                        <div class="card-body ">
+                                            <h7 class="card-text mb-2">Last Seen: </h7> <br>
+                                            <h7 class="card-text mb-2">{{agent.last_checkin}}</h7>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        {% else %}
+            <div class="card-body">
+                No Agents configured. Please <a href="/agents"> add </a> a new agent.
+            </div>
+        {% endif %}
+    </div>
+    <br><br>
+    <div class="card">
+        <h4 class="card-header">Passwords Recovered</h4>
+        <div class="card-body">
+            <canvas id="chLine">
+                <script>
+                    var colors = ['#007bff','#28a745','#333333','#c3e6cb','#dc3545','#e0e0e0'];
+                    var chLine = document.getElementById("chLine");
+                    var chartData = {
+                        labels: {{ fig1_labels | safe }},
+                        datasets: [{
+                            data: {{ fig1_values | safe }},
+                            backgroundColor: 'transparent',
+                            borderColor: colors[0],
+                            borderWidth: 4,
+                            pointBackgroundColor: colors[0]
+                            }]};
+                        if (chLine) {
+                            new Chart(chLine, {
+                                type: 'line',
+                                data: chartData,
+                                options: {
+                                    scales: {
+                                        xAxes: [{
+                                            ticks: {
+                                            beginAtZero: false
+                                            }
+                                        }]
+                                    },
+                                    legend: {
+                                        display: false
+                                    },
+                                    responsive: true,
+                                    maintainAspectRatio: false
+                                }
+                            });
+                        }
+                </script>
+            </canvas>
+        </div>
+    </div>  
+    <br><br>
+    {% if not running_jobs and not queued_jobs %}
+        <div class="card">
+        <h4 class="card-header">No Configured Jobs</h4>
+            <div class="card-body ">
+                <a class="btn btn-success btn-sm mt-1 mb-1" href="/jobs/add">Create a New Job</a>
+            </div>
+        </div>
+    {% else %}
+        <div class="card">
+        {% if running_jobs %}
+            <h4 class="card-header">Running Jobs</h4>
+            <div class="card-body ">
+                {% for job in running_jobs %}
+                    <div class="card" style="margin-bottom:5px;">
+                    {% if job.started_at %}
+                        {% set job_elapsed_seconds = (datetime.now() - job.started_at).total_seconds() %}
+                        {% set job_max_runtime_seconds = settings.max_runtime_jobs * 3600 if settings.max_runtime_jobs else 0 %}
+                        {% set job_remaining_seconds = (job_max_runtime_seconds - job_elapsed_seconds) if settings.max_runtime_jobs else 0 %}
+                        {% set job_remaining_seconds_abs = job_remaining_seconds if job_remaining_seconds > 0 else 0 %}
+                    {% endif %}
+                    <div class="card-header" id="headingOne" {% if job.started_at %}title="Elapsed: {{ (job_elapsed_seconds // 3600) | int }}h {{ ((job_elapsed_seconds % 3600) // 60) | int }}m | Time Remaining: {% if settings.max_runtime_jobs %}{{ (job_remaining_seconds_abs // 3600) | int }}h {{ ((job_remaining_seconds_abs % 3600) // 60) | int }}m{% else %}N/A{% endif %}"{% endif %}>
+                        <h5 class="mb-0">
+                            <h5>
+                                {% for job_task in job_tasks %}
+                                    {% if job_task.job_id == job.id %}
+                                        {% if job_task.status == 'Running' %}
+                                            <span id="job_status" class="pull-right">Running</span>
+                                        {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% for customer in customers%}
+                                    {% if customer.id == job.customer_id %}
+                                        {{ customer.name }}:
+                                    {% endif %}
+                                {% endfor %}
+                                {{job.name}}
+                                {% for user in users %}
+                                    {% if user.id == job.owner_id %}
+                                        ({{ user.first_name }} {{ user.last_name }})
+                                    {% endif %}
+                                {% endfor %}
+                            </h5>
+                        </h5>
+                    </div>
+                
+                    <div id="collapse{{job.id}}" class="collapse multi-collapse show" aria-labelledby="heading{{job.id}}" data-parent="#accordion">
+                        <div class="card-body">
+                        {% set total = namespace(value=0) %}
+                        {% set tasks_completed = namespace(value=0) %}
+                        {% set tasks_ready = namespace(value=0) %}
+                        {% set tasks_running = namespace(value=0) %}
+                        {% for job_task in job_tasks %}
+                            {% if job_task.job_id == job.id %}
+                                {% set total.value = total.value + 1 %}
+                                {% if job_task.status == 'Ready' %}
+                                    {% set tasks_ready.value = tasks_ready.value + 1 %}
+                                {% elif job_task.status == 'Completed' %}
+                                    {% set tasks_completed.value = tasks_completed.value + 1 %}
+                                {% elif job_task.status == 'Running' %}
+                                    {% set tasks_running.value = tasks_running.value + 1 %}
+                                {% endif %}
+                            {% endif %}
+                        {% endfor %}
+        
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: {{ (tasks_completed.value / total.value) * 100 }}%" aria-valuenow="{{tasks_completed.value / total.value }}" aria-valuemin="0" aria-valuemax="100"> Completed </div>
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: {{ (tasks_running.value / total.value) * 100 }}%" aria-valuenow="{{tasks_running.value / total.value }}" aria-valuemin="0" aria-valuemax="100">In Progress</div>
+                        </div>
+                        <!--Bar graph of hashes cracked --><br>
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                <th scope="col">Task Name</th>
+                                <th style="text-align:center;" scope="col">Status</th>
+                                <th style="text-align:center;" scope="col">Agent</th>
+                                <th style="text-align:center;" scope="col">Recovered</th>
+                                <th style="text-align:center;" scope="col">Rate</th>
+                                <th style="text-align:center;" scope="col">EST Completion</th>
+                                <th style="text-align:center;" scope="col">Control</th>                   
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for job_task in job_tasks %}
+                                    {% if job_task.job_id == job.id %}
+                                        {% if job_task.status == 'Running' and job_task.started_at %}
+                                            {% set elapsed_seconds = (datetime.now() - job_task.started_at).total_seconds() %}
+                                            {% set max_runtime_seconds = settings.max_runtime_tasks * 3600 if settings.max_runtime_tasks else 0 %}
+                                            {% set remaining_seconds = (max_runtime_seconds - elapsed_seconds) if settings.max_runtime_tasks else 0 %}
+                                            {% set remaining_seconds_abs = remaining_seconds if remaining_seconds > 0 else 0 %}
+                                        {% endif %}
+                                        <tr {% if job_task.status == 'Running' and job_task.started_at %}title="Elapsed: {{ (elapsed_seconds // 3600) | int }}h {{ ((elapsed_seconds % 3600) // 60) | int }}m | Time Remaining: {% if settings.max_runtime_tasks %}{{ (remaining_seconds_abs // 3600) | int }}h {{ ((remaining_seconds_abs % 3600) // 60) | int }}m{% else %}N/A{% endif %}"{% endif %}>
+                                            <td style="vertical-align:middle;">
+                                                {% for task in tasks %}
+                                                    {% if task.id == job_task.task_id %}
+                                                        {{ task.name }}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </td>
+                                            <td style="text-align:center; vertical-align:middle;">
+                                                {% if job_task.status == 'Queued' %}
+                                                    <i class="fa fa-clock-o fa-fw"></i>
+                                                {% elif job_task.status == 'Running' %}
+                                                    <i class="fa fa-refresh fa-spin fa-fw" style="color: #198754 !important"></i>
+                                                {% elif job_task.status == 'Completed' %}
+                                                    <i class="fa fa-check-circle fa-fw" style="color: #198754!important"></i>
+                                                {% elif job_task.status == 'Canceled' %}
+                                                    <i class="fa fa-ban fa-fw" style="color: #dc3545 !important"></i>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align:center; vertical-align:middle;">
+                                                {% for agent in agents %}
+                                                    {% if agent.id == job_task.agent_id %}
+                                                        {{ agent.name }}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </td>
+                                            <td style="text-align:center; vertical-align:middle;">
+                                                {% for agent in agents %}
+                                                    {% if agent.id == job_task.agent_id %}
+                                                        {% if recovered_list[agent.id] %}
+                                                            {{recovered_list[agent.id].split(' ')[0]}}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </td>
+                                            <td style="text-align:center; vertical-align:middle;">
+                                                {% for agent in agents %}
+                                                    {% if agent.id == job_task.agent_id %}
+                                                        {{ agent.benchmark }}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </td>
+                                            <td style="text-align:center; vertical-align:middle;">
+                                                {% for agent in agents %}
+                                                    {% if agent.id == job_task.agent_id %}
+                                                        {% if recovered_list[agent.id] %}
+                                                            {{time_estimated_list[agent.id].split('(')[1].split(')')[0]}}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </td>
+                                            <td style="text-align:center; vertical-align:middle;">
+                                                {% if job_task.status == 'Running'%}
+                                                    <a class="fa fa-stop btn btn-secondary" href="/job_task/stop/{{job_task.id}}" role="button" title=stop></a>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                    </div>
+            {% endfor %}
+            </div>
+        {% else %}    
+            <h4 class="card-header">No Running Jobs</h4>
+        {% endif %} 
+        </div>
+        <br><br>
+        {% if queued_jobs %}
+            <div class="card">
+                <h4 class="card-header">Queued Jobs</h4>
+                <div class="card-body">
+                    {% for job in queued_jobs %}
+                        <div class="card" style="margin-bottom:5px;">
+                        <div class="card-header" id="headingOne">
+                            <h5 class="mb-0">
+                                <h5>
+                                    {% for job_task in job_tasks %}
+                                        {% if job_task.job_id == job.id %}
+                                            {% if job_task.status == 'Running' %}
+                                                <span id="job_status" class="pull-right">Running</span>
+                                            {% endif %} 
+                                        {% endif %} 
+                                    {% endfor %}
+                
+                                    {% for customer in customers%} 
+                                        {% if customer.id == job.customer_id %}
+                                            {{ customer.name }}:
+                                        {% endif %}
+                                    {% endfor %}
+                                    {{job.name}} 
+                                    {% for user in users %}
+                                        {% if user.id == job.owner_id %}
+                                            ({{ user.first_name }} {{ user.last_name }} )
+                                        {% endif %} 
+                                    {% endfor %}             
+                                </h5>
+                            </h5>
+                        </div>
+                    
+                        <div id="collapse{{job.id}}" class="collapse multi-collapse show" aria-labelledby="heading{{job.id}}" data-parent="#accordion">
+                            <div class="card-body">
+                            {% set total = namespace(value=0) %}
+                            {% set tasks_completed = namespace(value=0) %}
+                            {% set tasks_ready = namespace(value=0) %}
+                            {% set tasks_running = namespace(value=0) %}
+                            {% for job_task in job_tasks %}
+                                {% if job_task.job_id == job.id %}
+                                    {% set total.value = total.value + 1 %}
+                                    {% if job_task.status == 'Ready' %}
+                                        {% set tasks_ready.value = tasks_ready.value + 1 %}
+                                    {% elif job_task.status == 'Completed' %}
+                                        {% set tasks_completed.value = tasks_completed.value + 1 %}
+                                    {% elif job_task.status == 'Running' %}
+                                        {% set tasks_running.value = tasks_running.value + 1 %}
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+            
+                            <!--Bar graph of hashes cracked --><br>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Task Name</th>
+                                        <th style="text-align:center;" scope="col">Status</th>                 
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for job_task in job_tasks %}
+                                        {% if job_task.job_id == job.id %}
+                                            <tr>
+                                                <td>
+                                                    {% for task in tasks %}
+                                                        {% if task.id == job_task.task_id %}
+                                                            {{ task.name }}
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </td>
+                                                <td style="text-align:center; vertical-align:middle;">
+                                                    {% if job_task.status == 'Queued' %}
+                                                        <i class="fa fa-clock-o fa-fw"></i>
+                                                    {% elif job_task.status == 'Running' %}
+                                                        <i class="fa fa-refresh fa-spin fa-fw" style="color: #198754 !important"></i>
+                                                    {% elif job_task.status == 'Completed' %}
+                                                        <i class="fa fa-check-circle fa-fw" style="color: #198754!important"></i>
+                                                    {% elif job_task.status == 'Canceled' %}
+                                                        <i class="fa fa-ban fa-fw" style="color: #dc3545 !important"></i>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+                        </div>
+                    {% endfor %}   
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+    <br>
+    <br>
+</div>
+{% endblock content %}

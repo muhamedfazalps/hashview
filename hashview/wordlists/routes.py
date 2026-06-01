@@ -18,7 +18,7 @@ def wordlists_list():
     wordlists = Wordlists.query.all()
     tasks = Tasks.query.all()
     users = Users.query.all()
-    return render_template('wordlists.html', title='Wordlists', static_wordlists=static_wordlists, dynamic_wordlists=dynamic_wordlists, wordlists=wordlists, tasks=tasks, users=users)
+    return render_template('wordlists.html.j2', title='Wordlists', static_wordlists=static_wordlists, dynamic_wordlists=dynamic_wordlists, wordlists=wordlists, tasks=tasks, users=users)
 
 @wordlists.route("/wordlists/add", methods=['GET', 'POST'])
 @login_required
@@ -41,7 +41,7 @@ def wordlists_add():
             db.session.commit()
             flash('Wordlist created!', 'success')
             return redirect(url_for('wordlists.wordlists_list'))
-    return render_template('wordlists_add.html', title='Wordlist Add', form=form)
+    return render_template('wordlists_add.html.j2', title='Wordlist Add', form=form)
 
 @wordlists.route("/wordlists/delete/<int:wordlist_id>", methods=['POST'])
 @login_required
@@ -51,7 +51,7 @@ def wordlists_delete(wordlist_id):
     wordlist = Wordlists.query.get(wordlist_id)
     if current_user.admin or wordlist.owner_id == current_user.id:
 
-        # prevent deltion of dynamic list
+        # prevent deletion of dynamic list
         if wordlist.type == 'dynamic':
             flash('Dynamic Wordlists can not be deleted.', 'danger')
             redirect(url_for('wordlists.wordlists_list'))
@@ -79,7 +79,7 @@ def dynamicwordlist_update(wordlist_id):
     wordlist = Wordlists.query.get(wordlist_id)
     if wordlist.type == 'dynamic':
         update_dynamic_wordlist(wordlist_id)
-        flash('Updated Dynamic Wordlist', 'succes')
+        flash('Updated Dynamic Wordlist', 'success')
     else:
         flash('Invalid wordlist', 'danger')
     return redirect(url_for('wordlists.wordlists_list'))

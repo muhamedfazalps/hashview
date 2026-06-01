@@ -36,13 +36,14 @@ class LoginForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
     password = PasswordField('Password', validators=[DataRequired()])
     remember = BooleanField('Remember Me')
-    submit = SubmitField('Login')
+    submit = SubmitField('Crack the planet!')
 
 class ProfileForm(FlaskForm):
     """Class representing Profile Form"""
 
     first_name = StringField('First Name', validators=[DataRequired(), Length(min=1, max=20)])
     last_name = StringField('Last Name', validators=[DataRequired(), Length(min=1, max=20)])
+    email = StringField('Email', validators=[DataRequired(), Email()])
     pushover_user_key = StringField('Pushover User Key (optional)')
     pushover_app_id = StringField('Pushover App Id (optional)')
     submit = SubmitField('Update')

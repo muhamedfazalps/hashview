@@ -18,20 +18,7 @@ def customers_list():
     customers = Customers.query.order_by(Customers.name).all()
     jobs = Jobs.query.all()
     hashfiles = Hashfiles.query.all()
-    return render_template('customers.html', title='Cusomters', customers=customers, jobs=jobs, hashfiles=hashfiles)
-
-@customers.route("/customers/add", methods=['GET', 'POST'])
-@login_required
-def customers_add():
-    """Function to add a new customer"""
-    form = CustomersForm()
-    if form.validate_on_submit():
-        customer = Customers(name=form.name.data)
-        db.session.add(customer)
-        db.session.commit()
-        flash('Customer created!', 'success')
-        return redirect(url_for('customers.customers_list'))  # will need to do a conditional return if this was reated during a job creation
-    return render_template('cusomers_add.html', title='Customer Add', form=form)
+    return render_template('customers.html.j2', title='Customers', customers=customers, jobs=jobs, hashfiles=hashfiles)
 
 @customers.route("/customers/delete/<int:customer_id>", methods=['POST'])
 @login_required

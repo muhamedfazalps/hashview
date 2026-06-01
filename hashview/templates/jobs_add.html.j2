@@ -1,0 +1,151 @@
+{% extends "layout.html.j2" %}
+{% block header %}
+<br>
+<br>
+<br>
+<br>
+<br>
+{% endblock header %}
+{% block content %}
+<script>
+    function showDiv(){
+        var Index = document.getElementById('customer_id'); 
+        // support all other attack types
+        if(Index.value == 'add_new')
+        {
+          document.getElementById('new_customer_div').style.display = 'inline';
+        }
+        else
+        {
+          document.getElementById('new_customer_div').style.display = 'none';
+        }
+    }
+</script>
+<article class="media content-section">
+    <div class="media-body">
+        <div class="card">
+            <h4 class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    Create a new Job
+                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Provide the Name of the Job and the Customer it is for." style="margin-left:5px;"></i>
+                </div>
+            </h4>
+            <br>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">            
+                    <div class="steps-horizontal">
+                        <div class="step-horizontal active">
+                            <div class="step-icon">
+                                <i class="fa fa-briefcase"></i>
+                            </div>
+                            <div class="step-title">Step 1</div>
+                            <div class="step-description">Job Information</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-file-text"></i>
+                            </div>
+                            <div class="step-title">Step 2</div>
+                            <div class="step-description">Hashfile Assignment</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-database"></i>
+                            </div>
+                            <div class="step-title">Step 3</div>
+                            <div class="step-description">Previously Cracked</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-bell"></i>
+                            </div>
+                            <div class="step-title">Step 4</div>
+                            <div class="step-description">Notifications</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-list"></i>
+                            </div>
+                            <div class="step-title">Step 5</div>
+                            <div class="step-description">Tasks</div>
+                        </div>
+                        <div class="step-horizontal">
+                            <div class="step-icon">
+                                <i class="fa fa-check"></i>
+                            </div>
+                            <div class="step-title">Step 6</div>
+                            <div class="step-description">Review</div>
+                        </div>                
+                    </div>
+                </li>
+            </ul>
+            <div class="card-body ">
+                <div class="content-section">
+                    <form method="POST" action="" enctype="multipart/form-data">
+                        {{ jobsForm.hidden_tag() }}
+                        <fieldset class="form-group">
+                            <div class="form-group">
+                                {{ jobsForm.name.label(class="form-control-label") }}
+
+                                {% if jobsForm.name.errors %}
+                                    {{ jobsForm.name(class="form-control form-control-lg is-invalid") }}
+                                    <div class="invalid-feedback">
+                                        {% for error in jobsForm.name.errors %}
+                                            <span>{{ error }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    {{ jobsForm.name(class="form-control form-control-lg") }}
+                                {% endif %}
+                            </div> 
+                            {% if settings.enabled_job_weights %}
+                                <div class="form-group">
+                                    {{ jobsForm.priority.label(class="form-control-label") }}
+                                    {% if jobsForm.priority.errors %}
+                                        {{ jobsForm.priority(class="form-control form-control-lg is-invalid") }}
+                                        <div class="invalid-feedback">
+                                            {% for error in jobsForm.priority.errors %}
+                                                <span>{{ error }}</span>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        {{ jobsForm.priority(class="form-control form-control-lg") }}
+                                    {% endif %}
+                                </div> 
+                            {% endif %}
+                            <div class="form-group">
+                                <label class="form-control-label" for="customer">Customer</label>
+                                <select class="form-control form-control-lg" id="customer_id" name="customer_id" onchange="showDiv()" required>
+                                    <option value>--SELECT--</option>
+                                    {% for customer in customers %}
+                                        <option value='{{customer.id}}'>{{customer.name}}</option>
+                                    {% endfor %}
+                                    <option value='add_new'>New Customer</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style=display:none id="new_customer_div">
+                                <label class="control-label col-xs-2" for="">Customer Name</label>
+                                <input class="form-control" id="name" name="customer_name" type="textbox">
+                            </div>
+                            <br>
+                            <div class="form-group">
+                                <div class="custom-control custom-switch">
+                                    <div class="form-check form-switch">
+                                        {{ jobsForm.limit_recovered(class="form-check-input", type="checkbox", role="switch", id="limit_recovered")}}
+                                        {{ jobsForm.limit_recovered.label(class="form-control-label text-end") }}
+                                    </div>  
+                                </div>
+                            </div>                           
+                        </fieldset>
+                        <div class="my-3"></div>
+                        <div class="form-group">
+                            <a class="btn btn-danger" href="/jobs" role="button" title='Cancel'>Cancel</a>
+                            {{ jobsForm.submit(class="btn btn-primary pull-right")}}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>    
+    </div>
+</article>
+{% endblock content %}

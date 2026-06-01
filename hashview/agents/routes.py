@@ -28,7 +28,7 @@ def agents_list():
             return redirect(url_for('agents.agents_list'))
         else:
             agents = Agents.query.all()
-            return render_template('agents.html', title='agents', agents=agents, agentsForm=agents_form)
+            return render_template('agents.html.j2', title='agents', agents=agents, agentsForm=agents_form)
     else:
         abort(403)
 
@@ -51,7 +51,7 @@ def agents_edit(agent_id):
             return redirect(url_for('agents.agents_list'))
         else:
             agent = Agents.query.get(agent_id)
-            return render_template('agents_edit.html', title='agents', agent=agent, agentsForm=agents_form)
+            return render_template('agents_edit.html.j2', title='agents', agent=agent, agentsForm=agents_form)
     else:
         flash('You are unauthorized to edit agent data.', 'danger')
         return redirect(url_for('agents.agents_list'))
@@ -113,7 +113,7 @@ def agents_download():
     """Function to download agent"""
     version = hashview.__version__
     filename = 'hashview-agent.' + version + '.tgz'
-    cmd = 'tar -czf hashview/control/tmp/' + filename + ' install/hashview-agent/*'
+    cmd = 'tar -czf hashview/control/tmp/' + filename + ' -C install hashview-agent'
     os.system(cmd)
 
     return send_from_directory('control/tmp', filename, as_attachment=True)

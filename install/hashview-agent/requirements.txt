@@ -1,3 +1,2 @@
-argparse
-configparser
 psutil
+requests

@@ -17,7 +17,7 @@ def task_groups_list():
     tasks = Tasks.query.all()
     users = Users.query.all()
 
-    return render_template('task_groups.html', title='Task Groups', task_groups=task_groups, users=users, tasks=tasks)
+    return render_template('task_groups.html.j2', title='Task Groups', task_groups=task_groups, users=users, tasks=tasks)
 
 @task_groups.route("/task_groups/add", methods=['GET', 'POST'])
 @login_required
@@ -35,7 +35,7 @@ def task_groups_add():
         # TODO change this redirect to use a url_for
         #return redirect(url_for('taskgroups.taskgroups_assigntask', taskgroup_id=taskgroup.id))
         return redirect("assigned_tasks/"+str(task_group.id))
-    return render_template('task_groups_add.html', title='Tasks Add', tasks=tasks, task_group_form=task_group_form)
+    return render_template('task_groups_add.html.j2', title='Tasks Add', tasks=tasks, task_group_form=task_group_form)
 
 @task_groups.route("/task_groups/assigned_tasks/<int:task_group_id>", methods=['GET', 'POST'])
 @login_required
@@ -45,7 +45,7 @@ def task_groups_assigned_tasks(task_group_id):
     task_group = TaskGroups.query.get(task_group_id)
     tasks = Tasks.query
     task_group_tasks = json.loads(task_group.tasks)
-    return render_template('task_groups_assigntask.html', title='Task Group: Assign Tasks', task_group=task_group, tasks=tasks, task_group_tasks=task_group_tasks)
+    return render_template('task_groups_assigntask.html.j2', title='Task Group: Assign Tasks', task_group=task_group, tasks=tasks, task_group_tasks=task_group_tasks)
 
 @task_groups.route("/task_groups/assigned_tasks/<int:task_group_id>/add_task/<int:task_id>", methods=['GET'])
 @login_required

@@ -34,7 +34,7 @@ def login_get():
     """Function to present login page"""
 
     form = LoginForm()
-    return render_template('login.html', title='Login', form=form)
+    return render_template('login.html.j2', title='Login', form=form)
 
 @users.route("/login", methods=['POST'])
 def login_post():
@@ -42,7 +42,7 @@ def login_post():
 
     def failed():
         flash('Login Unsuccessful. Please check email and password', 'danger')
-        return render_template('login.html', title='Login', form=form)
+        return render_template('login.html.j2', title='Login', form=form)
 
     form = LoginForm()
     if not form.validate_on_submit():
@@ -84,7 +84,7 @@ def users_list():
     rules = Rules.query.all()
     tasks = Tasks.query.all()
     task_groups = TaskGroups.query.all()
-    return render_template('users.html', title='Users', users=users, jobs=jobs, wordlists=wordlists, rules=rules, tasks=tasks, task_groups=task_groups)
+    return render_template('users.html.j2', title='Users', users=users, jobs=jobs, wordlists=wordlists, rules=rules, tasks=tasks, task_groups=task_groups)
 
 @users.route("/users/add", methods=['GET', 'POST'])
 @login_required
@@ -103,8 +103,10 @@ def users_add():
             db.session.commit()
             flash(f'Account created for {form.email.data}!', 'success')
             return redirect(url_for('users.users_list'))
-        return render_template('users_add.html', title='User Add', form=form)
-    abort(403)
+        return render_template('users_add.html.j2', title='User Add', form=form)
+    else:
+        flash('Unauthorized to add users account.', 'danger')
+        return redirect(url_for('users.users_list'))
 
 @users.route("/users/delete/<int:user_id>", methods=['POST'])
 @login_required
@@ -117,7 +119,9 @@ def users_delete(user_id):
         db.session.commit()
         flash('User has been deleted!', 'success')
         return redirect(url_for('users.users_list'))
-    abort(403)
+    else:
+        flash('Unauthorized to delete users account.', 'danger')
+        return redirect(url_for('users.users_list'))
 
 @users.route("/profile", methods=['GET', 'POST'])
 @login_required
@@ -128,6 +132,7 @@ def profile():
     if form.validate_on_submit():
         current_user.first_name = form.first_name.data
         current_user.last_name = form.last_name.data
+        current_user.email_address = form.email.data
         if form.pushover_user_key.data:
             current_user.pushover_user_key = form.pushover_user_key.data
         if form.pushover_app_id.data:
@@ -138,7 +143,8 @@ def profile():
     elif request.method == 'GET':
         form.first_name.data = current_user.first_name
         form.last_name.data = current_user.last_name
-    return render_template('profile.html', title='Profile', form=form, current_user=current_user)
+        form.email.data = current_user.email_address
+    return render_template('profile.html.j2', title='Profile', form=form, current_user=current_user)
 
 @users.route("/profile/send_test_pushover", methods=['GET'])
 @login_required
@@ -183,17 +189,15 @@ def reset_request():
         if user:
             token = user.get_reset_token()
             subject = 'Password Reset Request.'
-            message = dedent(f'''\
-                To reset your password, vist the following link:
+            message = f'''To reset your password, vist the following link:
+    {url_for('users.reset_token', user_id=user.id, token=token, _external=False)}
 
-                {url_for('users.reset_token', user_id=user.id, token=token, _external=True)}
-
-                If you did not make this request... then something phishy is going on.
-            ''')
+    If you did not make this request... then something phishy is going on.
+    '''
             send_email(user, subject, message)
         flash('An email has been sent to '+  form.email.data, 'info')
         return redirect(url_for('users.login_get'))
-    return render_template('reset_request.html', title='Reset Password', form=form)
+    return render_template('reset_request.html.j2', title='Reset Password', form=form)
 
 @users.route("/admin_reset_password/<int:user_id>", methods=['GET', 'POST'])
 @login_required
@@ -233,10 +237,35 @@ def reset_token(user_id :int, token :str):
 
     form = ResetPasswordForm()
     if not form.validate_on_submit():
-        return render_template('reset_token.html', title='Reset Password', form=form)
+        return render_template('reset_token.html.j2', title='Reset Password', form=form)
 
-    hashed_password = bcrypt.generate_password_hash(form.password.data)
-    user.password = hashed_password
+    else:
+        hashed_password = bcrypt.generate_password_hash(form.password.data)
+        user.password = hashed_password
+        db.session.commit()
+        flash('Your password has been updated! You are now able to login.', 'success')
+        return redirect(url_for('users.login_get'))
+
+# Promote a user to admin
+@users.route("/users/promote/<int:user_id>", methods=['POST'])
+@login_required
+def promote_user(user_id):
+    if not current_user.admin:
+        abort(403)
+    user = Users.query.get_or_404(user_id)
+    user.admin = True
     db.session.commit()
-    flash('Your password has been updated! You are now able to login.', 'success')
-    return redirect(url_for('users.login_get'))
+    flash(f'User {user.email_address} promoted to admin.', 'success')
+    return redirect(url_for('users.users_list'))
+
+# Demote a user to regular user
+@users.route("/users/demote/<int:user_id>", methods=['POST'])
+@login_required
+def demote_user(user_id):
+    if not current_user.admin:
+        abort(403)
+    user = Users.query.get_or_404(user_id)
+    user.admin = False
+    db.session.commit()
+    flash(f'User {user.email_address} demoted to regular user.', 'success')
+    return redirect(url_for('users.users_list'))

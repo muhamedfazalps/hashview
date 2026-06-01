@@ -8,4 +8,5 @@ COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 EXPOSE 5000
 COPY . .
+RUN mkdir -p /hashview/control/tmp /hashview/control/wordlists /hashview/control/rules
 CMD ["flask", "run"]

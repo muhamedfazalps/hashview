@@ -10,7 +10,11 @@ import psutil
 import re
 import signal
 import builtins
+import time
+import subprocess
+from contextlib import suppress
 from threading import Thread
+from datetime import datetime, timedelta
 
 
 parser = argparse.ArgumentParser()
@@ -18,6 +22,41 @@ parser.add_argument("--debug", action="store_true", help="increase output verbos
 args = parser.parse_args()
 
 # Build Config
+
+# ----------------------------------------------
+# Manifest management (JSON based)
+# ----------------------------------------------
+class Manifest:
+    """
+    Simple JSON‑based manifest manager.
+    Keeps the manifest data in memory and writes to disk only when
+    `save()` is called.
+    """
+    def __init__(self, path):
+        self.path = path
+        self.data = {}
+        self._load()
+
+    def _load(self):
+        if os.path.exists(self.path):
+            try:
+                with open(self.path, "r") as f:
+                    self.data = json.load(f)
+            except Exception:
+                # Corrupt or empty file – start fresh
+                self.data = {}
+        else:
+            self.data = {}
+
+    def save(self):
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, "w") as f:
+            json.dump(self.data, f, indent=2, sort_keys=True)
+
+# Global manifest instances
+rules_manifest = Manifest("control/rules_manifest.json")
+wordlists_manifest = Manifest("control/wordlists_manifest.json")
 if not os.path.exists('agent/config.conf'):
 
     # Time to ask some questions
@@ -66,6 +105,26 @@ if not os.path.exists('agent/config.conf'):
 
 from agent.api import api    
     
+def run_command(command):
+    try:
+        cmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #cmd = subprocess.Popen(["python", file],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        output, error = cmd.communicate()
+
+        if(error):
+            print(error)
+            if 'hashfile is empty or corrupt' not in str(error):
+                if 'Terminated' in str(error):
+                    sys.exit()
+                else:
+                    api.sendError(str(error))
+                    os.kill(os.getpid(), signal.SIGINT)
+    except OSError as e: 
+        print("inside exception", e)
+        api.sendError(str(e))
+        #sys.exit()
+        os.kill(os.getpid(), signal.SIGINT)
+
 def send_heartbeat(agent_status, hc_status):
     return api.heartbeat(agent_status, hc_status)
 
@@ -87,198 +146,172 @@ def getHashcatPid():
     return False
 
 def sync_rules():
-    # pull list of rules & hashes
+    """
+    Synchronise local rule files with the server using JSON manifests.
+    """
     print('Syncing local rules with server.')
     response = api.rules_list()
-    new_rules_manifest = open('control/tmp/rules_manifest.txt', 'w')
-    for entry in json.loads(response):
+    server_entries = json.loads(response)
+    new_manifest = {}
 
-        # load local manifest
-        currently_has_rule = False
-        mismatched_rule = False
-        rules_manifest = open('control/rules_manifest.txt', 'r')
-        
-        for rules_manifest_entry in rules_manifest:
-            if str(rules_manifest_entry.split('|')[0]) == str(entry['id']):
-                currently_has_rule = True
-                # We have a matching ID between our manifest and the server
-                if str(rules_manifest_entry.split('|')[1]) != str(entry['checksum']):
-                    mismatched_rule = True
-                    print('Manifest to local file mismatch!')
-                    print('Downloading rule id: ' + str(entry['id']) + ' (' + entry['name'] + ')' )
-                    # our manifest entry's check sum does not match the server
+    for entry in server_entries:
+        rule_id = str(entry['id'])
+        remote_checksum = entry['checksum']
+        filename = entry['path'].split('/')[-1]
 
-                    # remove the rule file on disk (if it exists)
-                    # TODO change to try catch
-                    os.remove('control/rules/' + rules_manifest_entry.split('|')[2].rstrip())
-                    
-                    # download rules file
-                    random_hex = secrets.token_hex(8)
-                    compressed_rules_file_content = api.get_rules_file(entry['id'])
-                    local_compressed_rule = open('control/tmp/'+ random_hex + '.gz', 'wb')
-                    local_compressed_rule.write(compressed_rules_file_content)
-                    local_compressed_rule.close()                
-                    
-                    # decompress rules file
-                    cmd = 'gunzip control/tmp/' + random_hex + '.gz'
-                    os.system(cmd)                    
-                            
-                    # generate checksum
-                    print('Comparing checksums')
-                    sha256_hash = hashlib.sha256()
-                    with open('control/tmp/'+random_hex, 'rb') as f:
-                        for byte_block in iter(lambda: f.read(4096),b""):
-                            sha256_hash.update(byte_block)                
-                    print('Local: ' + str(sha256_hash.hexdigest()))
-                    print('Remote: ' + str(entry['checksum']))
+        local_entry = rules_manifest.data.get(rule_id)
 
-                    if sha256_hash.hexdigest() == entry['checksum']:
-                        print('Checksums match!')
-                        # create new manifest entry    
-                        new_rules_manifest.write(str(entry['id']) + '|' + sha256_hash.hexdigest() + '|' + entry['path'].split('/')[-1] + '\n')
-                        # move & rename rules file to match that of whats expected in the hashcat command
-                        cmd = 'mv control/tmp/' + random_hex + ' control/rules/' + entry['path'].split('/')[-1]
-                        os.system(cmd)
-                    else:
-                        print('hashes dont match. what do we do now?')
-                        os.remove('control/tmp/' + random_hex)
-            
-        # We've compared the two lists, now if we didnt have the entry before it means its a new rules file and we need to download it.
-        if currently_has_rule == False:
-            print('Downloading rule id: ' + str(entry['id']) + ' (' + entry['name'] + ')' )
-            # download rules file
-            random_hex = secrets.token_hex(8)
-            compressed_rules_file_content = api.get_rules_file(entry['id'])
-            local_compressed_rule = open('control/tmp/'+ random_hex + '.gz', 'wb')
-            local_compressed_rule.write(compressed_rules_file_content)
-            local_compressed_rule.close()
+        if local_entry:
+            # Existing entry – verify checksum
+            if local_entry['checksum'] != remote_checksum:
+                print('Checksum mismatch for rule', rule_id)
+                old_path = os.path.join('control/rules', local_entry['filename'])
+                if os.path.exists(old_path):
+                    os.remove(old_path)
 
-            # decompress rules file
-            cmd = 'gunzip control/tmp/' + random_hex + '.gz'
-            os.system(cmd)
-            
-            # generate checksum
-            print('Comparing checksums')
-            sha256_hash = hashlib.sha256()
-            with open('control/tmp/'+random_hex, 'rb') as f:
-                for byte_block in iter(lambda: f.read(4096),b""):
-                    sha256_hash.update(byte_block)                
-            print('Local: ' + str(sha256_hash.hexdigest()))
-            print('Remote: ' + str(entry['checksum']))
+                # Download and verify new file
+                random_hex = secrets.token_hex(8)
+                compressed = api.get_rules_file(entry['id'])
+                tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
+                with open(tmp_gz, 'wb') as f:
+                    f.write(compressed)
 
-            if sha256_hash.hexdigest() == entry['checksum']:
-                print('Checksums match!')
-                # create new manifest entry    
-                new_rules_manifest.write(str(entry['id']) + '|' + sha256_hash.hexdigest() + '|' + entry['path'].split('/')[-1] + '\n')
-                # move & rename rules file to match that of whats expected in the hashcat command
-                cmd = 'mv control/tmp/' + random_hex + ' control/rules/' + entry['path'].split('/')[-1]
-                os.system(cmd)
+                run_command(f'gunzip {tmp_gz}')
+                tmp_file = os.path.join('control/tmp', random_hex)
+
+                sha256 = hashlib.sha256()
+                with open(tmp_file, 'rb') as f:
+                    for block in iter(lambda: f.read(4096), b''):
+                        sha256.update(block)
+                local_checksum = sha256.hexdigest()
+                print('Local:', local_checksum, 'Remote:', remote_checksum)
+
+                if local_checksum == remote_checksum:
+                    dest = os.path.join('control/rules', filename)
+                    run_command(f'mv {tmp_file} {dest}')
+                    new_manifest[rule_id] = {'checksum': local_checksum, 'filename': filename}
+                else:
+                    print('Checksum verification failed for rule', rule_id)
+                    os.remove(tmp_file)
             else:
-                print('hashes dont match. what do we do now?')
-                os.remove('control/tmp/' + random_hex)
-        elif currently_has_rule == True and mismatched_rule == False:
-            new_rules_manifest.write(str(entry['id']) + '|' + entry['checksum'] + '|' + entry['path'].split('/')[-1] + '\n')
-    # move new manifest into correct directory
-    cmd = 'mv control/tmp/rules_manifest.txt control/rules_manifest.txt'
-    os.system(cmd)
-    print('Done Syncing Rules.')
+                new_manifest[rule_id] = local_entry
+        else:
+            # New rule – download
+            print('Downloading new rule', rule_id)
+            random_hex = secrets.token_hex(8)
+            compressed = api.get_rules_file(entry['id'])
+            tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
+            with open(tmp_gz, 'wb') as f:
+                f.write(compressed)
+
+            run_command(f'gunzip {tmp_gz}')
+            tmp_file = os.path.join('control/tmp', random_hex)
+
+            sha256 = hashlib.sha256()
+            with open(tmp_file, 'rb') as f:
+                for block in iter(lambda: f.read(4096), b''):
+                    sha256.update(block)
+            local_checksum = sha256.hexdigest()
+            print('Local:', local_checksum, 'Remote:', remote_checksum)
+
+            if local_checksum == remote_checksum:
+                dest = os.path.join('control/rules', filename)
+                run_command(f'mv {tmp_file} {dest}')
+                new_manifest[rule_id] = {'checksum': local_checksum, 'filename': filename}
+            else:
+                print('Checksum verification failed for new rule', rule_id)
+                os.remove(tmp_file)
+
+    if new_manifest != rules_manifest.data:
+        rules_manifest.data = new_manifest
+        rules_manifest.save()
+        print('Rules manifest updated.')
+    else:
+        print('Rules manifest unchanged.')
 
 def sync_wordlists():
-    # pull list of wordlists & hashes
+    """
+    Synchronise local wordlist files with the server using JSON manifests.
+    """
     print('Syncing local wordlists with server.')
     response = api.getWordlists()
-    new_wordlists_manifest = open('control/tmp/wordlists_manifest.txt', 'w')
-    for entry in json.loads(response):
+    server_entries = json.loads(response)
+    new_manifest = {}
 
-        # load local manifest
-        currently_has_wordlist = False
-        mismatched_wordlist = False
-        wordlists_manifest = open('control/wordlists_manifest.txt', 'r')
-        
-        for wordlists_manifest_entry in wordlists_manifest:
-            if str(wordlists_manifest_entry.split('|')[0]) == str(entry['id']):
-                currently_has_wordlist = True
-                # We have a matching ID between our manifest and the server
-                if str(wordlists_manifest_entry.split('|')[1]) != str(entry['checksum']):
-                    mismatched_wordlist = True
-                    print('Manifest to local file mismatch!')
-                    print('Downloading wordlist id: ' + str(entry['id']) + ' (' + entry['name'] + ')' )
-                    # our manifest entry's check sum does not match the server
+    for entry in server_entries:
+        wl_id = str(entry['id'])
+        remote_checksum = entry['checksum']
+        filename = entry['path'].split('/')[-1]
 
-                    # remove the wordlist file on disk (if it exists)
-                    # TODO change to try catch
-                    os.remove('control/wordlists/' + wordlists_manifest_entry.split('|')[2].rstrip())
-                    
-                    # download wordlists file
-                    random_hex = secrets.token_hex(8)
-                    compressed_wordlists_file_content = api.get_wordlists_file(entry['id'])
-                    local_compressed_wordlist = open('control/tmp/'+ random_hex + '.gz', 'wb')
-                    local_compressed_wordlist.write(compressed_wordlists_file_content)
-                    local_compressed_wordlist.close()                
-                    
-                    # decompress wordlist file
-                    cmd = 'gunzip control/tmp/' + random_hex + '.gz'
-                    os.system(cmd)                    
-                            
-                    # generate checksum
-                    print('Comparing checksums')
-                    sha256_hash = hashlib.sha256()
-                    with open('control/tmp/'+random_hex, 'rb') as f:
-                        for byte_block in iter(lambda: f.read(4096),b""):
-                            sha256_hash.update(byte_block)                
-                    print('Local: ' + str(sha256_hash.hexdigest()))
-                    print('Remote: ' + str(entry['checksum']))
+        local_entry = wordlists_manifest.data.get(wl_id)
 
-                    if sha256_hash.hexdigest() == entry['checksum']:
-                        print('Checksums match!')
-                        # create new manifest entry    
-                        new_wordlists_manifest.write(str(entry['id']) + '|' + sha256_hash.hexdigest() + '|' + entry['path'].split('/')[-1] + '\n')
-                        # move & rename wordlist file to match that of whats expected in the hashcat command
-                        cmd = 'mv control/tmp/' + random_hex + ' control/wordlists/' + entry['path'].split('/')[-1]
-                        os.system(cmd)
-                    else:
-                        print('hashes dont match. what do we do now?')
-                        os.remove('control/tmp/' + random_hex)
-            
-        # We've compared the two lists, now if we didnt have the entry before it means its a new wordlist file and we need to download it.
-        if currently_has_wordlist == False:
-            print('Downloading wordlist id: ' + str(entry['id']) + ' (' + entry['name'] + ')' )
-            # download wordlist file
-            random_hex = secrets.token_hex(8)
-            compressed_wordlists_file_content = api.get_wordlists_file(entry['id'])
-            local_compressed_wordlist = open('control/tmp/'+ random_hex + '.gz', 'wb')
-            local_compressed_wordlist.write(compressed_wordlists_file_content)
-            local_compressed_wordlist.close()
+        if local_entry:
+            print(f"Found existing wordlist {wl_id} in local manifest.")
+            # Existing entry – verify checksum
+            if local_entry['checksum'] != remote_checksum:
+                print('Checksum mismatch for wordlist', wl_id)
+                old_path = os.path.join('control/wordlists', local_entry['filename'])
+                if os.path.exists(old_path):
+                    os.remove(old_path)
 
-            # decompress wordlist file
-            cmd = 'gunzip control/tmp/' + random_hex + '.gz'
-            os.system(cmd)
-            
-            # generate checksum
-            print('Comparing checksums')
-            sha256_hash = hashlib.sha256()
-            with open('control/tmp/'+random_hex, 'rb') as f:
-                for byte_block in iter(lambda: f.read(4096),b""):
-                    sha256_hash.update(byte_block)                
-            print('Local: ' + str(sha256_hash.hexdigest()))
-            print('Remote: ' + str(entry['checksum']))
+                # Download and verify new file
+                random_hex = secrets.token_hex(8)
+                compressed = api.get_wordlists_file(entry['id'])
+                tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
+                with open(tmp_gz, 'wb') as f:
+                    f.write(compressed)
 
-            if sha256_hash.hexdigest() == entry['checksum']:
-                print('Checksums match!')
-                # create new manifest entry    
-                new_wordlists_manifest.write(str(entry['id']) + '|' + sha256_hash.hexdigest() + '|' + entry['path'].split('/')[-1] + '\n')
-                # move & rename wordlists file to match that of whats expected in the hashcat command
-                cmd = 'mv control/tmp/' + random_hex + ' control/wordlists/' + entry['path'].split('/')[-1]
-                os.system(cmd)
+                run_command(f'gunzip {tmp_gz}')
+                tmp_file = os.path.join('control/tmp', random_hex)
+
+                sha256 = hashlib.sha256()
+                with open(tmp_file, 'rb') as f:
+                    for block in iter(lambda: f.read(4096), b''):
+                        sha256.update(block)
+                local_checksum = sha256.hexdigest()
+                print('Local:', local_checksum, 'Remote:', remote_checksum)
+
+                if local_checksum == remote_checksum:
+                    dest = os.path.join('control/wordlists', filename)
+                    run_command(f'mv {tmp_file} {dest}')
+                    new_manifest[wl_id] = {'checksum': local_checksum, 'filename': filename}
+                else:
+                    print('Checksum verification failed for wordlist', wl_id)
+                    os.remove(tmp_file)
             else:
-                print('hashes dont match. what do we do now?')
-                os.remove('control/tmp/' + random_hex)
-        elif currently_has_wordlist == True and mismatched_wordlist == False:
-            new_wordlists_manifest.write(str(entry['id']) + '|' + entry['checksum'] + '|' + entry['path'].split('/')[-1] + '\n')
-    # move new manifest into correct directory
-    cmd = 'mv control/tmp/wordlists_manifest.txt control/wordlists_manifest.txt'
-    os.system(cmd)
-    print('Done Syncing Wordlists.')
+                new_manifest[wl_id] = local_entry
+        else:
+            # New wordlist – download
+            print('Downloading new wordlist', wl_id)
+            random_hex = secrets.token_hex(8)
+            compressed = api.get_wordlists_file(entry['id'])
+            tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
+            with open(tmp_gz, 'wb') as f:
+                f.write(compressed)
+
+            run_command(f'gunzip {tmp_gz}')
+            tmp_file = os.path.join('control/tmp', random_hex)
+
+            sha256 = hashlib.sha256()
+            with open(tmp_file, 'rb') as f:
+                for block in iter(lambda: f.read(4096), b''):
+                    sha256.update(block)
+            local_checksum = sha256.hexdigest()
+
+            if local_checksum == remote_checksum:
+                dest = os.path.join('control/wordlists', filename)
+                run_command(f'mv {tmp_file} {dest}')
+                new_manifest[wl_id] = {'checksum': local_checksum, 'filename': filename}
+            else:
+                print('Checksum verification failed for new wordlist', wl_id)
+                os.remove(tmp_file)
+
+    if new_manifest != wordlists_manifest.data:
+        wordlists_manifest.data = new_manifest
+        wordlists_manifest.save()
+        print('Wordlists manifest updated.')
+    else:
+        print('Wordlists manifest unchanged.')
 
 def jobTasks(job_task_id):
     return api.jobTasks(job_task_id)
@@ -307,39 +340,75 @@ def replaceHashcatBinPath(cmd):
     return cmd.replace('@HASHCATBINPATH@', Config.HC_BIN_PATH)
 
 def run_hashcat(cmd):
-    os.system(cmd)
+    run_command(cmd)
+    #os.system(cmd)
+
+def time_difference(future_timestamp):
+    # Get the current time and calculate the difference
+    now = datetime.now()
+    future_time = datetime.fromtimestamp(future_timestamp)
+    delta = future_time - now
+
+    # If the time difference is negative (i.e., the timestamp is in the past), return immediately
+    if delta.total_seconds() < 0:
+        return "The specified time is in the past."
+
+    # Calculate each time component
+    years = delta.days // 365
+    months = (delta.days % 365) // 30
+    days = (delta.days % 365) % 30
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Store non-zero values with their labels
+    components = [
+        (years, "year"),
+        (months, "month"),
+        (days, "day"),
+        (hours, "hour"),
+        (minutes, "minute"),
+        (seconds, "second")
+    ]
+
+    # Filter out components that are zero
+    components = [(value, name) for value, name in components if value > 0]
+
+    # If there are fewer than two components, just return the available values
+    if len(components) == 0:
+        return "The specified time is very close to now."
+    elif len(components) == 1:
+        return f"{components[0][0]} {components[0][1]}{'s' if components[0][0] > 1 else ''}"
+    
+    # Return only the largest two components
+    largest_two = components[:2]
+    return ', '.join(f"{value} {name}{'s' if value > 1 else ''}" for value, name in largest_two)
+
+def convert_speed(speed):
+    if speed > 1000000000:
+        return str(round((speed / 1000000000),1)) + " GH/s"
+    elif speed > 1000000:
+        return str(round((speed / 1000000), 1)) + " MH/s"
+    elif speed > 1000:
+        return str(round((speed / 1000), 1)) + " KH/s"
+    else:
+        return str(speed) + " H/s"
 
 def hashcatParser(filepath):
     status = {}
     hashcat_output = open(filepath, 'r')
     for line in hashcat_output:
-        if line.startswith('Time.Started.'):
-            status['Time_Started'] = line.split(': ')[-1].rstrip()
-        elif line.startswith('Time.Estimated.'):
-            status['Time_Estimated'] = line.split('.: ')[-1].rstrip()
-        elif line.startswith('Recovered.'):
-            status['Recovered'] = line.split(': ')[-1].rstrip()
-        elif line.startswith('Input.Mode.'):
-            status['Input_Mode'] = line.split(': ')[-1].rstrip()
-        elif line.startswith('Guess.Mask.'):
-            status['Guess_Mask'] = line.split(': ')[-1].rstrip()
-        elif line.startswith('Progress'):
-            status['Progress'] = line.split(': ')[-1].rstrip()
-        elif line.startswith('Speed.Dev.'):
-            item = line.split(': ')
-            gpu = item[0].replace('Speed.Dev.', 'Speed Dev ').replace('.', '')
-            status[gpu] = line.split(': ')[-1].strip()
-        elif line.startswith('Speed.#'):
-            item = line.split(': ')
-            gpu = item[0].replace('Speed.#', 'Speed #').replace('.', '').replace('*', '')
-            gpu = re.sub('\d', '', gpu)
-            #status[gpu] = line.split(' ')[1] + ' ' + line.split(' ')[2]
-            #status[gpu] = re.search(r"\b\d+.*/s\b", line).group()
-            status[gpu] = re.search(r"\b\d+.?\d?\s.*/s\b", line).group()
-        elif line.startswith('HWMon.Dev.'):
-            item = line.split('.: ')
-            gpu = item[0].replace('HWMon.Dev.', 'HWMon Dev ').replace('.', '')
-            status[gpu] = line.split('.: ')[-1].strip()
+        # We itterate through entire file with the last value taking precidence
+        if line.startswith('{'):
+            # found json object
+            json_data = json.loads(line)
+            #status['Time_Started'] = json_data['time_start']
+            status['Time_Estimated'] = "(" + time_difference(json_data['estimated_stop'])+ ")"
+            status['Recovered'] = str(json_data['recovered_hashes'][0]) + "/" + str(json_data['recovered_hashes'][1])
+            speed = 0
+            devices = json_data['devices']
+            for device in devices:
+                speed = speed + device['speed']
+            status['Speed #'] = convert_speed(speed)
     return status
 
 def killHashcat(pid):
@@ -350,14 +419,55 @@ def killHashcat(pid):
         #p = psutil.Process(pid)
         #p.terminate()
 
-def uploadCrackFile(file_path, hash_type):
-    return api.uploadCrackFile(file_path, hash_type)
+#def uploadCrackFile(file_path, hash_type, task_id):
+#    return api.uploadCrackFile(file_path, hash_type, task_id)
+def uploadCrackFile(file_path, job_task_id):
+    return api.uploadCrackFile(file_path, job_task_id)
 
 def getHashType(hashfile_id):
     return api.getHashType(hashfile_id)
 
 def updateJobTask(job_task_id, task_status):
     return api.updateJobTask(job_task_id, task_status)    
+
+def data_retention_cleanup():
+    try:
+        response = api.server_settings()
+        server_settings = json.loads(response)
+    except (KeyError, ValueError, TypeError):
+        print('[INFO] hashview-agent.py->data_retention_cleanup() Skipping cleanup: '
+              'server returned an unauthorized or unexpected response (agent may not be approved yet).')
+        return
+
+    if not server_settings or 'retention_period' not in server_settings[0]:
+        print('[INFO] hashview-agent.py->data_retention_cleanup() Skipping cleanup: '
+              'no retention_period in server settings.')
+        return
+
+    # if a value is set then we process
+    if server_settings[0]['retention_period'] != 0:
+        
+        # Check and remove old files from tmp
+        for file in os.listdir('control/tmp'):
+            if os.stat('control/tmp/' + file).st_mtime < time.time() - server_settings[0]['retention_period'] * 86400 and file != '.gitignore':
+                os.remove('control/tmp/' + file)
+                print('[DEBUG] hashview-agent.py->data_retention_cleanup() Removed: control/tmp/' + file)        
+
+        # check and remove files from outfiles
+        for file in os.listdir('control/outfiles'):
+            if file == '.gitignore':
+                print('Found Git Ignore!')
+            if os.stat('control/outfiles/' + file).st_mtime < time.time() - server_settings[0]['retention_period'] * 86400 and file != '.gitignore':
+                os.remove('control/outfiles/' + file)
+                print('[DEBUG] hashview-agent.py->data_retention_cleanup() Removed: control/outfiles/' + file) 
+
+        # check and remove hashfiles
+        for file in os.listdir('control/hashes'):
+            if file == '.gitignore':
+                print('Found Git Ignore!')
+            if os.stat('control/hashes/' + file).st_mtime < time.time() - server_settings[0]['retention_period'] * 86400 and file != '.gitignore':
+                os.remove('control/hashes/' + file)
+                print('[DEBUG] hashview-agent.py->data_retention_cleanup() Removed: control/hashes/' + file)         
 
 if __name__ == '__main__':
     from agent import config
@@ -370,6 +480,9 @@ if __name__ == '__main__':
     # Main loop
     while (1):
         agent_status = ''
+
+        # Check data retention
+        data_retention_cleanup()
 
         # Check if we're currently working on a task
         if getHashcatPid():
@@ -409,6 +522,7 @@ if __name__ == '__main__':
                                 print('[!] Something broke during the updateing of the dynamic wordlist: ' + str(wordlist['id']))
                             else:
                                 print('[*] Update Complete')
+                            sync_wordlists()
 
 
                 # Get Job, so that we can get our hashfile
@@ -417,7 +531,7 @@ if __name__ == '__main__':
                 # Download our hashfile. File name will be generated to match that of whats expected by the jobtask cmd.
                 download_hashfile(job['id'], job_task['task_id'], job['hashfile_id'])
 
-                cmd = replaceHashcatBinPath(job_task['command']) + ' | tee control/outfiles/hcoutput_' + str(job['id']) + '_' + str(job_task['id']) + '.txt'
+                cmd = replaceHashcatBinPath(job_task['command']) + ' --status-json | tee control/outfiles/hcoutput_' + str(job['id']) + '_' + str(job_task['id']) + '.txt'
                 print(cmd)
 
                 # run in thread
@@ -442,7 +556,8 @@ if __name__ == '__main__':
                     if os.path.exists(crack_file):
                         getHashTypeResponse = getHashType(job['hashfile_id'])
                         if getHashTypeResponse['msg'] == 'OK':
-                            uploadCrackFileResponse = uploadCrackFile(crack_file, getHashTypeResponse['hash_type'])
+                            #uploadCrackFileResponse = uploadCrackFile(crack_file, getHashTypeResponse['hash_type'], str(job_task['task_id']))
+                            uploadCrackFileResponse = uploadCrackFile(crack_file, str(job_task['id']))
                             if uploadCrackFileResponse['msg'] == 'OK':
                                 print('[*] Upload Success!')
                     else:
@@ -456,7 +571,8 @@ if __name__ == '__main__':
                 if os.path.exists(crack_file):
                     getHashTypeResponse = getHashType(job['hashfile_id'])
                     if getHashTypeResponse['msg'] == 'OK':
-                        uploadCrackFileResponse = uploadCrackFile(crack_file, getHashTypeResponse['hash_type'])
+                        #uploadCrackFileResponse = uploadCrackFile(crack_file, getHashTypeResponse['hash_type'], str(job_task['task_id']))
+                        uploadCrackFileResponse = uploadCrackFile(crack_file, str(job_task['id']))
                         if uploadCrackFileResponse['msg'] == 'OK':
                             print('[*] Upload Success!')
                 else:
@@ -474,4 +590,3 @@ if __name__ == '__main__':
 
         print('[*] Sleeping')
         time.sleep(10)
-

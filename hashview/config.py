@@ -7,9 +7,19 @@ class Config:
     """Class representing Config"""
 
     file_config.read('hashview/config.conf')
-    SECRET_KEY = secrets.token_hex(16)
-    SQLALCHEMY_DATABASE_URI = 'mysql+mysqlconnector://' + file_config['database']['username'] + ':' + file_config['database']['password'] + '@' + file_config['database']['host'] + '/hashview'
- 
+    SECRET_KEY = file_config['SERVER'].get('SECRET_KEY', secrets.token_hex(16))
+
+    # Server Config
+    SERVER_NAME = file_config['SERVER']['SERVER_NAME']
+
+    # MYSQL Config
+    SQLALCHEMY_DATABASE_URI = (
+        'mysql+mysqlconnector://'
+        + file_config['database']['username'] + ':'
+        + file_config['database']['password'] + '@'
+        + file_config['database']['host'] + '/hashview'
+    )
+
     # SMTP Config
     MAIL_SERVER = file_config['SMTP']['server']
     MAIL_PORT = file_config['SMTP']['port']

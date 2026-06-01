@@ -27,7 +27,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = '2',
         rule_id       = None,
-        hc_attackmode = 'dictionary',
+        hc_attackmode = 0,
     )
     db.session.add(task)
 
@@ -36,7 +36,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = '3',
         rule_id       = '1',
-        hc_attackmode = 'dictionary',
+        hc_attackmode = 0,
     )
     db.session.add(task)
 
@@ -46,7 +46,7 @@ def add_default_tasks(db :SQLAlchemy):
         owner_id      = '1',
         wl_id         = None,
         rule_id       = None,
-        hc_attackmode = 'maskmode',
+        hc_attackmode = 3,
         hc_mask       = '?a?a?a?a?a?a?a?a',
     )
     db.session.add(task)
@@ -93,24 +93,71 @@ def add_default_static_wordlist(db :SQLAlchemy):
     db.session.commit()
 
 
-def default_dynamic_wordlist_need_added(db :SQLAlchemy) -> bool:
-    return (0 == db.session.query(Wordlists).filter_by(type='dynamic').filter_by(name='All Recovered Hashes').count())
+def default_dynamic_wordlists_need_added(db :SQLAlchemy) -> bool:
+    return (0 == db.session.query(Wordlists).filter_by(type='dynamic').count())
 
 
-def add_default_dynamic_wordlist(db :SQLAlchemy):
-    wordlist_path = 'hashview/control/wordlists/dynamic-all.txt'
-    with open(wordlist_path, mode='w'):
+def add_default_dynamic_wordlists(db :SQLAlchemy):
+    # All Recovered Passwords (matches the 'Passwords' branch in update_dynamic_wordlist)
+    wordlist_all_recovered_passwords_path = 'hashview/control/wordlists/dynamic-all.txt'
+    with open(wordlist_all_recovered_passwords_path, mode='w'):
         # 'w' => open for writing, truncating the file first
         pass
-    wordlist = Wordlists(
-        name     = 'All Recovered Hashes',
+    wordlist_all_recovered_passwords = Wordlists(
+        name     = '(DYNAMIC) All Recovered Passwords',
         owner_id = 1,
         type     = 'dynamic',
-        path     = wordlist_path,               # Can we make this a relative path?
-        checksum = get_filehash(wordlist_path),
+        path     = wordlist_all_recovered_passwords_path,  # consider relative path
+        checksum = get_filehash(wordlist_all_recovered_passwords_path),
         size     = 0,
     )
-    db.session.add(wordlist)
+
+    # All Usernames
+    wordlist_all_usernames_path = 'hashview/control/wordlists/dynamic-usernames.txt'
+    with open(wordlist_all_usernames_path, mode='w'):
+        # 'w' => open for writing, truncating the file first
+        pass
+    wordlist_all_usernames = Wordlists(
+        name     = '(DYNAMIC) All Usernames',
+        owner_id = 1,
+        type     = 'dynamic',
+        path     = wordlist_all_usernames_path,               # Can we make this a relative path?
+        checksum = get_filehash(wordlist_all_usernames_path),
+        size     = 0,
+    )
+
+    # All Customers
+    wordlist_all_customers_path = 'hashview/control/wordlists/dynamic-customers.txt'
+    with open(wordlist_all_customers_path, mode='w'):
+        # 'w' => open for writing, truncating the file first
+        pass
+    wordlist_all_customers = Wordlists(
+        name     = '(DYNAMIC) All Customers',
+        owner_id = 1,
+        type     = 'dynamic',
+        path     = wordlist_all_customers_path,               # Can we make this a relative path?
+        checksum = get_filehash(wordlist_all_customers_path),
+        size     = 0,
+    )
+
+    # All NTLM Hashes (matches the 'NTLM' branch in update_dynamic_wordlist)
+    wordlist_all_ntlm_path = 'hashview/control/wordlists/dynamic-ntlm.txt'
+    with open(wordlist_all_ntlm_path, mode='w'):
+        # 'w' => open for writing, truncating the file first
+        pass
+    wordlist_all_ntlm = Wordlists(
+        name     = '(DYNAMIC) All NTLM Hashes',
+        owner_id = 1,
+        type     = 'dynamic',
+        path     = wordlist_all_ntlm_path,
+        checksum = get_filehash(wordlist_all_ntlm_path),
+        size     = 0,
+    )
+
+    db.session.add(wordlist_all_recovered_passwords)
+    db.session.add(wordlist_all_usernames)
+    db.session.add(wordlist_all_customers)
+    db.session.add(wordlist_all_ntlm)
     db.session.commit()
 
 
@@ -132,10 +179,13 @@ def add_admin_user(db :SQLAlchemy, bcrypt :Bcrypt):
 
 
 def admin_pass_needs_changed(db :SQLAlchemy, bcrypt :Bcrypt) -> bool:
-    current_password_hash, *_ = db.session.query(Users.password).filter_by(id=1).first()
+    result = db.session.query(Users.password).filter_by(id=1).first()
+    if result is None:
+        return True
+    current_password_hash, *_ = result
     return bcrypt.check_password_hash(current_password_hash, DEFAULT_PASSWORD)
 
 
 def settings_needs_added(db :SQLAlchemy) -> bool:
     settings = db.session.query(Settings).first()
-    return (settings is None)
+    return settings is None

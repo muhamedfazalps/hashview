@@ -18,7 +18,7 @@ def test_job_creation_flow(page, live_server, login):
             "HASHVIEW_E2E_TASK_ID, HASHVIEW_E2E_TASK_NAME."
         )
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="Create a New Job").click()
+    page.get_by_role("link", name="New Job").click()
     expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Job")
@@ -55,7 +55,7 @@ def test_job_creation_flow(page, live_server, login):
     page.locator("#hash_completion").select_option("none")
     page.get_by_role("button", name="Next").click()
 
-    expect(page.get_by_role("heading", name="Tasks")).to_be_visible()
+    expect(page.get_by_role("heading", name="Agents")).to_be_visible()
     match = re.search(r"/jobs/(\d+)/tasks", page.url)
     assert match, f"Unexpected tasks URL: {page.url}"
     job_id = match.group(1)

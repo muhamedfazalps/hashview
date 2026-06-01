@@ -139,7 +139,7 @@ def login(page, live_server, test_user_credentials):
         page.goto(f"{live_server}/login", wait_until="domcontentloaded")
         page.get_by_label("Email").fill(test_user_credentials["email"])
         page.get_by_label("Password").fill(test_user_credentials["password"])
-        page.get_by_role("button", name="Login").click()
+        page.get_by_role("button", name="Crack the planet!").click()
         if not page.get_by_role("link", name="Jobs").is_visible():
             pytest.skip(
                 "Login failed against external server; set HASHVIEW_E2E_EMAIL/PASSWORD."
