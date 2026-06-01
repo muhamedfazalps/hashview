@@ -13,12 +13,23 @@ Also provides shared fixtures for unit tests:
 - ``client`` — Flask's test_client for ``app``.
 - ``db_session`` — convenience access to the SQLAlchemy session bound to
   ``app``.
+
+When the app's runtime deps (Flask, Flask-SQLAlchemy, …) aren't installed —
+e.g. the e2e-only CI venv that only has requirements-dev.txt — the
+``collect_ignore_glob`` below skips the entire tests/unit/ tree at
+collection time rather than erroring on the ``from hashview import …``
+imports inside the fixtures. The e2e CI script already ignores this dir
+explicitly; this guard means a stray ``pytest tests/`` against a thin env
+still does the right thing.
 """
+
+import importlib.util
 
 import pytest
 
-from hashview import create_app
-from hashview.models import db as _db
+
+if importlib.util.find_spec("flask") is None:
+    collect_ignore_glob = ["test_*.py"]
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +45,10 @@ def configure_page():
 
 
 def _build_test_app():
+    # Import lazily so this module remains importable in envs without
+    # Flask (paired with the ``collect_ignore_glob`` above).
+    from hashview import create_app
+
     app = create_app(
         testing=True,
         config_overrides={
@@ -56,6 +71,7 @@ def _build_test_app():
 
 @pytest.fixture()
 def app():
+    from hashview.models import db as _db
     app = _build_test_app()
     with app.app_context():
         _db.create_all()
@@ -71,4 +87,5 @@ def client(app):
 
 @pytest.fixture()
 def db_session(app):
+    from hashview.models import db as _db
     return _db.session

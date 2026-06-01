@@ -70,7 +70,10 @@ export HASHVIEW_E2E_BASE_URL="$BASE_URL"
 
 echo "Running pytest against $BASE_URL"
 set +e
-./.venv/bin/python -m pytest -m e2e --ignore=tests/security -vv -s --maxfail=1
+./.venv/bin/python -m pytest -m e2e \
+    --ignore=tests/security \
+    --ignore=tests/unit \
+    -vv -s --maxfail=1
 TEST_EXIT=$?
 set -e
 

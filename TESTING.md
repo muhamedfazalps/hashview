@@ -61,9 +61,27 @@ This script:
   - Uses Playwright against a live host.
   - `tests/e2e/test_agent_sim.py` runs a heartbeat-only agent simulation (no DB dependency).
   - Some tests are optional and may skip if credentials or IDs are missing.
+  - The dev venv only needs `requirements-dev.txt` (pytest + playwright);
+    the app under test lives in docker so the runner doesn't import any
+    `hashview.*` modules.
+  - `tests/run_e2e_compose.sh` passes `--ignore=tests/security
+    --ignore=tests/unit` so pytest doesn't try to import those dirs'
+    conftests (which pull in Flask & friends).
 
-- **Security**: `pytest -m security`
-  - Includes command-injection regression tests in `tests/security/`.
+- **Security / unit**: `pytest -m security`
+  - Includes command-injection regression tests in `tests/security/` and
+    the broader unit suite under `tests/unit/` (auth-required sweep, hash
+    parsers, dynamic-wordlist dispatcher, migration smoke, API endpoints,
+    password reset, hashfile cascade, lucky + one-and-done, etc.).
+  - These tests import from the `hashview.*` package, so they need the
+    app's runtime dependencies installed too:
+    ```
+    ./.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+    ./.venv/bin/python -m pytest -m security -vv
+    ```
+  - The `tests/unit/conftest.py` is guarded with a `collect_ignore_glob`
+    that skips the directory if Flask isn't importable, so a stray
+    `pytest tests/` against an e2e-only venv won't error at collection.
 
 ## CI / CD (dev Docker containers)
 
