@@ -136,35 +136,42 @@ def ensure_settings_cli(db):
 
 
 def ensure_dynamic_wordlist(db):
+    """Ensure each canonical (DYNAMIC) wordlist exists; idempotent per name.
+
+    Mirrors hashview/setup/__init__.py:add_default_dynamic_wordlists so the
+    CLI-style setup path covers the same four wordlists the auto-setup path
+    creates: Recovered Passwords, Usernames, Customers, NTLM Hashes.
+    """
     from hashview.models import Wordlists
     from hashview.utils.utils import get_filehash
 
-    dynamic_wordlist_count = (
-        Wordlists.query
-        .filter_by(type='dynamic')
-        .filter_by(name='(DYNAMIC) All Recovered Passwords')
-        .count()
-    )
-    if dynamic_wordlist_count > 0:
-        print(f'✓ Dynamic Wordlist exist in database. Count({dynamic_wordlist_count})')
-        return
-
-    else:
-        print('\nSetting up dynamic wordlist.')
-        wordlist_path = 'hashview/control/wordlists/dynamic-all.txt'
-        with open(wordlist_path, 'w'):
+    wanted = [
+        ('(DYNAMIC) All Recovered Passwords', 'hashview/control/wordlists/dynamic-all.txt'),
+        ('(DYNAMIC) All Usernames',           'hashview/control/wordlists/dynamic-usernames.txt'),
+        ('(DYNAMIC) All Customers',           'hashview/control/wordlists/dynamic-customers.txt'),
+        ('(DYNAMIC) All NTLM Hashes',         'hashview/control/wordlists/dynamic-ntlm.txt'),
+    ]
+    added = 0
+    for name, path in wanted:
+        if Wordlists.query.filter_by(name=name).first() is not None:
+            continue
+        with open(path, 'w'):
             # 'w' => open for writing, truncating the file first
             pass
-        wordlist = Wordlists(
-            name     = '(DYNAMIC) All Recovered Passwords',
+        db.session.add(Wordlists(
+            name     = name,
             owner_id = '1',
             type     = 'dynamic',
-            path     = wordlist_path,               # Can we make this a relative path?
-            checksum = get_filehash(wordlist_path),
+            path     = path,
+            checksum = get_filehash(path),
             size     = 0,
-        )
-        db.session.add(wordlist)
-        db.session.commit()
+        ))
+        added += 1
+    db.session.commit()
+    if added == 0:
+        print('✓ Dynamic Wordlists already present.')
+    else:
+        print(f'\nAdded {added} missing dynamic wordlist(s).')
 
 
 def ensure_static_wordlist(db):

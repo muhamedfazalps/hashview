@@ -93,71 +93,53 @@ def add_default_static_wordlist(db :SQLAlchemy):
     db.session.commit()
 
 
+# The four canonical dynamic wordlists. Order matters only for the seed-file
+# layout; the dispatcher in hashview/utils/utils.py:update_dynamic_wordlist
+# routes by substring (Passwords/Usernames/Customers/NTLM).
+_DYNAMIC_WORDLISTS = (
+    ('(DYNAMIC) All Recovered Passwords', 'hashview/control/wordlists/dynamic-all.txt'),
+    ('(DYNAMIC) All Usernames',           'hashview/control/wordlists/dynamic-usernames.txt'),
+    ('(DYNAMIC) All Customers',           'hashview/control/wordlists/dynamic-customers.txt'),
+    ('(DYNAMIC) All NTLM Hashes',         'hashview/control/wordlists/dynamic-ntlm.txt'),
+)
+
+
 def default_dynamic_wordlists_need_added(db :SQLAlchemy) -> bool:
-    return (0 == db.session.query(Wordlists).filter_by(type='dynamic').count())
+    """True when any of the canonical (DYNAMIC) wordlists is missing.
+
+    Replaces the previous all-or-nothing gate (count==0) so existing
+    installs that already have the older 3 dynamic wordlists still get the
+    new "(DYNAMIC) All NTLM Hashes" entry on next startup.
+    """
+    wanted = {name for name, _ in _DYNAMIC_WORDLISTS}
+    present = {
+        w.name for w in
+        db.session.query(Wordlists).filter(Wordlists.name.in_(wanted)).all()
+    }
+    return bool(wanted - present)
 
 
 def add_default_dynamic_wordlists(db :SQLAlchemy):
-    # All Recovered Passwords (matches the 'Passwords' branch in update_dynamic_wordlist)
-    wordlist_all_recovered_passwords_path = 'hashview/control/wordlists/dynamic-all.txt'
-    with open(wordlist_all_recovered_passwords_path, mode='w'):
-        # 'w' => open for writing, truncating the file first
-        pass
-    wordlist_all_recovered_passwords = Wordlists(
-        name     = '(DYNAMIC) All Recovered Passwords',
-        owner_id = 1,
-        type     = 'dynamic',
-        path     = wordlist_all_recovered_passwords_path,  # consider relative path
-        checksum = get_filehash(wordlist_all_recovered_passwords_path),
-        size     = 0,
-    )
+    """Ensure each canonical (DYNAMIC) wordlist exists; idempotent per name.
 
-    # All Usernames
-    wordlist_all_usernames_path = 'hashview/control/wordlists/dynamic-usernames.txt'
-    with open(wordlist_all_usernames_path, mode='w'):
-        # 'w' => open for writing, truncating the file first
-        pass
-    wordlist_all_usernames = Wordlists(
-        name     = '(DYNAMIC) All Usernames',
-        owner_id = 1,
-        type     = 'dynamic',
-        path     = wordlist_all_usernames_path,               # Can we make this a relative path?
-        checksum = get_filehash(wordlist_all_usernames_path),
-        size     = 0,
-    )
-
-    # All Customers
-    wordlist_all_customers_path = 'hashview/control/wordlists/dynamic-customers.txt'
-    with open(wordlist_all_customers_path, mode='w'):
-        # 'w' => open for writing, truncating the file first
-        pass
-    wordlist_all_customers = Wordlists(
-        name     = '(DYNAMIC) All Customers',
-        owner_id = 1,
-        type     = 'dynamic',
-        path     = wordlist_all_customers_path,               # Can we make this a relative path?
-        checksum = get_filehash(wordlist_all_customers_path),
-        size     = 0,
-    )
-
-    # All NTLM Hashes (matches the 'NTLM' branch in update_dynamic_wordlist)
-    wordlist_all_ntlm_path = 'hashview/control/wordlists/dynamic-ntlm.txt'
-    with open(wordlist_all_ntlm_path, mode='w'):
-        # 'w' => open for writing, truncating the file first
-        pass
-    wordlist_all_ntlm = Wordlists(
-        name     = '(DYNAMIC) All NTLM Hashes',
-        owner_id = 1,
-        type     = 'dynamic',
-        path     = wordlist_all_ntlm_path,
-        checksum = get_filehash(wordlist_all_ntlm_path),
-        size     = 0,
-    )
-
-    db.session.add(wordlist_all_recovered_passwords)
-    db.session.add(wordlist_all_usernames)
-    db.session.add(wordlist_all_customers)
-    db.session.add(wordlist_all_ntlm)
+    Skips entries that are already in the DB so this can run safely on every
+    startup. The previous implementation always inserted all four rows,
+    which is why the gate had to be all-or-nothing.
+    """
+    for name, path in _DYNAMIC_WORDLISTS:
+        if db.session.query(Wordlists).filter_by(name=name).first() is not None:
+            continue
+        # 'w' opens for writing and truncates — fine for a placeholder seed.
+        with open(path, mode='w'):
+            pass
+        db.session.add(Wordlists(
+            name     = name,
+            owner_id = 1,
+            type     = 'dynamic',
+            path     = path,
+            checksum = get_filehash(path),
+            size     = 0,
+        ))
     db.session.commit()
 
 

@@ -4,6 +4,15 @@ Revision ID: 8a5b0fff063d
 Revises: dba208b9344c
 Create Date: 2026-05-28 04:54:13.598898
 
+This migration only renames the existing dynamic wordlists. The new
+"(DYNAMIC) All NTLM Hashes" wordlist is not inserted here — instead it gets
+created at app startup by
+``hashview/setup/__init__.py:add_default_dynamic_wordlists``, which runs
+after the admin user exists. Earlier versions of this migration tried to
+``INSERT INTO wordlists (... owner_id=1 ...)`` directly, which failed with a
+foreign-key violation on a fresh install because the admin user is created
+after ``flask db upgrade`` finishes.
+
 """
 from alembic import op
 
@@ -24,17 +33,8 @@ def upgrade():
     op.execute("UPDATE wordlists SET name='(DYNAMIC) All Usernames' WHERE name='(Dynamic) All Usernames'")
     op.execute("UPDATE wordlists SET name='(DYNAMIC) All Customers' WHERE name='(Dynamic) All Customers'")
 
-    # Add the new All NTLM Hashes dynamic wordlist if absent.
-    op.execute("""
-        INSERT INTO wordlists (name, owner_id, type, path, size, checksum, last_updated)
-        SELECT '(DYNAMIC) All NTLM Hashes', 1, 'dynamic',
-               'hashview/control/wordlists/dynamic-ntlm.txt', 0, '', NOW()
-        WHERE NOT EXISTS (SELECT 1 FROM wordlists WHERE name='(DYNAMIC) All NTLM Hashes')
-    """)
-
 
 def downgrade():
-    op.execute("DELETE FROM wordlists WHERE name='(DYNAMIC) All NTLM Hashes'")
     op.execute("UPDATE wordlists SET name='(Dynamic) All Customers' WHERE name='(DYNAMIC) All Customers'")
     op.execute("UPDATE wordlists SET name='(Dynamic) All Usernames' WHERE name='(DYNAMIC) All Usernames'")
     op.execute("UPDATE wordlists SET name='(Dynamic) All Recovered Hashes' WHERE name='(DYNAMIC) All Recovered Passwords'")
