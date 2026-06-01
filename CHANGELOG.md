@@ -2,7 +2,7 @@
 Notable changes will be documented here
 
 ## Current Release
-## [v0.8.2-Beta] - 2026-XX-XX
+## [v0.8.2-Beta] - 2026-06-01
 
 ### Added
 

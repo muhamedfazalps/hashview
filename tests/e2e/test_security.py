@@ -109,7 +109,7 @@ def test_agent_name_xss_is_escaped(page, live_server, login):
     page.context.add_cookies(
         [
             {"name": "uuid", "value": agent_uuid, "url": live_server},
-            {"name": "agent_version", "value": "0.8.1", "url": live_server},
+            {"name": "agent_version", "value": "0.8.2", "url": live_server},
             {"name": "name", "value": payload, "url": live_server},
         ]
     )

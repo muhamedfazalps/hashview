@@ -11,7 +11,7 @@ from functools import partial
 from logging.config import dictConfig as loggingDictConfig
 
 
-__version__ = '0.8.1'
+__version__ = '0.8.2'
 
 
 def get_application_version() -> str:
