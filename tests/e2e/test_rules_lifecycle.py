@@ -32,7 +32,7 @@ def _add_rule(page, live_server, name: str) -> None:
     expect(page.get_by_role("heading", name=re.compile(r"Add Rules"))).to_be_visible()
     page.locator("input[name='name']").fill(name)
     page.set_input_files("input[name='rules']", str(EXAMPLE_RULE))
-    page.get_by_role("button", name=re.compile(r"upload", re.I)).click()
+    page.get_by_role("button", name="upload", exact=True).click()
     expect(page).to_have_url(re.compile(r".*/rules/?$"))
     expect(page.get_by_text("Rules File created!", exact=False)).to_be_visible()
 

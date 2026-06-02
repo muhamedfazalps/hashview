@@ -248,7 +248,9 @@ def task_edit(task_id):
             if tasksForm.hc_attackmode.data == 0:
                 task.name = tasksForm.name.data
                 task.wl_id = tasksForm.wl_id.data
-                task.rule_id = tasksForm.rule_id.data
+                # Normalize the 'None' sentinel to NULL (matches tasks_add); storing the
+                # literal string 'None' into the integer rule_id column raises MySQL 1366.
+                task.rule_id = None if tasksForm.rule_id.data == 'None' else tasksForm.rule_id.data
                 task.hc_attackmode = tasksForm.hc_attackmode.data
                 task.hc_mask = None
 
