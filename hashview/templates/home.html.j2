@@ -47,7 +47,7 @@
 {# ---------- Agent fleet + recovery chart ---------- #}
 <div class="grid" style="grid-template-columns: 1.05fr 1fr; margin-bottom: var(--gap); align-items: stretch;">
     <div class="card">
-        <div class="card-head"><span class="dot-led run"></span><h3>Agent Fleet</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">{{ ns.online }}/{{ agents|length }} online</span></div>
+        <div class="card-head"><span class="dot-led {% if agents|length == 0 %}idle{% elif ns.online == agents|length %}on{% elif ns.online == 0 %}off{% else %}run{% endif %}" title="{% if agents|length == 0 %}No agents configured{% elif ns.online == agents|length %}All agents online{% elif ns.online == 0 %}All agents offline{% else %}{{ agents|length - ns.online }} of {{ agents|length }} offline{% endif %}"></span><h3>Agent Fleet</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">{{ ns.online }}/{{ agents|length }} online</span></div>
         <div class="card-body">
             {% if agents %}
             <div class="grid" style="grid-template-columns: 1fr 1fr;">

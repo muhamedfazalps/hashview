@@ -32,11 +32,11 @@ def test_job_name_required_validation(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     _select_customer(page)
     page.get_by_role("button", name="Next").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
 
 @pytest.mark.e2e
@@ -44,16 +44,19 @@ def test_job_name_xss_is_escaped(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     xss_payload = '<script id="xss-test">window.__xss=1</script>'
     page.get_by_label("Job Name").fill(xss_payload)
     if page.locator("#priority").count() > 0:
-        page.locator("#priority").select_option("3")
+        # priority is now a range slider, not a <select>
+        page.locator("#priority").evaluate(
+            "el => { el.value = '3'; el.dispatchEvent(new Event('input')); }"
+        )
     _select_customer(page)
     page.get_by_role("button", name="Next").click()
     expect(
-        page.get_by_role("heading", name=re.compile(r"Assign Hashes for"))
+        page.get_by_role("heading", name=re.compile(r"Assign Hashes"))
     ).to_be_visible()
 
     page.goto(f"{live_server}/jobs", wait_until="domcontentloaded")
@@ -66,22 +69,24 @@ def test_hashfile_validation_rejects_invalid_hash(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Invalid Hash Test")
     _select_customer(page)
     page.get_by_role("button", name="Next").click()
     expect(
-        page.get_by_role("heading", name=re.compile(r"Assign Hashes for"))
+        page.get_by_role("heading", name=re.compile(r"Assign Hashes"))
     ).to_be_visible()
 
+    page.locator("#tab-paste").click()
     page.locator("select[name='file_type']").select_option("hash_only")
     page.locator("select[name='hash_type']").select_option("0")
+    page.locator("#pane-newhash input[name='name']").fill("e2e-invalid-hashfile")
     page.locator("textarea[name='hashfilehashes']").fill("short")
     page.get_by_role("button", name="Next").click()
-    expect(page).to_have_url(re.compile(r".*/assigned_hashfile/"))
-    if page.locator(".alert-danger").count() > 0:
-        expect(page.locator(".alert-danger")).to_be_visible()
+    expect(page).to_have_url(re.compile(r".*/assigned_hashfile"))
+    if page.locator(".flash-danger").count() > 0:
+        expect(page.locator(".flash-danger").first).to_be_visible()
 
 
 @pytest.mark.e2e
@@ -89,18 +94,18 @@ def test_hashfile_upload_example_file(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Upload Example Hashfile")
     _select_customer(page)
     page.get_by_role("button", name="Next").click()
     expect(
-        page.get_by_role("heading", name=re.compile(r"Assign Hashes for"))
+        page.get_by_role("heading", name=re.compile(r"Assign Hashes"))
     ).to_be_visible()
 
     page.locator("select[name='file_type']").select_option("hash_only")
     page.locator("select[name='hash_type']").select_option("0")
-    page.locator("#pills-profile-tab").click()
+    page.locator("#tab-upload").click()
     example_path = Path(__file__).parent / "example_hashes.txt"
     page.set_input_files("input[name='hashfile']", str(example_path))
     page.get_by_role("button", name="Next").click()
@@ -113,18 +118,18 @@ def test_hashfile_upload_example_pwdump(page, live_server, login):
     login()
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Upload Example Pwdump")
     _select_customer(page)
     page.get_by_role("button", name="Next").click()
     expect(
-        page.get_by_role("heading", name=re.compile(r"Assign Hashes for"))
+        page.get_by_role("heading", name=re.compile(r"Assign Hashes"))
     ).to_be_visible()
 
     page.locator("select[name='file_type']").select_option("pwdump")
     page.locator("select[name='pwdump_hash_type']").select_option("1000")
-    page.locator("#pills-profile-tab").click()
+    page.locator("#tab-upload").click()
     example_path = Path(__file__).parent / "example_pwdump.txt"
     page.set_input_files("input[name='hashfile']", str(example_path))
     page.get_by_role("button", name="Next").click()

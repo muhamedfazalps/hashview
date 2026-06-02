@@ -43,11 +43,10 @@ def _delete_wordlist_via_modal(page, name: str) -> None:
     expect(row).to_be_visible()
     # Each row's delete button targets #deleteModal<id>; click it to open the modal,
     # then submit the form inside the modal.
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/wordlists/delete/'] input[type='submit'], "
-                  "form[action*='/wordlists/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/wordlists/delete/'] button[type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/wordlists/?$"))
     expect(page.get_by_text("Wordlist has been deleted!", exact=False)).to_be_visible()
 

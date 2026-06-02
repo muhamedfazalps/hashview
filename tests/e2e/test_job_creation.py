@@ -19,11 +19,14 @@ def test_job_creation_flow(page, live_server, login):
         )
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E Job")
     if page.locator("#priority").count() > 0:
-        page.locator("#priority").select_option("3")
+        # priority is now a range slider, not a <select>
+        page.locator("#priority").evaluate(
+            "el => { el.value = '3'; el.dispatchEvent(new Event('input')); }"
+        )
     customer_option = page.locator(f"#customer_id option[value='{customer_id}']")
     if customer_option.count() == 0:
         page.locator("#customer_id").select_option("add_new")
@@ -36,26 +39,24 @@ def test_job_creation_flow(page, live_server, login):
     page.get_by_role("button", name="Next").click()
 
     expect(
-        page.get_by_role("heading", name=re.compile(r"Assign Hashes for"))
+        page.get_by_role("heading", name=re.compile(r"Assign Hashes"))
     ).to_be_visible()
-    option = page.locator(
-        f"#nav-existing-hashfile #hashfile_id option[value='{hashfile_id}']"
+    # Existing-hashfile picker is now a radio-row table under the "Use existing" tab.
+    page.locator("#tab-existing").click()
+    radio = page.locator(
+        f"#pane-existing input[name='hashfile_id'][value='{hashfile_id}']"
     )
-    if option.count() == 0:
+    if radio.count() == 0:
         pytest.skip("HASHVIEW_E2E_HASHFILE_ID not present in existing hashfiles list.")
-    page.locator("#nav-existing-hashfile-tab").click()
-    page.locator("#nav-existing-hashfile #hashfile_id").select_option(
-        str(hashfile_id),
-        force=True,
-    )
-    page.locator("#nav-existing-hashfile button[type='submit']").click()
+    radio.check(force=True)
+    page.locator("#hf_next").click()
 
-    expect(page.get_by_role("heading", name="Notifications")).to_be_visible()
-    page.locator("#job_completion").select_option("none")
-    page.locator("#hash_completion").select_option("none")
+    # Notifications step: leave all alert toggles off (= no notifications) and continue.
+    expect(page.get_by_role("heading", name="Job completion")).to_be_visible()
     page.get_by_role("button", name="Next").click()
 
-    expect(page.get_by_role("heading", name="Agents")).to_be_visible()
+    # Tasks step — the wizard's task library / queue.
+    expect(page.get_by_role("heading", name="Task Library")).to_be_visible()
     match = re.search(r"/jobs/(\d+)/tasks", page.url)
     assert match, f"Unexpected tasks URL: {page.url}"
     job_id = match.group(1)

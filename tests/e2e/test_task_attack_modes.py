@@ -50,11 +50,10 @@ def _delete_wordlist(page, live_server, name: str) -> None:
     row = _row_with_text(page, name)
     if row.count() == 0:
         return
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/wordlists/delete/'] input[type='submit'], "
-                  "form[action*='/wordlists/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/wordlists/delete/'] button[type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/wordlists/?$"))
 
 
@@ -72,11 +71,10 @@ def _delete_rule(page, live_server, name: str) -> None:
     row = _row_with_text(page, name)
     if row.count() == 0:
         return
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/rules/delete/'] input[type='submit'], "
-                  "form[action*='/rules/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/rules/delete/'] button[type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/rules/?$"))
 
 
@@ -114,11 +112,10 @@ def _delete_task(page, live_server, name: str) -> None:
     page.goto(f"{live_server}/tasks", wait_until="domcontentloaded")
     row = _row_with_text(page, name)
     expect(row).to_be_visible()
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/tasks/delete/'] input[type='submit'], "
-                  "form[action*='/tasks/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/tasks/delete/'] button[type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/tasks/?$"))
 
 

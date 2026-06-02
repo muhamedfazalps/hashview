@@ -41,11 +41,14 @@ def test_customer_name_xss_is_escaped(page, live_server, login):
 
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.locator("input[name='name']").fill(f"E2E XSS Customer {uuid.uuid4().hex[:6]}")
     if page.locator("#priority").count() > 0:
-        page.locator("#priority").select_option("3")
+        # priority is now a range slider, not a <select>
+        page.locator("#priority").evaluate(
+            "el => { el.value = '3'; el.dispatchEvent(new Event('input')); }"
+        )
     customer_select = page.locator("#customer_id")
     customer_select.select_option("add_new")
     if customer_select.input_value() != "add_new":
@@ -57,7 +60,7 @@ def test_customer_name_xss_is_escaped(page, live_server, login):
     page.get_by_role("button", name="Next").click()
     try:
         expect(
-            page.get_by_role("heading", name=re.compile(r"Assign Hashes for"))
+            page.get_by_role("heading", name=re.compile(r"Assign Hashes"))
         ).to_be_visible()
     except AssertionError:
         pytest.skip("Job creation failed; customer not created.")
@@ -167,7 +170,7 @@ def test_job_idor_access_denied_for_other_user(
     )
     page.get_by_role("link", name="Jobs").click()
     page.get_by_role("link", name="New Job").click()
-    expect(page.get_by_role("heading", name="Create a new Job")).to_be_visible()
+    expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E IDOR Job")
     _select_customer(page)
