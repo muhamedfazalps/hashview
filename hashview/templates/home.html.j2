@@ -45,12 +45,11 @@
 </div>
 
 {# ---------- Agent fleet + recovery chart ---------- #}
-<div class="grid" style="grid-template-columns: 1.05fr 1fr; margin-bottom: var(--gap); align-items: stretch;">
-    <div class="card">
+<div class="card" style="margin-bottom: var(--gap);">
         <div class="card-head"><span class="dot-led {% if agents|length == 0 %}idle{% elif ns.online == agents|length %}on{% elif ns.online == 0 %}off{% else %}run{% endif %}" title="{% if agents|length == 0 %}No agents configured{% elif ns.online == agents|length %}All agents online{% elif ns.online == 0 %}All agents offline{% else %}{{ agents|length - ns.online }} of {{ agents|length }} offline{% endif %}"></span><h3>Agent Fleet</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">{{ ns.online }}/{{ agents|length }} online</span></div>
         <div class="card-body">
             {% if agents %}
-            <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
                 {% for agent in agents %}
                     {% set is_down = agent.last_checkin and (agent.last_checkin + timedelta(hours=1)) < datetime.now() %}
                     {% set working = recovered_list.get(agent.id) %}
@@ -92,11 +91,35 @@
         </div>
     </div>
 
-    <div class="card">
-        <div class="card-head"><span class="dot-led on"></span><h3>Passwords Recovered</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">last 7 days</span></div>
-        <div class="card-body">
-            <div class="chart-wrap"><canvas id="chLine"></canvas></div>
+{# ---------- Passwords recovered + live recovery feed (full width) ---------- #}
+<div class="card" style="margin-bottom: var(--gap);">
+    <div class="card-head"><span class="dot-led on"></span><h3>Passwords Recovered</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">last 7 days</span></div>
+    <div class="card-body">
+        <div class="chart-wrap"><canvas id="chLine"></canvas></div>
+
+        {# ---- live recovery feed (under the graph) ---- #}
+        <div style="display:flex; align-items:center; gap:10px; margin:22px 0 2px; padding-top:16px; border-top:1px solid var(--border-soft);">
+            <span class="dot-led on"></span>
+            <h3 style="margin:0; font-size:12px; font-family:var(--mono); font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim);">Live Recovery Feed</h3>
         </div>
+        {% if recovery_feed %}
+        <table class="tbl">
+            <thead><tr><th>Time</th><th>Account</th><th>Plaintext</th><th class="center">Type</th><th>Recovered By</th></tr></thead>
+            <tbody>
+                {% for r in recovery_feed %}
+                <tr{% if loop.first %} style="background:rgba(var(--primary-rgb),0.06); box-shadow:inset 2px 0 0 var(--primary);"{% endif %}>
+                    <td class="mono" style="color:var(--text-dim);">{{ r.time }}</td>
+                    <td class="mono" style="color:var(--text-dim);">{{ r.account }}</td>
+                    <td class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ r.plaintext }}</td>
+                    <td class="center"><span class="badge cyan">{{ r.type }}</span></td>
+                    <td class="mono" style="color:var(--text-dim);">{{ r.recovered_by }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="mono" style="color:var(--text-mute); padding:16px 0 4px;">No recoveries yet.</div>
+        {% endif %}
     </div>
 </div>
 

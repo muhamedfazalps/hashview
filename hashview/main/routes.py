@@ -60,7 +60,49 @@ def home():
     for job in jobs:
         collapse_all = collapse_all + "collapse" + str(job.id) + " "
 
-    return render_template('home.html.j2', jobs=jobs, running_jobs=running_jobs, queued_jobs=queued_jobs, users=users, customers=customers, job_tasks=job_tasks, tasks=tasks, agents=agents, recovered_list=recovered_list, time_estimated_list=time_estimated_list, collapse_all=collapse_all, timestamp=timestamp, datetime=datetime, timedelta=timedelta, fig1_labels=fig1_labels, fig1_values=fig1_values, settings=settings)
+    # Live recovery feed: most recent cracked hashes (time, account, plaintext, type).
+    from hashview.jobs.forms import JobsNewHashFileForm
+    hash_type_names = {}
+    try:
+        _f = JobsNewHashFileForm()
+        for _sel in (_f.hash_type, _f.pwdump_hash_type, _f.netntlm_hash_type,
+                     _f.kerberos_hash_type, _f.shadow_hash_type):
+            for _v, _lab in _sel.choices:
+                if _v is not None and str(_v) not in hash_type_names:
+                    _nm = _lab.split(') ', 1)[1] if ') ' in _lab else _lab
+                    hash_type_names[str(_v)] = _nm.split(' / ')[0].split(',')[0].strip()
+    except Exception:  # pragma: no cover - defensive: never break the dashboard
+        hash_type_names = {}
+
+    def _hexdec(v):
+        # hashview stores usernames/plaintexts hex-encoded; decode safely.
+        if not v:
+            return ''
+        try:
+            return bytes.fromhex(v).decode('latin-1')
+        except (ValueError, TypeError):
+            return v
+
+    user_names = {u.id: ((u.first_name or '') + ' ' + (u.last_name or '')).strip() for u in users}
+
+    recent_recovered = db.session.query(Hashes, HashfileHashes.username) \
+        .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+        .filter(Hashes.cracked == True) \
+        .filter(Hashes.recovered_at.isnot(None)) \
+        .order_by(Hashes.recovered_at.desc()) \
+        .limit(12).all()
+    recovery_feed = [
+        {
+            'time': h.recovered_at.strftime('%H:%M:%S') if h.recovered_at else '—',
+            'account': _hexdec(username) or '—',
+            'plaintext': _hexdec(h.plaintext),
+            'type': hash_type_names.get(str(h.hash_type), str(h.hash_type)),
+            'recovered_by': user_names.get(h.recovered_by) or '—',
+        }
+        for h, username in recent_recovered
+    ]
+
+    return render_template('home.html.j2', jobs=jobs, running_jobs=running_jobs, queued_jobs=queued_jobs, users=users, customers=customers, job_tasks=job_tasks, tasks=tasks, agents=agents, recovered_list=recovered_list, time_estimated_list=time_estimated_list, collapse_all=collapse_all, timestamp=timestamp, datetime=datetime, timedelta=timedelta, fig1_labels=fig1_labels, fig1_values=fig1_values, settings=settings, recovery_feed=recovery_feed)
 
 @main.route("/job_task/stop/<int:job_task_id>")
 @login_required
