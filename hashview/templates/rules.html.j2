@@ -37,7 +37,7 @@
                         {{ rule.name }}
                     </span>
                 </td>
-                <td class="mono" style="color:var(--text-dim);">{{ rule.size }}</td>
+                <td class="mono num"><span style="color:{{ 'var(--primary)' if rule.size else 'var(--text-mute)' }};{% if rule.size %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(rule.size|int) }}</span></td>
                 <td class="mono" style="color:var(--text-dim);">{% for user in users %}{% if user.id == rule.owner_id %}{{ user.first_name }} {{ user.last_name }}{% endif %}{% endfor %}</td>
                 <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ rule.last_updated }}</td>
                 <td class="center">

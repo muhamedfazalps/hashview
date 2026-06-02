@@ -4,8 +4,19 @@ from flask_login import login_required, current_user
 from hashview.tasks.forms import TasksForm
 from hashview.models import TaskGroups, Tasks, Wordlists, Rules, Users, Jobs, JobTasks, Hashes
 from hashview.models import db
+import os
 
 tasks = Blueprint('tasks', __name__)
+
+
+def _human_size(num):
+    """Human-readable byte size (e.g. 133 MB) for the task info modal."""
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if num < 1024 or unit == 'TB':
+            if unit == 'B':
+                return '%d B' % num
+            return ('%.1f %s' % (num, unit)).replace('.0 ', ' ')
+        num /= 1024.0
 
 @tasks.route("/tasks", methods=['GET', 'POST'])
 @login_required
@@ -67,7 +78,25 @@ def tasks_list():
         db.func.count(Hashes.id).label('recovered_count')
     ).filter(Hashes.cracked == '1').group_by(Hashes.task_id).all()
 
-    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order, rules=Rules.query.all(), tasksForm=TasksForm())
+    # Best-effort on-disk byte size for wordlists referenced by the tasks on this page
+    # (the info modal shows "<size> · <N> words"). Missing files just omit the byte size.
+    wl_by_id = {w.id: w for w in wordlists}
+    referenced_wl = set()
+    for t in tasks:
+        if t.wl_id:
+            referenced_wl.add(t.wl_id)
+        if t.wl_id_2:
+            referenced_wl.add(t.wl_id_2)
+    wl_filesize = {}
+    for wid in referenced_wl:
+        w = wl_by_id.get(wid)
+        if w and w.path:
+            try:
+                wl_filesize[wid] = _human_size(os.path.getsize(w.path))
+            except OSError:
+                pass
+
+    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order, rules=Rules.query.all(), wl_filesize=wl_filesize, tasksForm=TasksForm())
 
 @tasks.route("/tasks/add", methods=['GET', 'POST'])
 @login_required

@@ -62,6 +62,56 @@ def jobs_list():
             }
         job_cracked[job.id] = _hf_cracked[hfid]
 
+    # --- per-job info-modal data: hash type, runtime, task count, notifications ---
+    hash_type_names = {}
+    try:
+        _f = JobsNewHashFileForm()
+        for _sel in (_f.hash_type, _f.pwdump_hash_type, _f.netntlm_hash_type,
+                     _f.kerberos_hash_type, _f.shadow_hash_type):
+            for _v, _lab in _sel.choices:
+                if _v is not None and str(_v) not in hash_type_names:
+                    _nm = _lab.split(') ', 1)[1] if ') ' in _lab else _lab
+                    hash_type_names[str(_v)] = _nm.split(' / ')[0].split(',')[0].strip()
+    except Exception:  # pragma: no cover - defensive
+        hash_type_names = {}
+
+    job_task_count = {}
+    for jt in job_tasks:
+        job_task_count[jt.job_id] = job_task_count.get(jt.job_id, 0) + 1
+
+    jn_by_job = {}
+    for n in JobNotifications.query.all():
+        jn_by_job.setdefault(n.job_id, set()).add(n.method)
+
+    job_hash_type = {}
+    job_runtime = {}
+    job_notifs = {}
+    _hf_type = {}
+    _hf_perhash = {}
+    for job in jobs:
+        # runtime: started -> ended (or now if running); total run time even if canceled;
+        # '-' when the job never started (e.g. still queued)
+        if job.started_at:
+            end = job.ended_at or datetime.now()
+            secs = (end - job.started_at).total_seconds()
+            secs = secs if secs > 0 else 0
+            job_runtime[job.id] = '%dh %dm' % (int(secs // 3600), int((secs % 3600) // 60))
+        else:
+            job_runtime[job.id] = '-'
+        if job.hashfile_id:
+            if job.hashfile_id not in _hf_type:
+                mode = db.session.query(func.min(Hashes.hash_type)).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id == job.hashfile_id).scalar()
+                _hf_type[job.hashfile_id] = hash_type_names.get(str(mode), str(mode)) if mode is not None else None
+            job_hash_type[job.id] = _hf_type[job.hashfile_id]
+            if job.hashfile_id not in _hf_perhash:
+                _hf_perhash[job.hashfile_id] = db.session.query(HashNotifications).join(HashfileHashes, HashNotifications.hash_id == HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id == job.hashfile_id).first() is not None
+            per_hash = _hf_perhash[job.hashfile_id]
+        else:
+            job_hash_type[job.id] = None
+            per_hash = False
+        methods = jn_by_job.get(job.id, set())
+        job_notifs[job.id] = {'email': 'email' in methods, 'pushover': 'push' in methods, 'per_hash': per_hash}
+
     return render_template(
         'jobs.html.j2',
         title='Jobs',
@@ -72,6 +122,10 @@ def jobs_list():
         job_tasks=job_tasks,
         tasks=tasks,
         job_cracked=job_cracked,
+        job_hash_type=job_hash_type,
+        job_runtime=job_runtime,
+        job_task_count=job_task_count,
+        job_notifs=job_notifs,
         pagination=pagination,
         show_only_mine=show_only_mine
     )

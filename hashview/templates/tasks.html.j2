@@ -1,10 +1,12 @@
 {% extends "layout.html.j2" %}
 {% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import status_badge %}
 {% block title %}Tasks · Hashview{% endblock %}
 {% block content %}
 {% macro hcount(n) -%}
 {%- if n and n >= 1000000 -%}{{ (n / 1000000)|round(1) }}M{%- elif n and n >= 1000 -%}{{ (n / 1000)|round(1) }}K{%- else -%}{{ n or 0 }}{%- endif -%}
 {%- endmacro %}
+{% macro kv_label(t) -%}<div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:6px;">{{ t }}</div>{%- endmacro %}
 
 <div class="page-head">
     <div>
@@ -268,56 +270,82 @@ function hvFilterTasks(q){
 
 {# ---- per-task modals (native <dialog>, no framework) ---- #}
 {% for task in tasks %}
-<dialog class="hv-dialog" id="info-{{ task.id }}">
-    <div class="hv-dialog-head"><h3>Info: {{ task.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
-    <div class="hv-dialog-body">
-        <dl class="kv">
-            <dt>Associated Jobs</dt>
-            <dd>
-                {% set associated_jobs = namespace(value=0) %}
-                {% for job_task in job_tasks %}
-                    {% if job_task.task_id == task.id %}
-                        {% for job in jobs %}
-                            {% if job.id == job_task.job_id %}
-                                {% set associated_jobs.value = 1 %}
-                                {{ job.name }} <br>
-                            {% endif %}
-                        {% endfor %}
-                    {% endif %}
-                {% endfor %}
-                {% if associated_jobs.value == 0 %}
-                    <i>none</i><br>
-                {% endif %}
-            </dd>
-            <dt>Associated Wordlists</dt>
-            <dd>
-                {% set associated_wordlists = namespace(value=0) %}
-                {% for wordlist in wordlists %}
-                    {% if wordlist.id == task.wl_id %}
-                        {% set associated_wordlists.value = 1 %}
-                        {{ wordlist.name }} <br>
-                    {% endif %}
-                {% endfor %}
-                {% if associated_wordlists.value == 0 %}
-                    <i>none</i><br>
-                {% endif %}
-            </dd>
-            <dt>Associated Task Groups</dt>
-            <dd>
-                {% set associated_task_groups = namespace(value=0) %}
-                {% for task_group in task_groups %}
-                    {% if task.id|string() in task_group.tasks %}
-                        {% set associated_task_groups.value = 1 %}
-                        {{ task_group.name }} <br>
-                    {% endif %}
-                {% endfor %}
-                {% if associated_task_groups.value == 0 %}
-                    <i>none</i><br>
-                {% endif %}
-            </dd>
-        </dl>
+<dialog class="hv-dialog" id="info-{{ task.id }}" style="max-width:680px; width:94vw;">
+    {% set has_rule = task.rule_id is not none and task.rule_id != 'None' and task.rule_id != 0 %}
+    {% set meta = namespace(badge='DICTIONARY', ico='book', desc='Straight wordlist run', sub='Dictionary attack') %}
+    {% if task.hc_attackmode == 0 and has_rule %}
+        {% set meta.badge = 'DICT + RULE' %}{% set meta.ico = 'rule' %}{% set meta.desc = 'Wordlist mutated by a ruleset' %}{% set meta.sub = 'Dict + Rule attack' %}
+    {% elif task.hc_attackmode == 1 %}
+        {% set meta.badge = 'COMBINATOR' %}{% set meta.ico = 'copy' %}{% set meta.desc = 'Two wordlists combined' %}{% set meta.sub = 'Combinator attack' %}
+    {% elif task.hc_attackmode == 3 %}
+        {% set meta.badge = 'MASK' %}{% set meta.ico = 'hash' %}{% set meta.desc = 'Brute-force by character pattern' %}{% set meta.sub = 'Mask attack' %}
+    {% elif task.hc_attackmode == 6 %}
+        {% set meta.badge = 'HYBRID' %}{% set meta.ico = 'zap' %}{% set meta.desc = 'Wordlist then mask' %}{% set meta.sub = 'Hybrid attack' %}
+    {% elif task.hc_attackmode == 7 %}
+        {% set meta.badge = 'HYBRID' %}{% set meta.ico = 'zap' %}{% set meta.desc = 'Mask then wordlist' %}{% set meta.sub = 'Hybrid attack' %}
+    {% endif %}
+    {% set ns = namespace(wl='', wl2='', rule='', wlsize=0, recovered=0) %}
+    {% for w in wordlists %}{% if w.id == task.wl_id %}{% set ns.wl = w.name %}{% set ns.wlsize = w.size %}{% endif %}{% if w.id == task.wl_id_2 %}{% set ns.wl2 = w.name %}{% endif %}{% endfor %}
+    {% for r in rules %}{% if r.id == task.rule_id %}{% set ns.rule = r.name %}{% endif %}{% endfor %}
+    {% for p in task_recovery_performance %}{% if p.task_id == task.id %}{% set ns.recovered = p.recovered_count %}{% endif %}{% endfor %}
+
+    <div class="hv-dialog-head">
+        {{ icon('info', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">{{ task.name }}</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">{{ meta.sub }}</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
-    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+    <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+        {# summary strip #}
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">
+            <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ icon(meta.ico, size=20) }}</span>
+            <div style="line-height:1.5;">
+                <span class="badge cyan">{{ meta.badge }}</span>
+                <div style="color:var(--text-dim); margin-top:5px;">{{ meta.desc }}</div>
+            </div>
+        </div>
+
+        {# detail grid (no keyspace, no estimated runtime) #}
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px 24px;">
+            <div>{{ kv_label('Wordlist') }}<div class="mono" style="color:{{ 'var(--text)' if ns.wl else 'var(--text-mute)' }};">{{ ns.wl if ns.wl else 'none' }}</div></div>
+            {% if task.hc_attackmode == 3 or task.hc_attackmode == 6 or task.hc_attackmode == 7 %}
+            <div>{{ kv_label('Mask pattern') }}<div class="mono" style="color:var(--cyan);">{{ task.hc_mask if task.hc_mask else '—' }}</div></div>
+            {% elif task.hc_attackmode == 1 %}
+            <div>{{ kv_label('Second wordlist') }}<div class="mono" style="color:{{ 'var(--text)' if ns.wl2 else 'var(--text-mute)' }};">{{ ns.wl2 if ns.wl2 else 'none' }}</div></div>
+            {% else %}
+            <div>{{ kv_label('Rule') }}<div class="mono" style="color:{{ 'var(--cyan)' if has_rule else 'var(--text-mute)' }};">{{ ns.rule if has_rule else 'none' }}</div></div>
+            {% endif %}
+            {% if task.wl_id %}
+            <div>{{ kv_label('List size') }}<div style="color:var(--text);">{% if wl_filesize is defined and wl_filesize.get(task.wl_id) %}{{ wl_filesize[task.wl_id] }} · {% endif %}{{ "{:,}".format(ns.wlsize|int) }} words</div></div>
+            {% endif %}
+            <div>{{ kv_label('Historical hits') }}<div><span class="mono" style="color:{{ 'var(--primary)' if ns.recovered else 'var(--text-mute)' }};{% if ns.recovered %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(ns.recovered|int) }}</span> <span style="color:var(--text-dim);">passwords recovered</span></div></div>
+        </div>
+
+        {# used-in jobs #}
+        {% set jl = namespace(count=0) %}
+        {% for jt in job_tasks %}{% if jt.task_id == task.id %}{% for j in jobs %}{% if j.id == jt.job_id %}{% set jl.count = jl.count + 1 %}{% endif %}{% endfor %}{% endif %}{% endfor %}
+        <div style="margin-top:24px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('jobs', size=14) }} Used in {{ jl.count }} job{{ '' if jl.count == 1 else 's' }}</div>
+            {% if jl.count %}
+            {% for jt in job_tasks %}{% if jt.task_id == task.id %}{% for j in jobs %}{% if j.id == jt.job_id %}
+            <div class="card" style="margin-bottom:8px; padding:12px 14px; display:flex; align-items:center; gap:10px;">
+                <span class="dot-led {% if j.status == 'Running' %}run{% elif j.status == 'Completed' %}on{% elif j.status == 'Canceled' %}off{% else %}idle{% endif %}"></span>
+                <span class="mono" style="color:var(--text-mute);">#{{ j.id }}</span>
+                <span style="font-weight:600; color:var(--text);">{{ j.name }}</span>
+                <span style="margin-left:auto;">{{ status_badge(j.status) }}</span>
+            </div>
+            {% endif %}{% endfor %}{% endif %}{% endfor %}
+            {% else %}
+            <div class="mono" style="color:var(--text-mute);">Not used in any jobs yet.</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}" role="button">{{ icon('play', size=15) }} Run in new job</a>
+    </div>
 </dialog>
 
 <dialog class="hv-dialog" id="del-{{ task.id }}">

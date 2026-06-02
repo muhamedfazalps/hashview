@@ -2,9 +2,10 @@
 from flask import Blueprint, render_template, url_for, redirect, flash
 from flask_login import login_required, current_user
 from sqlalchemy.sql import exists
-from hashview.models import Hashfiles, Customers, Jobs, HashfileHashes, HashNotifications, Hashes
+from hashview.models import Hashfiles, Customers, Jobs, HashfileHashes, HashNotifications, Hashes, Users, JobTasks
 from hashview.models import db
 from hashview.jobs.forms import JobsNewHashFileForm
+from datetime import datetime
 from sqlalchemy import func, case
 from sqlalchemy.sql import exists
 
@@ -68,11 +69,42 @@ def hashfiles_list():
 
     overall_rate = round(total_recovered / total_hashes * 100) if total_hashes else 0
 
+    # Per-hashfile job history for the info modal (id, name, owner, tasks, runtime, status, date).
+    user_names = {u.id: (((u.first_name or '') + ' ' + (u.last_name or '')).strip() or '—')
+                  for u in Users.query.all()}
+    task_count = {}
+    for jt in JobTasks.query.all():
+        task_count[jt.job_id] = task_count.get(jt.job_id, 0) + 1
+
+    def _runtime(j):
+        if not j.started_at:
+            return '—'
+        end = j.ended_at or datetime.now()
+        secs = (end - j.started_at).total_seconds()
+        secs = secs if secs > 0 else 0
+        return '%dh %dm' % (int(secs // 3600), int((secs % 3600) // 60))
+
+    hashfile_jobs = {}
+    for hashfile in hashfiles:
+        rows = []
+        for j in jobs:
+            if j.hashfile_id == hashfile.id:
+                rows.append({
+                    'id': j.id,
+                    'name': j.name,
+                    'status': j.status,
+                    'owner': user_names.get(j.owner_id, '—'),
+                    'tasks': task_count.get(j.id, 0),
+                    'runtime': _runtime(j),
+                    'date': j.ended_at or j.started_at or j.created_at,
+                })
+        hashfile_jobs[hashfile.id] = rows
+
     return render_template('hashfiles.html.j2', title='Hashfiles', hashfiles=hashfiles,
                            customers=customers, jobs=jobs,
                            hash_type_dict=hash_type_dict, hashfile_stats=hashfile_stats,
                            total_hashes=total_hashes, total_recovered=total_recovered,
-                           overall_rate=overall_rate)
+                           overall_rate=overall_rate, hashfile_jobs=hashfile_jobs)
 
 @hashfiles.route("/hashfiles/delete/<int:hashfile_id>", methods=['GET', 'POST'])
 @login_required

@@ -3,6 +3,12 @@
 {% block title %}Create Job · Hashview{% endblock %}
 {% block content %}
 {% set default_tab = 'existing' if job.hashfile_id else 'upload' %}
+<style>
+    /* "Use existing": render the check only inside the selected row's box (the
+       .sel-box always contains the check svg so the JS toggle can reveal it). */
+    #pane-existing .sel-box svg { visibility: hidden; }
+    #pane-existing .sel-box.on svg { visibility: visible; }
+</style>
 <script>
     // hashcat-mode -> example hash, shown in the Paste box placeholder
     var HV_HASH_EXAMPLES = {

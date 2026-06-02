@@ -1,5 +1,5 @@
 {% extends "layout.html.j2" %}
-{% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import icon, status_badge %}
 {% block title %}Hash Files · Hashview{% endblock %}
 {% block content %}
 
@@ -108,26 +108,60 @@ function hvFilterHashfiles(q){
 
 {# ---- per-hashfile modals (native <dialog>, no framework) ---- #}
 {% for hashfile in hashfiles %}
-<dialog class="hv-dialog" id="info-{{ hashfile.id }}">
-    <div class="hv-dialog-head"><h3>Info: {{ hashfile.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
-    <div class="hv-dialog-body">
-        <dl class="kv">
-            <dt>Associated Jobs</dt>
-            <dd>
-                {% set associated_jobs = namespace(value=0) %}
-                {% for job in jobs %}
-                    {% if job.hashfile_id == hashfile.id %}
-                        {% set associated_jobs.value = 1 %}
-                        {{ job.name }}<br>
-                    {% endif %}
-                {% endfor %}
-                {% if associated_jobs.value == 0 %}
-                    <i>none</i>
-                {% endif %}
-            </dd>
-        </dl>
+<dialog class="hv-dialog" id="info-{{ hashfile.id }}" style="max-width:760px; width:94vw;">
+    {% set hfjobs = hashfile_jobs.get(hashfile.id, []) if hashfile_jobs is defined else [] %}
+    {% set st = hashfile_stats.get(hashfile.id) if hashfile_stats is defined else none %}
+    <div class="hv-dialog-head">
+        {{ icon('file', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">{{ hashfile.name }}</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">job history · {{ hfjobs|length }} job{{ '' if hfjobs|length == 1 else 's' }} run against this file</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
-    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+    <div class="hv-dialog-body" style="max-height:70vh; overflow-y:auto;">
+        {# hashfile summary strip #}
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <span class="badge cyan">{{ hash_type_dict[hashfile.id] }}</span>
+            <span style="color:var(--text-dim);">{% for c in customers %}{% if c.id == hashfile.customer_id %}{{ c.name }}{% endif %}{% endfor %}</span>
+            <span class="mono" style="margin-left:auto; font-size:12.5px;">{% if st %}<span style="color:var(--primary); text-shadow:var(--glow-text);">{{ "{:,}".format(st.cracked) }}</span><span style="color:var(--text-mute);"> / {{ "{:,}".format(st.total) }} recovered</span>{% endif %}</span>
+            <span style="display:inline-block; text-align:center; line-height:1;">
+                <span class="mono" style="font-size:24px; color:var(--primary); text-shadow:var(--glow-text);">{{ st.pct if st else 0 }}<span style="font-size:12px;">%</span></span>
+                <span class="mono" style="display:block; font-size:9px; letter-spacing:1px; color:var(--text-mute); margin-top:2px;">CRACKED</span>
+            </span>
+        </div>
+        <div style="height:4px; border-radius:2px; background:var(--surface-3); overflow:hidden; margin-bottom:18px;">
+            <div style="height:100%; width:{{ st.pct if st else 0 }}%; background:linear-gradient(90deg,var(--primary-deep),var(--primary)); box-shadow:var(--glow-sm);"></div>
+        </div>
+
+        {# per-job history #}
+        {% if hfjobs %}
+        {% for j in hfjobs %}
+        <div class="card" style="margin-bottom:12px; padding:14px 16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span class="dot-led {% if j.status == 'Running' %}run{% elif j.status == 'Completed' %}on{% elif j.status == 'Canceled' %}off{% else %}idle{% endif %}"></span>
+                <span class="mono" style="color:var(--text-mute);">#{{ j.id }}</span>
+                <span style="font-weight:600; color:var(--text);">{{ j.name }}</span>
+                <span style="margin-left:auto;">{{ status_badge(j.status) }}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:20px; margin-top:11px; font-family:var(--mono); font-size:11.5px; color:var(--text-mute);">
+                <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('users', size=14) }} {{ j.owner }}</span>
+                <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('task', size=14) }} {{ j.tasks }} tasks</span>
+                <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('clock', size=14) }} {{ j.runtime }}</span>
+                <span style="margin-left:auto;">{{ j.date.strftime('%b %d %H:%M') if j.date else '—' }}</span>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="mono" style="color:var(--text-mute); padding:8px 0 14px;">No jobs have run against this hashfile.</div>
+        {% endif %}
+    </div>
+    <div class="hv-dialog-foot">
+        {% set completed = hfjobs | selectattr('status', 'equalto', 'Completed') | list | length %}
+        <span class="mono" style="font-size:11.5px; color:var(--text-mute); margin-right:auto;">{{ completed }} completed · {{ hfjobs|length }} total</span>
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_list') }}" role="button">{{ icon('jobs', size=15) }} Open in Jobs</a>
+    </div>
 </dialog>
 
 <dialog class="hv-dialog" id="del-{{ hashfile.id }}">
