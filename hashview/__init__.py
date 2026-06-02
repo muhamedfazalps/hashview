@@ -266,14 +266,35 @@ def create_app(testing=False, config_overrides=None):
         try:
             import re
             from datetime import datetime, timedelta
-            from hashview.models import (Jobs, Agents, Tasks, TaskGroups,
+            from sqlalchemy import text
+            from hashview.models import (db, Jobs, Agents, Tasks, TaskGroups,
                                          Hashfiles, Wordlists, Rules, Users)
 
             agents = Agents.query.all()
-            cutoff = datetime.now() - timedelta(hours=1)
+            # last_checkin is stamped with the database clock (api.update_heartbeat uses
+            # func.now()); derive the cutoff from that SAME clock so the comparison is
+            # independent of whatever timezone this web process runs in. Falls back to the
+            # process clock only if the DB time can't be read.
+            try:
+                db_now = db.session.execute(text("SELECT NOW()")).scalar()
+                if isinstance(db_now, str):
+                    db_now = datetime.strptime(db_now[:19], '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                db_now = None
+            cutoff = (db_now or datetime.utcnow()) - timedelta(hours=1)
+
+            # An agent is "up" when it's connected (recent check-in) and in a
+            # running or idle/ready state; the speed total only counts agents actively
+            # cracking ("Working"). Everything else (pending, stale, never checked in,
+            # disconnected) counts as down/offline.
+            up_states = {'working', 'syncing', 'idle', 'authorized', 'online'}
+            running_states = {'working'}
 
             def _connected(a):
                 return a.last_checkin is not None and a.last_checkin >= cutoff
+
+            def _state(a):
+                return (a.status or '').strip().lower()
 
             def _hps(s):
                 """Parse a benchmark display string (e.g. '284.6 GH/s') to H/s."""
@@ -292,8 +313,9 @@ def create_app(testing=False, config_overrides=None):
                         return "%.1f %s" % (h / div, unit)
                 return ("%d H/s" % int(h)) if h else "0 H/s"
 
-            up = sum(1 for a in agents if _connected(a))
-            total_hps = sum(_hps(a.benchmark) for a in agents if _connected(a))
+            up = sum(1 for a in agents if _connected(a) and _state(a) in up_states)
+            total_hps = sum(_hps(a.benchmark) for a in agents
+                            if _connected(a) and _state(a) in running_states)
 
             return {
                 "nav_counts": {

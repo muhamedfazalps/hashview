@@ -34,7 +34,7 @@
 
             <div class="sidebar-foot">
                 {% if agent_stats is defined %}
-                <div class="agent-mini" title="{{ agent_stats.up }} running · {{ agent_stats.down }} disconnected · {{ agent_stats.speed }} total">
+                <div class="agent-mini" title="{{ agent_stats.up }} up (running/idle) · {{ agent_stats.down }} offline/disconnected · {{ agent_stats.speed }} from running agents">
                     <span class="dot-led {{ 'on' if agent_stats.up else 'off' }}"></span>
                     <span><b>{{ agent_stats.up }}</b> up · <b>{{ agent_stats.down }}</b> down · <b>{{ agent_stats.speed }}</b></span>
                 </div>

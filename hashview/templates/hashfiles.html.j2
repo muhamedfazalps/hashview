@@ -30,7 +30,7 @@
     {# ---- filter bar: magnifying glass beside the input, top-right of the card ---- #}
     <div class="card-head" style="justify-content:flex-end;">
         <span style="color:var(--text-mute); display:inline-flex;">{{ icon('search', size=16) }}</span>
-        <input type="text" id="hf-filter" class="input" style="width:260px; flex:none;" placeholder="filter hashfiles…" autocomplete="off" oninput="hvFilterHashfiles(this.value)">
+        <input type="text" id="hf-filter" class="input" style="width:260px; flex:none;" placeholder="filter by hashfile or customer…" autocomplete="off" oninput="hvFilterHashfiles(this.value)">
     </div>
     {% if hashfiles %}
     <table class="tbl">
@@ -48,7 +48,7 @@
         <tbody id="hf-tbody">
             {% for hashfile in hashfiles %}
             {% set st = hashfile_stats.get(hashfile.id) if hashfile_stats is defined else none %}
-            <tr data-name="{{ hashfile.name|lower }}">
+            <tr data-name="{{ hashfile.name|lower }}{% for c in customers %}{% if c.id == hashfile.customer_id %} {{ c.name|lower }}{% endif %}{% endfor %}">
                 <td style="font-weight:500;">
                     <span style="display:inline-flex; align-items:center; gap:9px;">
                         <span style="color:var(--text-mute); display:inline-flex;">{{ icon('file', size=16) }}</span>

@@ -96,7 +96,11 @@ def tasks_list():
             except OSError:
                 pass
 
-    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order, rules=Rules.query.all(), wl_filesize=wl_filesize, tasksForm=TasksForm())
+    # Tasks assigned to one or more jobs cannot be edited (the edit route enforces this
+    # too); the list view uses this to disable the edit button for those tasks.
+    tasks_in_jobs = {jt.task_id for jt in job_tasks}
+
+    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order, rules=Rules.query.all(), wl_filesize=wl_filesize, tasks_in_jobs=tasks_in_jobs, tasksForm=TasksForm())
 
 @tasks.route("/tasks/add", methods=['GET', 'POST'])
 @login_required

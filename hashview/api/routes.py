@@ -67,7 +67,12 @@ def update_heartbeat(uuid):
     agent = Agents.query.filter_by(uuid=uuid).first()
     if agent:
         agent.src_ip = request.remote_addr
-        agent.last_checkin = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Stamp with the DATABASE's clock (func.now()) rather than a Python datetime.
+        # The heartbeat writer and the dashboard renderer can run in different process
+        # timezones (e.g. UTC vs the host's local time); using the single DB clock for
+        # both the write and the online/offline cutoff makes the comparison
+        # timezone-independent and stops live agents from being shown as offline.
+        agent.last_checkin = func.now()
         db.session.commit()
 
 def versionCheck(agent_version):
@@ -126,7 +131,7 @@ def v1_api_set_agent_heartbeat():
                         src_ip = request.remote_addr,
                         uuid = uuid,
                         status = 'Pending',
-                        last_checkin = datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        last_checkin = func.now())
         db.session.add(new_agent)
         db.session.commit()
         message = {

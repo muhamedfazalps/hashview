@@ -8,6 +8,80 @@
 {%- endmacro %}
 {% macro kv_label(t) -%}<div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:6px;">{{ t }}</div>{%- endmacro %}
 
+{# Shared body for the Add-task and Edit-task modals. `p` is the element-id prefix
+   ('atk' or 'etk') so the two modals stay independent; the name= attributes are fixed
+   so both post the same fields. The edit modal fills the values client-side on open. #}
+{% macro task_modal_body(p, wordlists, rules) %}
+<input type="hidden" name="hc_attackmode" id="{{ p }}-mode" value="0">
+<div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+    <div class="field">
+        <label class="field-label" for="{{ p }}-name">Task name <span class="req">*</span></label>
+        <input class="input" type="text" name="name" id="{{ p }}-name" placeholder="e.g. rockyou + OneRule" autocomplete="off" required>
+    </div>
+    <div class="field">
+        <label class="field-label">Attack mode</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn tab-btn active" id="{{ p }}-t-dict"     onclick="hvAtkSet('{{ p }}','dict')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('book', size=18) }}<span>Dictionary</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-dictrule" onclick="hvAtkSet('{{ p }}','dictrule')" style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('rule', size=18) }}<span>Dict + Rule</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-mask"     onclick="hvAtkSet('{{ p }}','mask')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('hash', size=18) }}<span>Mask</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-hybrid"   onclick="hvAtkSet('{{ p }}','hybrid')"   style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('zap', size=18) }}<span>Hybrid</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-combo"    onclick="hvAtkSet('{{ p }}','combo')"    style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('copy', size=18) }}<span>Combinator</span></button>
+        </div>
+        <span class="field-hint" id="{{ p }}-hint" style="margin-top:8px;">↳ Straight wordlist run</span>
+    </div>
+
+    {# Wordlist — dictionary, dict+rule, hybrid, combinator #}
+    <div class="field" id="{{ p }}-fld-wl">
+        <label class="field-label">Wordlist <span class="req">*</span></label>
+        <select class="select" name="wl_id" id="{{ p }}-wl">
+            {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
+        </select>
+    </div>
+
+    {# Rule — dict+rule #}
+    <div class="field" id="{{ p }}-fld-rule" style="display:none;">
+        <label class="field-label">Rule</label>
+        <select class="select" name="rule_id" id="{{ p }}-rule">
+            <option value="None">— none —</option>
+            {% for r in rules %}<option value="{{ r.id }}">{{ r.name }} · {{ hcount(r.size) }} rules</option>{% endfor %}
+        </select>
+    </div>
+
+    {# Second wordlist — combinator #}
+    <div class="field" id="{{ p }}-fld-wl2" style="display:none;">
+        <label class="field-label">Second wordlist <span class="req">*</span></label>
+        <select class="select" name="wl_id_2" id="{{ p }}-wl2">
+            {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
+        </select>
+    </div>
+
+    {# Hybrid order — hybrid #}
+    <div class="field" id="{{ p }}-fld-order" style="display:none;">
+        <label class="field-label">Order</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn tab-btn active" id="{{ p }}-ho-wm" onclick="hvHybridOrder('{{ p }}',6)">Wordlist → Mask</button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-ho-mw" onclick="hvHybridOrder('{{ p }}',7)">Mask → Wordlist</button>
+        </div>
+    </div>
+
+    {# Mask — mask, hybrid #}
+    <div class="field" id="{{ p }}-fld-mask" style="display:none;">
+        <label class="field-label">Hashcat mask <span class="req">*</span></label>
+        <input class="input mono" type="text" name="mask" id="{{ p }}-mask" placeholder="?l?l?l?l?d?d" autocomplete="off">
+    </div>
+
+    {# Combinator optional rules #}
+    <div class="field" id="{{ p }}-fld-jrule" style="display:none;">
+        <label class="field-label">Left rule <span style="color:var(--text-mute); font-weight:400;">· optional (-j)</span></label>
+        <input class="input mono" type="text" name="j_rule" id="{{ p }}-jrule" placeholder="e.g. $-" autocomplete="off">
+    </div>
+    <div class="field" id="{{ p }}-fld-krule" style="display:none; margin-bottom:0;">
+        <label class="field-label">Right rule <span style="color:var(--text-mute); font-weight:400;">· optional (-k)</span></label>
+        <input class="input mono" type="text" name="k_rule" id="{{ p }}-krule" placeholder="e.g. $!" autocomplete="off">
+    </div>
+</div>
+{% endmacro %}
+
 <div class="page-head">
     <div>
         <h1 class="page-title">Tasks</h1>
@@ -95,7 +169,11 @@
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
                         <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ task.id }}').showModal()">{{ icon('info', size=15) }}</button>
-                        <a class="icon-btn" href="/tasks/edit/{{ task.id }}" title="Edit">{{ icon('edit', size=15) }}</a>
+                        {% if tasks_in_jobs is defined and task.id in tasks_in_jobs %}
+                        <span class="icon-btn" style="opacity:.4; cursor:not-allowed;" title="Locked — task is assigned to a job">{{ icon('edit', size=15) }}</span>
+                        {% else %}
+                        <button type="button" class="icon-btn" title="Edit" onclick='hvEditTask({id:{{ task.id }}, name:{{ task.name|tojson }}, mode:{{ task.hc_attackmode|tojson }}, wl_id:{{ task.wl_id|tojson }}, wl_id_2:{{ task.wl_id_2|tojson }}, rule_id:{{ task.rule_id|tojson }}, mask:{{ task.hc_mask|tojson }}, j_rule:{{ task.j_rule|tojson }}, k_rule:{{ task.k_rule|tojson }}})'>{{ icon('edit', size=15) }}</button>
+                        {% endif %}
                         <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ task.id }}').showModal()">{{ icon('trash', size=15) }}</button>
                     </div>
                 </td>
@@ -162,109 +240,83 @@ function hvFilterTasks(q){
         </div>
         <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
-    <form method="POST" action="{{ url_for('tasks.tasks_add') }}">
+    <form method="POST" action="{{ url_for('tasks.tasks_add') }}" id="atk-form">
         {{ tasksForm.hidden_tag() }}
-        <input type="hidden" name="hc_attackmode" id="atk-mode" value="0">
-        <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
-
-            <div class="field">
-                <label class="field-label" for="atk-name">Task name <span class="req">*</span></label>
-                <input class="input" type="text" name="name" id="atk-name" placeholder="e.g. rockyou + OneRule" autocomplete="off" required>
-            </div>
-
-            <div class="field">
-                <label class="field-label">Attack mode</label>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button type="button" class="btn tab-btn active" id="atk-t-dict"     onclick="hvAtk('dict')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('book', size=18) }}<span>Dictionary</span></button>
-                    <button type="button" class="btn tab-btn"        id="atk-t-dictrule" onclick="hvAtk('dictrule')" style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('rule', size=18) }}<span>Dict + Rule</span></button>
-                    <button type="button" class="btn tab-btn"        id="atk-t-mask"     onclick="hvAtk('mask')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('hash', size=18) }}<span>Mask</span></button>
-                    <button type="button" class="btn tab-btn"        id="atk-t-hybrid"   onclick="hvAtk('hybrid')"   style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('zap', size=18) }}<span>Hybrid</span></button>
-                    <button type="button" class="btn tab-btn"        id="atk-t-combo"    onclick="hvAtk('combo')"    style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('copy', size=18) }}<span>Combinator</span></button>
-                </div>
-                <span class="field-hint" id="atk-hint" style="margin-top:8px;">↳ Straight wordlist run</span>
-            </div>
-
-            {# Wordlist — dictionary, dict+rule, hybrid, combinator #}
-            <div class="field" id="atk-fld-wl">
-                <label class="field-label">Wordlist <span class="req">*</span></label>
-                <select class="select" name="wl_id">
-                    {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
-                </select>
-            </div>
-
-            {# Rule — dict+rule #}
-            <div class="field" id="atk-fld-rule" style="display:none;">
-                <label class="field-label">Rule</label>
-                <select class="select" name="rule_id" id="atk-rule-sel">
-                    <option value="None">— none —</option>
-                    {% for r in rules %}<option value="{{ r.id }}">{{ r.name }} · {{ hcount(r.size) }} rules</option>{% endfor %}
-                </select>
-            </div>
-
-            {# Second wordlist — combinator #}
-            <div class="field" id="atk-fld-wl2" style="display:none;">
-                <label class="field-label">Second wordlist <span class="req">*</span></label>
-                <select class="select" name="wl_id_2">
-                    {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
-                </select>
-            </div>
-
-            {# Hybrid order — hybrid #}
-            <div class="field" id="atk-fld-order" style="display:none;">
-                <label class="field-label">Order</label>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button type="button" class="btn tab-btn active" id="atk-ho-wm" onclick="hvHybridOrder(6)">Wordlist → Mask</button>
-                    <button type="button" class="btn tab-btn"        id="atk-ho-mw" onclick="hvHybridOrder(7)">Mask → Wordlist</button>
-                </div>
-            </div>
-
-            {# Mask — mask, hybrid #}
-            <div class="field" id="atk-fld-mask" style="display:none;">
-                <label class="field-label">Hashcat mask <span class="req">*</span></label>
-                <input class="input mono" type="text" name="mask" placeholder="?l?l?l?l?d?d" autocomplete="off">
-            </div>
-
-            {# Combinator optional rules #}
-            <div class="field" id="atk-fld-jrule" style="display:none;">
-                <label class="field-label">Left rule <span style="color:var(--text-mute); font-weight:400;">· optional (-j)</span></label>
-                <input class="input mono" type="text" name="j_rule" placeholder="e.g. $-" autocomplete="off">
-            </div>
-            <div class="field" id="atk-fld-krule" style="display:none; margin-bottom:0;">
-                <label class="field-label">Right rule <span style="color:var(--text-mute); font-weight:400;">· optional (-k)</span></label>
-                <input class="input mono" type="text" name="k_rule" placeholder="e.g. $!" autocomplete="off">
-            </div>
-        </div>
+        {{ task_modal_body('atk', wordlists, rules) }}
         <div class="hv-dialog-foot">
             <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
             <button type="submit" class="btn btn-primary">{{ icon('plus', size=15) }} Create task</button>
         </div>
     </form>
 </dialog>
+
+{# ---- edit-task modal (opened from a task's edit button; pre-filled client-side) ---- #}
+<dialog class="hv-dialog" id="edit-task-modal" style="max-width:680px; width:94vw;">
+    <div class="hv-dialog-head">
+        {{ icon('task', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Edit Task</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">change this reusable attack</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('tasks.tasks_list') }}" id="etk-form">
+        {{ tasksForm.hidden_tag() }}
+        {{ task_modal_body('etk', wordlists, rules) }}
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Save changes</button>
+        </div>
+    </form>
+</dialog>
 <script>
 (function () {
-    var HYBRID = 6;
-    function show(id, on) { var e = document.getElementById(id); if (e) e.style.display = on ? 'block' : 'none'; }
-    window.hvAtk = function (mode) {
-        var tabs = {dict:'atk-t-dict', dictrule:'atk-t-dictrule', mask:'atk-t-mask', hybrid:'atk-t-hybrid', combo:'atk-t-combo'};
-        for (var k in tabs) { var b = document.getElementById(tabs[k]); if (b) b.classList.toggle('active', k === mode); }
-        var atk = document.getElementById('atk-mode'), hint = document.getElementById('atk-hint'), ruleSel = document.getElementById('atk-rule-sel');
-        // hide everything, reset rule to "none" (ignored by the backend for non dict+rule modes)
-        show('atk-fld-wl', false); show('atk-fld-rule', false); show('atk-fld-wl2', false);
-        show('atk-fld-order', false); show('atk-fld-mask', false); show('atk-fld-jrule', false); show('atk-fld-krule', false);
-        if (ruleSel) ruleSel.value = 'None';
-        if (mode === 'dict')          { atk.value = '0'; show('atk-fld-wl', true); hint.textContent = '↳ Straight wordlist run'; }
-        else if (mode === 'dictrule') { atk.value = '0'; show('atk-fld-wl', true); show('atk-fld-rule', true); if (ruleSel && ruleSel.options.length > 1) ruleSel.selectedIndex = 1; hint.textContent = '↳ Wordlist mutated by a rules file'; }
-        else if (mode === 'mask')     { atk.value = '3'; show('atk-fld-mask', true); hint.textContent = '↳ Brute-force a hashcat mask'; }
-        else if (mode === 'hybrid')   { atk.value = String(HYBRID); show('atk-fld-order', true); show('atk-fld-wl', true); show('atk-fld-mask', true); hint.textContent = '↳ Wordlist combined with a mask'; }
-        else if (mode === 'combo')    { atk.value = '1'; show('atk-fld-wl', true); show('atk-fld-wl2', true); show('atk-fld-jrule', true); show('atk-fld-krule', true); hint.textContent = '↳ Two wordlists combined · optional -j/-k rules'; }
+    var registry = {};
+    function make(p) {
+        var HYBRID = 6;
+        function el(s) { return document.getElementById(p + '-' + s); }
+        function show(s, on) { var e = el(s); if (e) e.style.display = on ? 'block' : 'none'; }
+        function setMode(mode, fromUser) {
+            ['dict', 'dictrule', 'mask', 'hybrid', 'combo'].forEach(function (k) { var b = el('t-' + k); if (b) b.classList.toggle('active', k === mode); });
+            var atk = el('mode'), hint = el('hint'), ruleSel = el('rule');
+            show('fld-wl', false); show('fld-rule', false); show('fld-wl2', false);
+            show('fld-order', false); show('fld-mask', false); show('fld-jrule', false); show('fld-krule', false);
+            if (mode === 'dict')          { atk.value = '0'; show('fld-wl', true); hint.textContent = '↳ Straight wordlist run'; }
+            else if (mode === 'dictrule') { atk.value = '0'; show('fld-wl', true); show('fld-rule', true); hint.textContent = '↳ Wordlist mutated by a rules file'; }
+            else if (mode === 'mask')     { atk.value = '3'; show('fld-mask', true); hint.textContent = '↳ Brute-force a hashcat mask'; }
+            else if (mode === 'hybrid')   { atk.value = String(HYBRID); show('fld-order', true); show('fld-wl', true); show('fld-mask', true); hint.textContent = '↳ Wordlist combined with a mask'; }
+            else if (mode === 'combo')    { atk.value = '1'; show('fld-wl', true); show('fld-wl2', true); show('fld-jrule', true); show('fld-krule', true); hint.textContent = '↳ Two wordlists combined · optional -j/-k rules'; }
+            // only reset the rule select on a user tab-switch; programmatic prefill sets it explicitly
+            if (fromUser && ruleSel) { ruleSel.value = 'None'; if (mode === 'dictrule' && ruleSel.options.length > 1) ruleSel.selectedIndex = 1; }
+        }
+        function setHybridOrder(m) { HYBRID = m; el('mode').value = String(m); var a = el('ho-wm'), b = el('ho-mw'); if (a) a.classList.toggle('active', m === 6); if (b) b.classList.toggle('active', m === 7); }
+        return { setMode: setMode, setHybridOrder: setHybridOrder };
+    }
+    ['atk', 'etk'].forEach(function (p) { if (document.getElementById(p + '-mode')) registry[p] = make(p); });
+    window.hvAtkSet = function (p, mode) { if (registry[p]) registry[p].setMode(mode, true); };
+    window.hvHybridOrder = function (p, m) { if (registry[p]) registry[p].setHybridOrder(m); };
+    function setSel(id, val) { var s = document.getElementById(id); if (s) s.value = String(val); }
+    window.hvEditTask = function (d) {
+        var R = registry['etk']; if (!R) return;
+        var f = document.getElementById('etk-form'); if (f) f.action = '/tasks/edit/' + d.id;
+        var nm = document.getElementById('etk-name'); if (nm) nm.value = d.name || '';
+        var tab = 'dict';
+        if (d.mode === 1) tab = 'combo';
+        else if (d.mode === 3) tab = 'mask';
+        else if (d.mode === 6 || d.mode === 7) tab = 'hybrid';
+        else if (d.mode === 0 && d.rule_id != null) tab = 'dictrule';
+        R.setMode(tab, false);
+        if (tab === 'hybrid') R.setHybridOrder(d.mode);
+        if (d.wl_id != null) setSel('etk-wl', d.wl_id);
+        if (d.wl_id_2 != null) setSel('etk-wl2', d.wl_id_2);
+        setSel('etk-rule', (d.rule_id != null) ? d.rule_id : 'None');
+        var mk = document.getElementById('etk-mask'); if (mk) mk.value = d.mask || '';
+        var jr = document.getElementById('etk-jrule'); if (jr) jr.value = d.j_rule || '';
+        var kr = document.getElementById('etk-krule'); if (kr) kr.value = d.k_rule || '';
+        document.getElementById('edit-task-modal').showModal();
     };
-    window.hvHybridOrder = function (m) {
-        HYBRID = m;
-        document.getElementById('atk-mode').value = String(m);
-        document.getElementById('atk-ho-wm').classList.toggle('active', m === 6);
-        document.getElementById('atk-ho-mw').classList.toggle('active', m === 7);
-    };
-    window.hvAtk('dict');
+    if (registry['atk']) registry['atk'].setMode('dict', true);
+    if (registry['etk']) registry['etk'].setMode('dict', false);
 })();
 </script>
 
