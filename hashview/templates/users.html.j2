@@ -2,6 +2,7 @@
 {% from "icons.html.j2" import icon %}
 {% block title %}Users · Hashview{% endblock %}
 {% block content %}
+<style>.users-tbl thead th { padding-top: 14px; padding-bottom: 14px; }</style>
 
 <div class="page-head">
     <div>
@@ -13,14 +14,15 @@
 
 <div class="card">
     {% if users %}
-    <table class="tbl">
+    <table class="tbl users-tbl">
         <thead>
             <tr>
                 <th>First</th>
                 <th>Last</th>
                 <th>Email</th>
                 <th class="center">Admin</th>
-                <th>Last Login</th>
+                <th class="center">Jobs</th>
+                <th>Last Seen</th>
                 <th class="center" style="width:140px;">Control</th>
             </tr>
         </thead>
@@ -38,9 +40,10 @@
                         </label>
                     </form>
                 </td>
+                <td class="center num">{{ jobs|selectattr('owner_id', 'equalto', user.id)|list|length }}</td>
                 <td style="color:var(--text-dim);">
                     {% if user.last_login_utc %}
-                        <span class="mono">{{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}</span>
+                        <span class="rel-time mono" data-ts="{{ user.last_login_utc.strftime('%Y-%m-%dT%H:%M:%SZ') }}" title="{{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}">…</span>
                     {% else %}
                         <span style="color:var(--text-mute);">Never</span>
                     {% endif %}
@@ -137,5 +140,32 @@
     </div>
 </dialog>
 {% endfor %}
+
+<script>
+(function () {
+    // Render UTC timestamps as live relative times: "now", "12m ago", "1h 40m ago", "3d ago".
+    function hvRel(ts) {
+        var d = new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        var s = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (s < 0) s = 0;
+        if (s < 45) return 'now';
+        var m = Math.floor(s / 60);
+        if (m < 60) return m + 'm ago';
+        var h = Math.floor(m / 60), rm = m % 60;
+        if (h < 24) return rm ? (h + 'h ' + rm + 'm ago') : (h + 'h ago');
+        var dy = Math.floor(h / 24), rh = h % 24;
+        if (dy < 30) return rh ? (dy + 'd ' + rh + 'h ago') : (dy + 'd ago');
+        return Math.floor(dy / 30) + 'mo ago';
+    }
+    function tick() {
+        document.querySelectorAll('.rel-time').forEach(function (el) {
+            el.textContent = hvRel(el.getAttribute('data-ts'));
+        });
+    }
+    tick();
+    setInterval(tick, 60000);
+})();
+</script>
 
 {% endblock content %}

@@ -46,7 +46,12 @@
         <tbody>
             {% for task in tasks %}
             <tr>
-                <td style="font-weight:500;">{{ task.name }}</td>
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('task', size=16) }}</span>
+                        {{ task.name }}
+                    </span>
+                </td>
                 <td style="color:var(--text-dim);">
                     {% for user in users %}
                         {% if user.id == task.owner_id %}
@@ -54,29 +59,29 @@
                         {% endif %}
                     {% endfor %}
                 </td>
-                <td style="color:var(--text-dim);">
+                <td>
                     {% if task.hc_attackmode == 0 %}
-                        Straight (Wordlist + Rules)
+                        <span class="badge green">Straight (Wordlist + Rules)</span>
                     {% elif task.hc_attackmode == 1 %}
-                        Combination (Wordlist1, Rule1, Wordlist2, Rule2)
+                        <span class="badge dim">Combination (Wordlist1, Rule1, Wordlist2, Rule2)</span>
                     {% elif task.hc_attackmode == 3 %}
-                        Brute-force (Maskmode)
+                        <span class="badge cyan">Brute-force (Maskmode)</span>
                     {% elif task.hc_attackmode == 6 %}
-                        Hybrid (Wordlist + Mask)
+                        <span class="badge amber">Hybrid (Wordlist + Mask)</span>
                     {% elif task.hc_attackmode == 7 %}
-                        Hybrid (Mask + Wordlist)
+                        <span class="badge amber">Hybrid (Mask + Wordlist)</span>
                     {% else %}
-                        UNDEF?
+                        <span class="badge red">UNDEF?</span>
                     {% endif %}
                 </td>
-                <td class="mono">
+                <td class="mono num">
                     {% set ns = namespace(recovered_count=0) %}
                     {% for performance in task_recovery_performance %}
                         {% if performance.task_id == task.id %}
                             {% set ns.recovered_count = performance.recovered_count %}
                         {% endif %}
                     {% endfor %}
-                    {{ ns.recovered_count }}
+                    <span style="color:{{ 'var(--primary)' if ns.recovered_count else 'var(--text-mute)' }};{% if ns.recovered_count %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(ns.recovered_count|int) }}</span>
                 </td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">

@@ -3,18 +3,36 @@
 {% from "macros.html.j2" import status_badge %}
 {% block title %}Agents · Hashview{% endblock %}
 {% block content %}
+<style>.agents-tbl thead th { padding-top: 14px; padding-bottom: 14px; }</style>
 
 <div class="page-head">
     <div>
         <h1 class="page-title">Agents</h1>
-        <div class="page-sub">// Remote workers that process distributed hashcat jobs</div>
+        <div class="page-sub">// {% if agent_stats is defined %}{{ agent_stats.up }}/{{ agent_stats.total }} online | {{ agent_stats.speed }} aggregate{% else %}0/0 online | 0 H/s aggregate{% endif %}</div>
     </div>
     <a class="btn btn-primary" href="{{ url_for('agents.agents_download') }}" role="button">{{ icon('download', size=15) }} Download Agent</a>
 </div>
 
+{# ---------- agent fleet summary cards ---------- #}
+<div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: var(--gap);">
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('power', size=13) }} Agents Online</div>
+        <div class="kpi-value"><span style="color:var(--primary); text-shadow:var(--glow-text);">{{ agent_stats.up if agent_stats is defined else 0 }}</span><span style="font-size:18px; color:var(--text-dim);">/{{ agent_stats.total if agent_stats is defined else 0 }}</span></div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('zap', size=13) }} Aggregate Rate</div>
+        <div class="kpi-value">{{ agent_stats.speed if agent_stats is defined else '0 H/s' }}</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('cpu', size=13) }} GPUs Active</div>
+        <div class="kpi-value">—</div>
+        <div class="kpi-foot mono">telemetry pending</div>
+    </div>
+</div>
+
 <div class="card">
     {% if agents %}
-    <table class="tbl">
+    <table class="tbl agents-tbl">
         <thead>
             <tr>
                 <th>Agent Name</th>

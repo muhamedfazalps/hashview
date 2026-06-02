@@ -4,6 +4,8 @@ from flask_login import login_required, current_user
 from sqlalchemy.sql import exists
 from hashview.models import Hashfiles, Customers, Jobs, HashfileHashes, HashNotifications, Hashes
 from hashview.models import db
+from hashview.jobs.forms import JobsNewHashFileForm
+from sqlalchemy import func, case
 from sqlalchemy.sql import exists
 
 hashfiles = Blueprint('hashfiles', __name__)
@@ -20,19 +22,57 @@ def hashfiles_list():
     # select * from customers where id in (select customer_id from hashfiles);
     jobs = Jobs.query.all()
 
-    cracked_rate = {}
+    # Reverse-map hashcat modes -> friendly names from the new-hashfile form's own
+    # select choices (same approach as jobs_assigned_hashfile). Falls back to the
+    # numeric mode when a type isn't represented in the form.
+    hash_type_names = {}
+    try:
+        _form = JobsNewHashFileForm()
+        for _sel in (_form.hash_type, _form.pwdump_hash_type, _form.netntlm_hash_type,
+                     _form.kerberos_hash_type, _form.shadow_hash_type):
+            for _val, _label in _sel.choices:
+                if _val is not None and str(_val) not in hash_type_names:
+                    _name = _label.split(') ', 1)[1] if ') ' in _label else _label
+                    hash_type_names[str(_val)] = _name.split(' / ')[0].split(',')[0].strip()
+    except Exception:  # pragma: no cover - defensive: never break the list page
+        hash_type_names = {}
+
     hash_type_dict = {}
+    hashfile_stats = {}
+    total_hashes = 0
+    total_recovered = 0
 
     for hashfile in hashfiles:
-        cracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
-        hash_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile.id).count()
-        cracked_rate[hashfile.id] = "(" + str(cracked_cnt) + "/" + str(hash_cnt) + ")"
-        if db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile.id).first():
-            hash_type_dict[hashfile.id] = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile.id).first().hash_type
+        # one aggregated query per hashfile: total hashes, cracked count, representative mode
+        agg = db.session.query(
+            func.count(Hashes.id),
+            func.coalesce(func.sum(case((Hashes.cracked == True, 1), else_=0)), 0),
+            func.min(Hashes.hash_type)
+        ).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+         .filter(HashfileHashes.hashfile_id == hashfile.id).first()
+        hash_cnt = agg[0] or 0
+        cracked_cnt = int(agg[1] or 0)
+        hashfile_stats[hashfile.id] = {
+            'cracked': cracked_cnt,
+            'total': hash_cnt,
+            'pct': round(cracked_cnt / hash_cnt * 100) if hash_cnt else 0,
+        }
+        total_hashes += hash_cnt
+        total_recovered += cracked_cnt
+
+        if hash_cnt and agg[2] is not None:
+            _mode = str(agg[2])
+            hash_type_dict[hashfile.id] = hash_type_names.get(_mode, _mode)
         else:
             hash_type_dict[hashfile.id] = 'UNKNOWN'
 
-    return render_template('hashfiles.html.j2', title='Hashfiles', hashfiles=hashfiles, customers=customers, cracked_rate=cracked_rate, jobs=jobs, hash_type_dict=hash_type_dict)
+    overall_rate = round(total_recovered / total_hashes * 100) if total_hashes else 0
+
+    return render_template('hashfiles.html.j2', title='Hashfiles', hashfiles=hashfiles,
+                           customers=customers, jobs=jobs,
+                           hash_type_dict=hash_type_dict, hashfile_stats=hashfile_stats,
+                           total_hashes=total_hashes, total_recovered=total_recovered,
+                           overall_rate=overall_rate)
 
 @hashfiles.route("/hashfiles/delete/<int:hashfile_id>", methods=['GET', 'POST'])
 @login_required

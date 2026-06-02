@@ -15,6 +15,7 @@
     <div class="card-head">
         <h3>Static Wordlists</h3>
         <span class="field-hint" style="margin-top:0;">Plaintext, newline-delimited files you upload and assign to a task.</span>
+        <span style="margin-left:auto; display:inline-flex; align-items:center; gap:9px; color:var(--text-mute);">{{ icon('search', size=16) }}<input type="text" id="wl-filter" class="input" style="width:240px; flex:none;" placeholder="filter wordlists…" autocomplete="off" oninput="hvFilterWordlists(this.value)"></span>
     </div>
     {% if static_wordlists %}
     <table class="tbl">
@@ -27,11 +28,16 @@
                 <th class="center">Control</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="wl-static-tbody">
             {% for wordlist in static_wordlists %}
-            <tr>
-                <td style="font-weight:500;">{{ wordlist.name }}</td>
-                <td class="mono" style="color:var(--text-dim);">{{ wordlist.size }}</td>
+            <tr data-name="{{ wordlist.name|lower }}">
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('book', size=16) }}</span>
+                        {{ wordlist.name }}
+                    </span>
+                </td>
+                <td class="mono num" style="color:var(--primary);">{{ "{:,}".format(wordlist.size) }}</td>
                 <td style="color:var(--text-dim);">
                     {% for user in users %}
                         {% if user.id == wordlist.owner_id %}
@@ -48,6 +54,7 @@
                 </td>
             </tr>
             {% endfor %}
+            <tr class="wl-no-match" style="display:none;"><td colspan="5" style="text-align:center; padding:24px 16px; color:var(--text-mute);" class="mono">No wordlists match that filter.</td></tr>
         </tbody>
     </table>
     {% else %}
@@ -58,7 +65,7 @@
     {% endif %}
 </div>
 
-<div class="card">
+<div class="card" style="margin-top:var(--gap);">
     <div class="card-head">
         <h3>Dynamic Wordlists</h3>
         <span class="field-hint" style="margin-top:0;">Auto-generated and updated whenever new data is added to the system.</span>
@@ -73,11 +80,16 @@
                 <th class="center">Control</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="wl-dynamic-tbody">
             {% for wordlist in dynamic_wordlists %}
-            <tr>
-                <td style="font-weight:500;">{{ wordlist.name }}</td>
-                <td class="mono" style="color:var(--text-dim);">{{ wordlist.size }}</td>
+            <tr data-name="{{ wordlist.name|lower }}">
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('book', size=16) }}</span>
+                        {{ wordlist.name }}
+                    </span>
+                </td>
+                <td class="mono num" style="color:var(--primary);">{{ "{:,}".format(wordlist.size) }}</td>
                 <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ wordlist.last_updated }}</td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
@@ -87,6 +99,7 @@
                 </td>
             </tr>
             {% endfor %}
+            <tr class="wl-no-match" style="display:none;"><td colspan="4" style="text-align:center; padding:24px 16px; color:var(--text-mute);" class="mono">No wordlists match that filter.</td></tr>
         </tbody>
     </table>
     {% else %}
@@ -122,5 +135,23 @@
     </div>
 </dialog>
 {% endfor %}
+
+<script>
+function hvFilterWordlists(q){
+    q = (q || '').trim().toLowerCase();
+    ['wl-static-tbody', 'wl-dynamic-tbody'].forEach(function(tid){
+        var tb = document.getElementById(tid);
+        if (!tb) return;
+        var shown = 0;
+        tb.querySelectorAll('tr[data-name]').forEach(function(tr){
+            var hit = !q || (tr.getAttribute('data-name') || '').indexOf(q) !== -1;
+            tr.style.display = hit ? '' : 'none';
+            if (hit) shown++;
+        });
+        var none = tb.querySelector('.wl-no-match');
+        if (none) none.style.display = shown === 0 ? '' : 'none';
+    });
+}
+</script>
 
 {% endblock content %}

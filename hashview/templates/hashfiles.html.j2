@@ -5,54 +5,84 @@
 
 <div class="page-head">
     <div>
-        <h1 class="page-title">Hash Files</h1>
-        <div class="page-sub">// Hash files are assigned to a single customer. Deleting a hash file removes it from the customer, but cracked hashes remain in the database.</div>
+        <h1 class="page-title">Hashfiles</h1>
+        <div class="page-sub">// {{ hashfiles|length }} files · {{ "{:,}".format(total_recovered) }}/{{ "{:,}".format(total_hashes) }} recovered</div>
+    </div>
+</div>
+
+{# ---------- summary KPI cards ---------- #}
+<div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: var(--gap);">
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('hash', size=13) }} Total Hashes</div>
+        <div class="kpi-value">{{ "{:,}".format(total_hashes) }}</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('key', size=13) }} Recovered</div>
+        <div class="kpi-value accent">{{ "{:,}".format(total_recovered) }}</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('chart', size=13) }} Overall Rate</div>
+        <div class="kpi-value">{{ overall_rate }}<span style="font-size:16px;color:var(--text-dim);">%</span></div>
     </div>
 </div>
 
 <div class="card">
-    {% if customers %}
+    {# ---- filter bar: magnifying glass beside the input, top-right of the card ---- #}
+    <div class="card-head" style="justify-content:flex-end;">
+        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('search', size=16) }}</span>
+        <input type="text" id="hf-filter" class="input" style="width:260px; flex:none;" placeholder="filter hashfiles…" autocomplete="off" oninput="hvFilterHashfiles(this.value)">
+    </div>
+    {% if hashfiles %}
     <table class="tbl">
         <thead>
             <tr>
+                <th>Hashfile</th>
+                <th class="center">Type</th>
                 <th>Customer</th>
-                <th>Hash File Name</th>
-                <th>Hash Type</th>
-                <th class="center">Crack Rate</th>
-                <th>Uploaded At</th>
-                <th class="center">Control</th>
+                <th class="center">Hashes</th>
+                <th class="center">Recovered</th>
+                <th>Uploaded</th>
+                <th class="center" style="width:140px;">Control</th>
             </tr>
         </thead>
-        <tbody>
-            {% for customer in customers %}
-                <tr>
-                    <td style="font-weight:500;">{{ customer.name }}</td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                </tr>
-                {% for hashfile in hashfiles %}
-                    {% if hashfile.customer_id == customer.id %}
-                        <tr>
-                            <td></td>
-                            <td style="font-weight:500;">{{ hashfile.name }}</td>
-                            <td class="mono" style="color:var(--text-dim);">{{ hash_type_dict[hashfile.id] }}</td>
-                            <td class="center"><span class="badge dim">{{ cracked_rate[hashfile.id] }}</span></td>
-                            <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ hashfile.uploaded_at }}</td>
-                            <td class="center">
-                                <div style="display:flex; gap:4px; justify-content:center;">
-                                    <a class="icon-btn" href="/analytics/download?type=found&customer_id={{customer.id}}&hashfile_id={{hashfile.id}}" title="Download">{{ icon('download', size=15) }}</a>
-                                    <a class="icon-btn" href="/analytics?customer_id={{customer.id}}&hashfile_id={{hashfile.id}}" title="Analytics">{{ icon('chart', size=15) }}</a>
-                                    <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ hashfile.id }}').showModal()">{{ icon('info', size=15) }}</button>
-                                    <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ hashfile.id }}').showModal()">{{ icon('trash', size=15) }}</button>
-                                </div>
-                            </td>
-                        </tr>
+        <tbody id="hf-tbody">
+            {% for hashfile in hashfiles %}
+            {% set st = hashfile_stats.get(hashfile.id) if hashfile_stats is defined else none %}
+            <tr data-name="{{ hashfile.name|lower }}">
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('file', size=16) }}</span>
+                        {{ hashfile.name }}
+                    </span>
+                </td>
+                <td class="center"><span class="badge cyan">{{ hash_type_dict[hashfile.id] }}</span></td>
+                <td style="color:var(--text-dim);">{% for c in customers %}{% if c.id == hashfile.customer_id %}{{ c.name }}{% endif %}{% endfor %}</td>
+                <td class="center num">{{ "{:,}".format(st.total) if st else 0 }}</td>
+                <td class="center">
+                    {% if st and st.total %}
+                    <div class="mono num" style="font-size:12.5px; white-space:nowrap;">
+                        <span style="color:{{ 'var(--primary)' if st.cracked else 'var(--text-mute)' }};{% if st.cracked %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(st.cracked) }}</span>
+                        <span style="color:var(--text-mute);">({{ st.pct }}%)</span>
+                    </div>
+                    <div style="height:3px; width:84px; margin:6px auto 0; border-radius:2px; background:var(--surface-3); overflow:hidden;">
+                        <div style="height:100%; width:{{ st.pct }}%; background:linear-gradient(90deg,var(--primary-deep),var(--primary)); box-shadow:var(--glow-sm);"></div>
+                    </div>
+                    {% else %}
+                    <span style="color:var(--text-mute);">—</span>
                     {% endif %}
-                {% endfor %}
+                </td>
+                <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ hashfile.uploaded_at }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <a class="icon-btn" href="/analytics/download?type=found&customer_id={{hashfile.customer_id}}&hashfile_id={{hashfile.id}}" title="Download">{{ icon('download', size=15) }}</a>
+                        <a class="icon-btn" href="/analytics?customer_id={{hashfile.customer_id}}&hashfile_id={{hashfile.id}}" title="Analytics">{{ icon('chart', size=15) }}</a>
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ hashfile.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <button type="button" class="icon-btn act-del" style="color:var(--red); border-color:var(--red-dim);" title="Delete" onclick="document.getElementById('del-{{ hashfile.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
             {% endfor %}
+            <tr id="hf-no-match" style="display:none;"><td colspan="7" style="text-align:center; padding:28px 16px; color:var(--text-mute);" class="mono">No hashfiles match that filter.</td></tr>
         </tbody>
     </table>
     {% else %}
@@ -61,6 +91,20 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+function hvFilterHashfiles(q){
+    q = (q || '').trim().toLowerCase();
+    var shown = 0;
+    document.querySelectorAll('#hf-tbody tr[data-name]').forEach(function(tr){
+        var hit = !q || (tr.getAttribute('data-name') || '').indexOf(q) !== -1;
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+    });
+    var none = document.getElementById('hf-no-match');
+    if (none) none.style.display = shown === 0 ? '' : 'none';
+}
+</script>
 
 {# ---- per-hashfile modals (native <dialog>, no framework) ---- #}
 {% for hashfile in hashfiles %}

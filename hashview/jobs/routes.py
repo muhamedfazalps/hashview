@@ -37,6 +37,31 @@ def jobs_list():
     hashfiles = Hashfiles.query.all()
     job_tasks = JobTasks.query.all()
     tasks = Tasks.query.all()
+
+    # Per-job cracked progress: cracked / total hashes in the job's hashfile.
+    # Cached per hashfile_id so jobs sharing a hashfile are only queried once.
+    job_cracked = {}
+    _hf_cracked = {}
+    for job in jobs:
+        hfid = job.hashfile_id
+        if not hfid:
+            job_cracked[job.id] = {'cracked': 0, 'total': 0, 'pct': 0}
+            continue
+        if hfid not in _hf_cracked:
+            agg = db.session.query(
+                func.count(Hashes.id),
+                func.coalesce(func.sum(case((Hashes.cracked == True, 1), else_=0)), 0)
+            ).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+             .filter(HashfileHashes.hashfile_id == hfid).first()
+            total = agg[0] or 0
+            cracked = int(agg[1] or 0)
+            _hf_cracked[hfid] = {
+                'cracked': cracked,
+                'total': total,
+                'pct': round((cracked / total * 100), 1) if total else 0,
+            }
+        job_cracked[job.id] = _hf_cracked[hfid]
+
     return render_template(
         'jobs.html.j2',
         title='Jobs',
@@ -46,6 +71,7 @@ def jobs_list():
         hashfiles=hashfiles,
         job_tasks=job_tasks,
         tasks=tasks,
+        job_cracked=job_cracked,
         pagination=pagination,
         show_only_mine=show_only_mine
     )

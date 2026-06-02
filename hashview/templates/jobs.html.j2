@@ -24,8 +24,8 @@
     <table class="tbl">
         <thead>
             <tr>
-                <th>#</th><th>Job</th><th>Customer</th><th>Hash File</th>
-                <th class="center">Status</th><th class="center">Priority</th>
+                <th>#</th><th>Job</th><th>Customer</th><th>Hashfile</th>
+                <th class="center">Status</th><th class="center">Cracked</th><th class="center">Priority</th>
                 <th>Owner</th><th>Created</th><th class="center">Control</th>
             </tr>
         </thead>
@@ -37,6 +37,19 @@
                 <td style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %}</td>
                 <td class="mono" style="color:var(--text-dim);">{% for h in hashfiles %}{% if h.id == job.hashfile_id %}{{ h.name }}{% endif %}{% endfor %}</td>
                 <td class="center">{{ status_badge(job.status) }}</td>
+                <td class="center">
+                    {% set cr = job_cracked.get(job.id) if job_cracked is defined else none %}
+                    {% if cr and cr.total %}
+                    <div class="mono num" style="font-size:12.5px;white-space:nowrap;">
+                        <span style="color:{{ 'var(--primary)' if cr.cracked else 'var(--text-dim)' }};{% if cr.cracked %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(cr.cracked) }}</span><span style="color:var(--text-mute);">/{{ "{:,}".format(cr.total) }}</span>
+                    </div>
+                    <div style="height:3px;width:84px;margin:6px auto 0;border-radius:2px;background:var(--surface-3);overflow:hidden;">
+                        <div style="height:100%;width:{{ cr.pct }}%;background:linear-gradient(90deg,var(--primary-deep),var(--primary));box-shadow:var(--glow-sm);"></div>
+                    </div>
+                    {% else %}
+                    <span style="color:var(--text-mute);">—</span>
+                    {% endif %}
+                </td>
                 <td class="center">{{ priority_pips(job.priority) }}</td>
                 <td class="mono" style="color:var(--text-dim);">{% for u in users %}{% if u.id == job.owner_id %}{{ u.first_name }} {{ u.last_name }}{% endif %}{% endfor %}</td>
                 <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ job.created_at.strftime('%b %d %H:%M') if job.created_at else '—' }}</td>

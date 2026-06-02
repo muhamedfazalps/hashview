@@ -53,8 +53,12 @@
         <div class="main">
             <div class="topbar">
                 <div class="topbar-spacer"></div>
-                {% if running_jobs is defined and queued_jobs is defined %}
-                <div class="top-stat"><span class="dot-led run"></span> <b>{{ running_jobs|length }}</b> running · <b style="color:var(--amber);">{{ queued_jobs|length }}</b> queued</div>
+                {% if job_queue is defined %}
+                <div class="top-stat">
+                    {% if job_queue.running %}<span class="dot-led run"></span>{% endif %}
+                    <b style="color:{{ 'var(--primary)' if job_queue.running else 'var(--text)' }};">{{ job_queue.running }}</b> running
+                </div>
+                <div class="top-stat"><b style="color:var(--amber);">{{ job_queue.queued }}</b> queued</div>
                 {% endif %}
                 <div class="top-stat" style="padding-left:16px; border-left:1px solid var(--border);">{{ icon('clock', size=14) }} <span class="clock" id="hv-clock">--:--:--</span></div>
             </div>

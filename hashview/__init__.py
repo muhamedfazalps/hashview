@@ -312,6 +312,10 @@ def create_app(testing=False, config_overrides=None):
                     "total": len(agents),
                     "speed": _fmt(total_hps),
                 },
+                "job_queue": {
+                    "running": Jobs.query.filter_by(status='Running').count(),
+                    "queued": Jobs.query.filter_by(status='Queued').count(),
+                },
             }
         except Exception:  # pragma: no cover - defensive: never break rendering
             return {}
