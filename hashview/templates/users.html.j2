@@ -1,193 +1,141 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Users · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Users 
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="These are the awesome people that use Hashview." style="margin-left:5px;"></i>
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('users.users_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">  
-                    <table class="table table-hover table-sm">
-                        <thead>
-                        <tr>
-                            <th scope="col">First</th>
-                            <th scope="col">Last</th>
-                            <th scope="col">Email</th>
-                            <th scope="col">Role</th>
-                            <th scope="col">Last Login</th>
-                            <th style="width:140px" scope="col">Control</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for user in users %}
-                                <tr>
-                                    <td style=vertical-align:middle;>
-                                        {{ user.first_name }}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        {{ user.last_name }}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        {{ user.email_address }}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        <form method="post" action="{{ url_for('users.promote_user', user_id=user.id) if not user.admin else url_for('users.demote_user', user_id=user.id) }}">
-                                            <div class="form-check form-switch">
-                                                <input class="form-check-input" type="checkbox" onchange="this.form.submit()" {% if user.admin %}checked{% endif %}{% if not current_user.admin %} disabled{% endif %}>
-                                            </div>
-                                        </form>
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        {% if user.last_login_utc %}
-                                                {{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}
-                                        {% else %}
-                                                <i>Never</i>
-                                        {% endif %}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{user.id}}" title=Info></button>
-                                        <button type="button" class="fa fa-undo btn btn-warning" data-bs-toggle="modal" data-bs-target="#resetModal{{user.id}}" title='Reset Password'></button>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{user.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </article>
-    {% for user in users %}
-    <!-- Info Modal -->
-        <div class="modal fade" id="infoModal{{user.id}}" tabindex="-1" aria-labelledby="infoModal{{user.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{user.id}}Label">Info: {{user.email_address}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                    <table class="table">
-                        <thead>
-                            <tbody>
-                                <tr>
-                                    <th scope="row">Associated Jobs</th>
-                                    <td>
-                                        {% for job in jobs %}
-                                            {% if job.owner_id == user.id %}
-                                                {{ job.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Associated Wordlists</th>
-                                    <td>
-                                        {% for wordlist in wordlists %}
-                                            {% if wordlist.owner_id == user.id %}
-                                                {{ wordlist.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                <tr>                              
-                                    <th scope="row">Associated Rules</th>
-                                    <td>
-                                        {% for rule in rules %}
-                                            {% if rule.owner_id == user.id %}
-                                                {{ rule.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                <tr>  
-                                    <th scope="row">Associated Tasks</th>
-                                    <td>
-                                        {% for task in tasks %}
-                                            {% if task.owner_id == user.id %}
-                                                {{ task.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                </tr>
-                                <tr>   
-                                    <th scope="row">Associated Task Groups</th>
-                                    <td>
-                                        {% for task_group in task_groups %}
-                                            {% if task_group.owner_id == user.id %}
-                                                {{ task_group.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>                                
-                            </tbody>
-                      </table>
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
-    {% for user in users %}
-    <!-- Reset Modal -->
-        <div class="modal fade" id="resetModal{{user.id}}" tabindex="-1" aria-labelledby="resetModal{{user.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="resetModal{{user.id}}Label">Password Reset: {{user.email_address}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                Reset this users password?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No</button>
-                <form action="{{ url_for('users.admin_reset', user_id=user.id) }}" method="POST">
-                    <input class="btn btn-primary" type="submit" value="Yes">
-                </form>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
-    {% for user in users %}
-        <!-- DeleteModal -->
-        <div class="modal fade" id="deleteModal{{user.id}}" tabindex="-1" aria-labelledby="deleteModal{{user.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="deleteModal{{user.id}}Label">Delete: {{user.email_address}} ?</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                This will permanantly delete the account. Are you sure you want to continue?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
-                <form action="{{ url_for('users.users_delete', user_id=user.id) }}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Users</h1>
+        <div class="page-sub">// The awesome people that use Hashview</div>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('users.users_add') }}">{{ icon('plus', size=15) }} Add User</a>
+</div>
+
+<div class="card">
+    {% if users %}
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>First</th>
+                <th>Last</th>
+                <th>Email</th>
+                <th class="center">Admin</th>
+                <th>Last Login</th>
+                <th class="center" style="width:140px;">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td style="font-weight:500;">{{ user.first_name }}</td>
+                <td style="color:var(--text-dim);">{{ user.last_name }}</td>
+                <td style="color:var(--text-dim);">{{ user.email_address }}</td>
+                <td class="center">
+                    <form method="post" action="{{ url_for('users.promote_user', user_id=user.id) if not user.admin else url_for('users.demote_user', user_id=user.id) }}" style="display:inline;">
+                        <label class="switch" title="{{ 'Demote to operator' if user.admin else 'Promote to admin' }}">
+                            <input type="checkbox" role="switch" onchange="this.form.submit()" {% if user.admin %}checked{% endif %}{% if not current_user.admin %} disabled{% endif %}>
+                            <span class="track"></span>
+                        </label>
+                    </form>
+                </td>
+                <td style="color:var(--text-dim);">
+                    {% if user.last_login_utc %}
+                        <span class="mono">{{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}</span>
+                    {% else %}
+                        <span style="color:var(--text-mute);">Never</span>
+                    {% endif %}
+                </td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ user.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <button type="button" class="icon-btn" title="Reset Password" onclick="document.getElementById('reset-{{ user.id }}').showModal()">{{ icon('refresh', size=15) }}</button>
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ user.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No users found.</div>
+        <a class="btn btn-primary" href="{{ url_for('users.users_add') }}">{{ icon('plus', size=15) }} Add a User</a>
+    </div>
+    {% endif %}
+</div>
+
+{# ---- per-user modals (native <dialog>, no framework) ---- #}
+{% for user in users %}
+<dialog class="hv-dialog" id="info-{{ user.id }}">
+    <div class="hv-dialog-head"><h3>Info: {{ user.email_address }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">
+        <dl class="kv">
+            <dt>Associated Jobs</dt>
+            <dd>
+                {% for job in jobs %}
+                    {% if job.owner_id == user.id %}
+                        {{ job.name }} <br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+            <dt>Associated Wordlists</dt>
+            <dd>
+                {% for wordlist in wordlists %}
+                    {% if wordlist.owner_id == user.id %}
+                        {{ wordlist.name }} <br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+            <dt>Associated Rules</dt>
+            <dd>
+                {% for rule in rules %}
+                    {% if rule.owner_id == user.id %}
+                        {{ rule.name }} <br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+            <dt>Associated Tasks</dt>
+            <dd>
+                {% for task in tasks %}
+                    {% if task.owner_id == user.id %}
+                        {{ task.name }} <br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+            <dt>Associated Task Groups</dt>
+            <dd>
+                {% for task_group in task_groups %}
+                    {% if task_group.owner_id == user.id %}
+                        {{ task_group.name }} <br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+        </dl>
+    </div>
+    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+</dialog>
+
+<dialog class="hv-dialog" id="reset-{{ user.id }}">
+    <div class="hv-dialog-head"><h3>Password Reset: {{ user.email_address }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">Reset this user's password?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">No</button>
+        <form action="{{ url_for('users.admin_reset', user_id=user.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-primary" type="submit">Yes</button>
+        </form>
+    </div>
+</dialog>
+
+<dialog class="hv-dialog" id="del-{{ user.id }}">
+    <div class="hv-dialog-head"><h3>Delete: {{ user.email_address }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the account. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('users.users_delete', user_id=user.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
 {% endblock content %}

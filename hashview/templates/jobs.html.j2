@@ -1,251 +1,132 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import status_badge, priority_pips %}
+{% block title %}Jobs · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header d-flex justify-content-between align-items-center">
-                    <div>
-                        Jobs
-                        <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Jobs contain a series of tasks (hashcat commands). Jobs also have an associated list of hashes to crack." style="margin-left:5px;"></i>
-                    </div>
-                    <a class="btn btn-success btn-sm mt-1 mb-1" href="{{ url_for('jobs.jobs_add') }}">New Job</a>
-                </h4>
-                <div class="card-body ">
-                    <table class="table table-hover table-sm">
-                        <thead>
-                            <tr>
-                            <th>Customer</th>
-                            <th>Name</th>
-                            <th>Hash File</th>
-                            <th style="text-align:center;">Status</th>
-                            <th>
-                                Owner
-                                <label class="switch" style="margin-left: 10px; vertical-align: middle;" title="Show only my jobs">
-                                    <input type="checkbox" id="showOnlyMineToggle" {% if show_only_mine == 'true' %}checked{% endif %}>
-                                    <span class="slider round"></span>
-                                </label>
-                            </th>
-                            <th style="width:235px" scope="col">Control</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for job in jobs%}
-                                <tr>
-                                    <td>
-                                        {% for customer in customers %}
-                                            {% if customer.id == job.customer_id %}
-                                                {{ customer.name }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td style="vertical-align:middle;">{{ job.name }}</td>
-                                    <td style="vertical-align:middle;">
-                                        {% for hashfile in hashfiles %}
-                                            {% if hashfile.id == job.hashfile_id %}
-                                                {{ hashfile.name }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td style="text-align:center; vertical-align:middle;">
-                                        {% if job.status == 'Ready' %}
-                                            <i class="fa fa-triangle-exclamation fa-fw" style="color: #ffc107 !important"></i>
-                                        {% elif job.status == 'Queued' %}
-                                            <i class="fa fa-clock-o fa-fw"></i>
-                                        {% elif job.status == 'Running' %}
-                                            <i class="fa fa-refresh fa-spin fa-fw" style="color: #198754 !important"></i>
-                                        {% elif job.status == 'Completed' %}
-                                            <i class="fa fa-check-circle fa-fw" style="color: #198754!important"></i>
-                                        {% elif job.status == 'Canceled' %}
-                                            <i class="fa fa-ban fa-fw" style="color: #dc3545 !important"></i>
-                                        {% elif job.status == 'Incomplete' %}
-                                            <i class="fa fa-exclamation-triangle" style="color: #ffc107 !important"></i>
-                                        {% endif %}
-                                    </td>
-                                    <td style="vertical-align:middle;">
-                                        {% for user in users %}
-                                            {% if user.id == job.owner_id %}
-                                                {{ user.first_name }} {{ user.last_name }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td style="vertical-align:middle;">
-                                        {% if job.status == 'Ready' %}
-                                            <a class="fa fa-play btn btn-success" href="/jobs/start/{{job.id}}" role="button" title=start></a>
-                                        {% elif job.status == 'Queued' or job.status == 'Running' %}
-                                            <a class="fa fa-stop btn btn-secondary" href="/jobs/stop/{{job.id}}" role="button" title=stop></a>
-                                        {% elif job.status == 'Completed' %}
-                                            <a class="fa fa-check btn btn-primary" href="#" role="button" title=Completed></a>
-                                        {% elif job.status == 'Canceled' %}
-                                            <a class="fa fa-close btn btn-secondary" href="/jobs/start/{{job.id}}" role="button" title=Canceled></a>
-                                        {% endif %}
-                                        {% if job.status != 'Incomplete' %}
-                                            <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{job.customer_id}}&hashfile_id={{job.hashfile_id}}" role="button" title=Analytics></a>
-                                            <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{job.id}}" title=Info></button>
-                                        {% endif %}
-                                        {% if job.status == 'Running' or job.status == 'Queued' %}
-                                            <button class="fa fa-edit btn btn-outline-warning" disabled title=Edit></button>
-                                        {% else %}
-                                            <a class="fa fa-edit btn btn-warning" href="/jobs/{{job.id}}/assigned_hashfile/" role="button" title=Edit></a>
-                                        {% endif %}
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{job.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                    <!-- Pagination Controls -->
-        <nav aria-label="Jobs pagination">
-            <ul class="pagination justify-content-center">
-                {% if pagination.has_prev %}
-                <li class="page-item">
-                    <a class="page-link" href="{{ url_for('jobs.jobs_list', page=pagination.prev_num, show_only_mine=show_only_mine) }}" aria-label="Previous">
-                        <span aria-hidden="true">&laquo; Prev</span>
-                    </a>
-                </li>
-                {% else %}
-                <li class="page-item disabled">
-                    <span class="page-link">&laquo; Prev</span>
-                </li>
-                {% endif %}
 
-                {% for p in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
-                    {% if p %}
-                        {% if p == pagination.page %}
-                        <li class="page-item active"><span class="page-link" >{{ p }}</span></li>
-                        {% else %}
-                        <li class="page-item"><a class="page-link"  href="{{ url_for('jobs.jobs_list', page=p, show_only_mine=show_only_mine) }}">{{ p }}</a></li>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Jobs</h1>
+        <div class="page-sub">// {{ pagination.total }} jobs total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
+    </div>
+    <div style="display:flex; gap:10px;">
+        {% if show_only_mine == 'true' %}
+            <a class="btn active" href="{{ url_for('jobs.jobs_list', show_only_mine='false', page=1) }}">{{ icon('users', size=15) }} All jobs</a>
+        {% else %}
+            <a class="btn" href="{{ url_for('jobs.jobs_list', show_only_mine='true', page=1) }}">{{ icon('users', size=15) }} Only mine</a>
+        {% endif %}
+        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}">{{ icon('plus', size=15) }} New Job</a>
+    </div>
+</div>
+
+<div class="card">
+    {% if jobs %}
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>#</th><th>Job</th><th>Customer</th><th>Hash File</th>
+                <th class="center">Status</th><th class="center">Priority</th>
+                <th>Owner</th><th>Created</th><th class="center">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td class="mono" style="color:var(--text-mute);">{{ job.id }}</td>
+                <td style="font-weight:500;">{{ job.name }}</td>
+                <td style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %}</td>
+                <td class="mono" style="color:var(--text-dim);">{% for h in hashfiles %}{% if h.id == job.hashfile_id %}{{ h.name }}{% endif %}{% endfor %}</td>
+                <td class="center">{{ status_badge(job.status) }}</td>
+                <td class="center">{{ priority_pips(job.priority) }}</td>
+                <td class="mono" style="color:var(--text-dim);">{% for u in users %}{% if u.id == job.owner_id %}{{ u.first_name }} {{ u.last_name }}{% endif %}{% endfor %}</td>
+                <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ job.created_at.strftime('%b %d %H:%M') if job.created_at else '—' }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        {% if job.status == 'Ready' %}
+                            <a class="icon-btn act-go" href="{{ url_for('jobs.jobs_start', job_id=job.id) }}" title="Start">{{ icon('play', size=15) }}</a>
+                        {% elif job.status == 'Queued' or job.status == 'Running' %}
+                            <a class="icon-btn act-stop" href="{{ url_for('jobs.jobs_stop', job_id=job.id) }}" title="Stop">{{ icon('stop', size=15) }}</a>
+                        {% elif job.status == 'Completed' %}
+                            <span class="icon-btn" style="color:var(--green);" title="Completed">{{ icon('check', size=15) }}</span>
+                        {% elif job.status == 'Canceled' %}
+                            <a class="icon-btn" href="{{ url_for('jobs.jobs_start', job_id=job.id) }}" title="Restart">{{ icon('refresh', size=15) }}</a>
                         {% endif %}
-                    {% else %}
-                    <li class="page-item disabled"><span class="page-link" >…</span></li>
-                    {% endif %}
-                {% endfor %}
-
-                {% if pagination.has_next %}
-                <li class="page-item">
-                    <a class="page-link"  href="{{ url_for('jobs.jobs_list', page=pagination.next_num, show_only_mine=show_only_mine) }}" aria-label="Next">
-                        <span aria-hidden="true">Next &raquo;</span>
-                    </a>
-                </li>
-                {% else %}
-                <li class="page-item disabled">
-                    <span class="page-link" >Next &raquo;</span>
-                </li>
-                {% endif %}
-            </ul>
-        </nav>
-                </div>
-            </div>
-        </div>
-    </article>
-    {% for job in jobs %}
-    <!-- InfoModal -->
-    <div class="modal fade" id="infoModal{{job.id}}" tabindex="-1" aria-labelledby="infoModal{{job.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-        <div class="modal-header d-flex align-items-center">
-            <h5 class="modal-title" id="infoModal{{job.id}}Label">Info: {{job.name}}</h5>
-            <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        </div>
-            <div class="modal-body">
-                <table class="table">
-                    <thead>
-                      <tbody>
-                          <tr>
-                            <th scope="row">Associated Tasks</th>
-                            <td>
-                                {% for job_task in job_tasks %}
-                                    {% if job_task.job_id == job.id %}
-                                        {% for task in tasks %}
-                                            {% if task.id == job_task.task_id%}
-                                                {{ task.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                          </tr>
-                          <tr>
-                            <th scope="row">Creation Date</th>
-                            <td>
-                                {{job.created_at}}
-                            </td>
-                          </tr>
-                          <tr>                              
-                            <th scope="row">Started At</th>
-                            <td>
-                                {% if job.started_at %}
-                                    {{job.started_at}}
-                                {% else %}
-                                    Not started
-                                {% endif %}
-                            </td>
-                            </tr>   
-                            <th scope="row">Ended At</th>
-                            <td>
-                                {% if job.ended_at %}
-                                    {{job.ended_at}}
-                                {% else %}
-                                    N/A
-                                {% endif %}
-                            </td>
-                          </tr>
-                      </tbody>
-                    </thead>
-                </table>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-        </div>
+                        {% if job.status != 'Incomplete' %}
+                            <a class="icon-btn" href="{{ url_for('analytics.get_analytics', customer_id=job.customer_id, hashfile_id=job.hashfile_id) }}" title="Analytics">{{ icon('chart', size=15) }}</a>
+                            <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ job.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        {% endif %}
+                        {% if job.status == 'Running' or job.status == 'Queued' %}
+                            <span class="icon-btn" style="opacity:.4;cursor:not-allowed;" title="Edit (locked while active)">{{ icon('edit', size=15) }}</span>
+                        {% else %}
+                            <a class="icon-btn" href="{{ url_for('jobs.jobs_assigned_hashfile', job_id=job.id) }}" title="Edit">{{ icon('edit', size=15) }}</a>
+                        {% endif %}
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ job.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No jobs found.</div>
+        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}">{{ icon('plus', size=15) }} Create a New Job</a>
     </div>
+    {% endif %}
+</div>
+
+{% if pagination.pages and pagination.pages > 1 %}
+<div class="pager">
+    {% if pagination.has_prev %}
+        <a class="pager-btn" href="{{ url_for('jobs.jobs_list', page=pagination.prev_num, show_only_mine=show_only_mine) }}">‹ Prev</a>
+    {% else %}
+        <span class="pager-btn disabled">‹ Prev</span>
+    {% endif %}
+    {% for p in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
+        {% if p %}
+            {% if p == pagination.page %}
+                <span class="pager-btn active">{{ p }}</span>
+            {% else %}
+                <a class="pager-btn" href="{{ url_for('jobs.jobs_list', page=p, show_only_mine=show_only_mine) }}">{{ p }}</a>
+            {% endif %}
+        {% else %}
+            <span class="pager-btn disabled">…</span>
+        {% endif %}
     {% endfor %}
-    {% for job in jobs %}
-    <!-- DeleteModal -->
-    <div class="modal fade" id="deleteModal{{job.id}}" tabindex="-1" aria-labelledby="deleteModal{{job.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{job.id}}Label">Delete: {{job.name}} ?</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            </div>                
-            <div class="modal-body">
-                This will permanantly delete the job. Are you sure you want to continue?
-            </div>
-            <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
-            <form action="{{ url_for('jobs.jobs_delete', job_id=job.id) }}" method="POST">
-                <input class="btn btn-danger" type="submit" value="Delete">
-            </form>
-            </div>
-        </div>
-        </div>
+    {% if pagination.has_next %}
+        <a class="pager-btn" href="{{ url_for('jobs.jobs_list', page=pagination.next_num, show_only_mine=show_only_mine) }}">Next ›</a>
+    {% else %}
+        <span class="pager-btn disabled">Next ›</span>
+    {% endif %}
+</div>
+{% endif %}
+
+{# ---- per-job modals (native <dialog>, no framework) ---- #}
+{% for job in jobs %}
+<dialog class="hv-dialog" id="info-{{ job.id }}">
+    <div class="hv-dialog-head"><h3>Info: {{ job.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">
+        <dl class="kv">
+            <dt>Tasks</dt>
+            <dd>{% for jt in job_tasks %}{% if jt.job_id == job.id %}{% for t in tasks %}{% if t.id == jt.task_id %}{{ t.name }}<br>{% endif %}{% endfor %}{% endif %}{% endfor %}</dd>
+            <dt>Created</dt><dd>{{ job.created_at }}</dd>
+            <dt>Started</dt><dd>{{ job.started_at if job.started_at else 'Not started' }}</dd>
+            <dt>Ended</dt><dd>{{ job.ended_at if job.ended_at else 'N/A' }}</dd>
+        </dl>
     </div>
-    {% endfor %}
+    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+</dialog>
 
-    <script>
-        document.getElementById('showOnlyMineToggle').addEventListener('change', function() {
-            const isChecked = this.checked;
-            const urlParams = new URLSearchParams(window.location.search);
+<dialog class="hv-dialog" id="del-{{ job.id }}">
+    <div class="hv-dialog-head"><h3>Delete {{ job.name }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the job. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('jobs.jobs_delete', job_id=job.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
+{% endfor %}
 
-            if (isChecked) {
-                urlParams.set('show_only_mine', 'true');
-            } else {
-                urlParams.set('show_only_mine', 'false');
-            }
-
-            // Reset to page 1 when toggling filter
-            urlParams.set('page', '1');
-
-            // Reload the page with the new parameters
-            window.location.search = urlParams.toString();
-        });
-    </script>
-{% endblock content %}
+{% endblock %}

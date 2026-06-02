@@ -1,211 +1,174 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<style>
-    #remove_all{
-        margin-left: 13px;       
-    }
-    .card-body {
-        overflow: visible;
-    }
-    .card {
-        overflow: visible;
-    }
-</style>
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field, status_badge, priority_pips, wizard_stepper %}
 {% block content %}
-<article class="media content-section">
-    <div class="media-body">
-        <div class="card">
-            <h4 class="card-header">
-                Agents 
-                <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="The following are tasks that are assigned to the job. Each task is run once." style="margin-left:5px;"></i>
-            </h4>
-            <br>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item">            
-                    <div class="steps-horizontal">
-                        <div class="step-horizontal complete">
-                            <div class="step-icon">
-                                <i class="fa fa-briefcase"></i>
-                            </div>
-                            <div class="step-title">Step 1</div>
-                            <div class="step-description">Job Information</div>
-                        </div>
-                        <div class="step-horizontal complete">
-                            <div class="step-icon">
-                                <i class="fa fa-file-text"></i>
-                            </div>
-                            <div class="step-title">Step 2</div>
-                            <div class="step-description">Hashfile Assignment</div>
-                        </div>
-                        <div class="step-horizontal complete">
-                            <div class="step-icon">
-                                <i class="fa fa-database"></i>
-                            </div>
-                            <div class="step-title">Step 3</div>
-                            <div class="step-description">Previously Cracked</div>
-                        </div>
-                        <div class="step-horizontal complete">
-                            <div class="step-icon">
-                                <i class="fa fa-bell"></i>
-                            </div>
-                            <div class="step-title">Step 4</div>
-                            <div class="step-description">Notifications</div>
-                        </div>
-                        <div class="step-horizontal active">
-                            <div class="step-icon">
-                                <i class="fa fa-list"></i>
-                            </div>
-                            <div class="step-title">Step 5</div>
-                            <div class="step-description">Tasks</div>
-                        </div>
-                        <div class="step-horizontal">
-                            <div class="step-icon">
-                                <i class="fa fa-check"></i>
-                            </div>
-                            <div class="step-title">Step 6</div>
-                            <div class="step-description">Review</div>
-                        </div>                
-                    </div>    
-                </li>
-            </ul>
-            <div class="card-body "> 
-                <table class="table">
-                    <thead>
-                    <tr>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Type</th>
-                        <th scope="col">Control
-                            <!--Only show delete all if tasks have been added--> 
-                            {% if (job_tasks is defined) and job_tasks.count() > 0 %}   
-                                <a id="remove_all" class="fa fa-trash btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal" role="button" title="Remove all assigned tasks for this Job"></a>
-                            {% endif %}
-                        </th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for job_task in job_tasks %}
-                            <tr>
-                                <td>
-                                    {% for task in tasks %}
-                                        {% if task.id == job_task.task_id %}
-                                            {{task.name}}
-                                        {% endif %}
-                                    {% endfor %}
-                                </td>
-                                <td>
-                                    {% for task in tasks %}
-                                        {% if task.id == job_task.task_id %}
-                                            {% if task.hc_attackmode == 0 %}
-                                                Straight (Wordlist + Rules)
-                                            {% elif task.hc_attackmode == 1 %}
-                                                Combination (Wordlist1, Rule1, Wordlist2, Rule2)                                          
-                                            {% elif task.hc_attackmode == 3 %}
-                                                Brute-force (Maskmode)
-                                            {% elif task.hc_attackmode == 6 %}
-                                                Hybrid (Wordlist + Mask)
-                                            {% elif task.hc_attackmode == 7 %}
-                                                Hybrid (Mask + wordlist)
-                                            {% else %}
-                                                UNDEF?
-                                            {% endif %}
-                                        {% endif %}
-                                    {% endfor %}
-                                </td>
-                                <td>
-                                    <a class="fa fa-arrow-up btn btn-success btn-sm" href="/jobs/{{job.id}}/move_task_up/{{job_task.task_id}}" role="button" title='Move Up'></a>
-                                    <a class="fa fa-arrow-down btn btn-success btn-sm" href="/jobs/{{job.id}}/move_task_down/{{job_task.task_id}}" role="button" title='Move Down'></a>
-                                    <a class="fa fa-trash btn btn-danger btn-sm" href="/jobs/{{job.id}}/remove_task/{{job_task.task_id}}" role="button" title='Delete'></a>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        <tr>
-                            <td></td>
-                            <td>
-                                <div class="btn-group pull-right">
-                                    <div class="dropdown show">
-                                        <a class="btn btn-primary dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                        Add Task
-                                        </a>
-                                        <div class="dropdown-menu" aria-labelledby="dropdownMenuLink" style="max-height: 300px; overflow-y:auto;">
-                                            {% for task in tasks %}
-                                                {% set already_assigned = namespace(value=0) %}
-                                                {% for job_task in job_tasks %}
-                                                    {% if job_task.task_id == task.id %}
-                                                        {% if task.hc_attackmode == 0 or task.hc_attackmode == 1 or task.hc_attackmode == 6 or task.hc_attackmode == 7 %}
-                                                            {% for wordlist in wordlists %}
-                                                                {% if wordlist.id == task.wordlist_id and wordlist.type == 'static' %}
-                                                                    {% set already_assigned.value = 1 %}
-                                                                {% endif %}
-                                                            {% endfor %}
-                                                        {% else %}
-                                                            {% set already_assigned.value = 1 %}
-                                                        {% endif %}
-                                                    {% endif %}
-                                                {% endfor %}
-                                                {% if already_assigned.value == 0 %}
-                                                    <!-- TODO: filter out tasks already assigned to the job -->
-                                                    <a class="dropdown-item" href="/jobs/{{job.id}}/assign_task/{{task.id}}">{{task.name}}</a>
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Create Job</h1>
+        <div class="page-sub">// tasks</div>
+    </div>
+</div>
+{{ wizard_stepper('tasks', alert_hashes=(alert_hashes if alert_hashes is defined else false)) }}
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; align-items: start;">
+
+    {# ============ Task Library ============ #}
+    <div class="card" style="overflow: visible;">
+        <div class="card-head">
+            {{ icon('book', size=16) }}
+            <h3>Task Library</h3>
+        </div>
+        <div class="card-body" style="overflow: visible;">
+            <div class="page-sub" style="margin-bottom: 14px;">
+                {{ icon('info', size=13) }} Add tasks or task groups to this job. Each task runs once.
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:12px;">
+
+                {# ---- Add Task ---- #}
+                <details style="position:relative;">
+                    <summary class="btn btn-primary" style="list-style:none; cursor:pointer;">
+                        {{ icon('plus', size=15) }} Add Task
+                    </summary>
+                    <div class="card" style="margin-top:8px; max-height:300px; overflow-y:auto;">
+                        <div class="card-body" style="padding:6px;">
+                            {% set any_task = namespace(value=0) %}
+                            {% for task in tasks %}
+                                {% set already_assigned = namespace(value=0) %}
+                                {% for job_task in job_tasks %}
+                                    {% if job_task.task_id == task.id %}
+                                        {% if task.hc_attackmode == 0 or task.hc_attackmode == 1 or task.hc_attackmode == 6 or task.hc_attackmode == 7 %}
+                                            {% for wordlist in wordlists %}
+                                                {% if wordlist.id == task.wordlist_id and wordlist.type == 'static' %}
+                                                    {% set already_assigned.value = 1 %}
                                                 {% endif %}
                                             {% endfor %}
-                                        </div>
-                                    </div>
-                                </div>  
-                            </td>
-                            <td>
-                                <div class="btn-group">
-                                    <div class="dropdown show">
-                                        <a class="btn btn-primary dropdown-toggle" href="#" role="button" id="dropdownMenuLink2" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                        Add Task Group
-                                        </a>
+                                        {% else %}
+                                            {% set already_assigned.value = 1 %}
+                                        {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% if already_assigned.value == 0 %}
+                                    {% set any_task.value = 1 %}
+                                    <!-- TODO: filter out tasks already assigned to the job -->
+                                    <a class="btn btn-ghost btn-block" style="justify-content:flex-start;" href="/jobs/{{job.id}}/assign_task/{{task.id}}">{{ icon('task', size=14) }} {{task.name}}</a>
+                                {% endif %}
+                            {% endfor %}
+                            {% if any_task.value == 0 %}
+                                <div class="page-sub" style="padding:8px 10px;">No tasks available.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </details>
 
-                                        <div class="dropdown-menu" aria-labelledby="dropdownMenuLink2" style="max-height: 300px; overflow-y:auto;">
-                                            {% for task_group in task_groups %}
-                                                <a class="dropdown-item" href="/jobs/{{job.id}}/assign_task_group/{{task_group.id}}">{{task_group.name}}</a>
-                                            {% endfor %}
-                                        </div>
-                                    </div>
-                                    &nbsp;
-                                    &nbsp;
-                                    <div class="pl-3">
-                                        <a class="btn btn-success" href="/jobs/{{job.id}}/assign_task/lucky" role="button">Add Top Tasks</a>
-                                    </div>
+                {# ---- Add Task Group ---- #}
+                <details style="position:relative;">
+                    <summary class="btn btn-primary" style="list-style:none; cursor:pointer;">
+                        {{ icon('group', size=15) }} Add Task Group
+                    </summary>
+                    <div class="card" style="margin-top:8px; max-height:300px; overflow-y:auto;">
+                        <div class="card-body" style="padding:6px;">
+                            {% for task_group in task_groups %}
+                                <a class="btn btn-ghost btn-block" style="justify-content:flex-start;" href="/jobs/{{job.id}}/assign_task_group/{{task_group.id}}">{{ icon('group', size=14) }} {{task_group.name}}</a>
+                            {% else %}
+                                <div class="page-sub" style="padding:8px 10px;">No task groups available.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+
+                <div class="term-divider">OR</div>
+
+                {# ---- Add Top Tasks (lucky) ---- #}
+                <a class="btn btn-primary btn-sm" href="/jobs/{{job.id}}/assign_task/lucky" role="button">{{ icon('zap', size=15) }} I'm Feeling Lucky — top 5</a>
+            </div>
+        </div>
+    </div>
+
+    {# ============ Task Queue ============ #}
+    <div class="card">
+        <div class="card-head">
+            {{ icon('list', size=16) }}
+            <h3>Task Queue</h3>
+            {% if (job_tasks is defined) and job_tasks.count() > 0 %}
+                <button type="button" id="remove_all" class="btn btn-danger btn-sm" style="margin-left:auto;" title="Remove all assigned tasks for this Job" onclick="document.getElementById('deleteModal').showModal()">{{ icon('trash', size=14) }} Remove All</button>
+            {% endif %}
+        </div>
+        <div class="card-body" style="padding:0;">
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th>Task Name</th>
+                        <th>Type</th>
+                        <th class="center">Control</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job_task in job_tasks %}
+                        <tr>
+                            <td style="font-weight:500;">
+                                {% for task in tasks %}
+                                    {% if task.id == job_task.task_id %}
+                                        {{task.name}}
+                                    {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td style="color:var(--text-dim);">
+                                {% for task in tasks %}
+                                    {% if task.id == job_task.task_id %}
+                                        {% if task.hc_attackmode == 0 %}
+                                            Straight (Wordlist + Rules)
+                                        {% elif task.hc_attackmode == 1 %}
+                                            Combination (Wordlist1, Rule1, Wordlist2, Rule2)
+                                        {% elif task.hc_attackmode == 3 %}
+                                            Brute-force (Maskmode)
+                                        {% elif task.hc_attackmode == 6 %}
+                                            Hybrid (Wordlist + Mask)
+                                        {% elif task.hc_attackmode == 7 %}
+                                            Hybrid (Mask + wordlist)
+                                        {% else %}
+                                            UNDEF?
+                                        {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td class="center">
+                                <div style="display:flex; gap:4px; justify-content:center;">
+                                    <a class="icon-btn" href="/jobs/{{job.id}}/move_task_up/{{job_task.task_id}}" role="button" title="Move Up">{{ icon('arrowUp', size=15) }}</a>
+                                    <a class="icon-btn" href="/jobs/{{job.id}}/move_task_down/{{job_task.task_id}}" role="button" title="Move Down">{{ icon('arrowDown', size=15) }}</a>
+                                    <a class="icon-btn act-del" href="/jobs/{{job.id}}/remove_task/{{job_task.task_id}}" role="button" title="Delete">{{ icon('trash', size=15) }}</a>
                                 </div>
                             </td>
                         </tr>
-                    </tbody>
-                </table>
-                <br>
-                <a class="btn btn-secondary" href="{{ url_for('jobs.jobs_assign_notifications', job_id = job.id) }}">Back</a>
-                <a class="btn btn-primary pull-right" href="/jobs/{{job.id}}/summary" role="button">Next</a>
-            </div>
-        </div>
-    </div>
-</article>
-<!-- DeleteAllTaskModal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="deleteModalLabel">Delete Tasks</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            </div>
-            <div class="modal-body">
-                This will permanantly delete all assigned tasks for this job. Are you sure you want to continue?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
-                <form action="/jobs/{{job.id}}/remove_all_tasks" method="GET">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-            </div>
+                    {% else %}
+                        <tr>
+                            <td colspan="3" style="text-align:center; padding:32px 16px; color:var(--text-dim);">
+                                No tasks assigned yet. Add some from the library.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
+
+<div class="wizard-nav" style="margin-top:20px;">
+    <a class="btn" href="{{ url_for('jobs.jobs_assign_notifications', job_id = job.id) }}">{{ icon('arrowLeft', size=15) }} Back</a>
+    <span class="spacer"></span>
+    <a class="btn btn-primary" href="/jobs/{{job.id}}/summary" role="button">Next {{ icon('arrowRight', size=15) }}</a>
+</div>
+
+{# ---- DeleteAllTask modal (native <dialog>) ---- #}
+<dialog class="hv-dialog" id="deleteModal">
+    <div class="hv-dialog-head"><h3>Delete Tasks</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete all assigned tasks for this job. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="/jobs/{{job.id}}/remove_all_tasks" method="GET" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
 
 {% endblock content %}

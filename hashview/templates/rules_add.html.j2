@@ -1,54 +1,47 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field %}
+{% block title %}Add Rules · Hashview{% endblock %}
 {% block content %}
-<article class="media content-section">
-    <div class="media-body">
-        <div class="card">
-            <h4 class="card-header">
-                Add Rules
-                <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Select and upload your hashcat Rules file." style="margin-left:5px;"></i>
-            </h4>
-            <div class="card-body "> 
-                <form method="POST" action="" enctype="multipart/form-data">
-                    {{ form.hidden_tag() }}
-                    <fieldset class="form-group">
-                    <div class="form-group">
-                        {{ form.name.label(class="form-control-label") }}
 
-                        {% if form.name.errors %}
-                            {{ form.name(class="form-control form-control-lg is-invalid") }}
-                            <div class="invalid-feedback">
-                                {% for error in form.name.errors %}
-                                    <span>{{ error }}</span>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            {{ form.name(class="form-control form-control-lg") }}
-                        {% endif %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Add Rules</h1>
+        <div class="page-sub">// select and upload your hashcat rules file</div>
+    </div>
+</div>
+
+<form method="POST" action="" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
+
+    <div class="card">
+        <div class="card-head">
+            {{ icon('rule', size=15) }}<h3>Rules</h3>
+        </div>
+        <div class="card-body">
+
+            {{ phos_field(form.name) }}
+
+            <div class="field" style="margin-bottom:0;">
+                <label class="field-label"{% if form.rules.id %} for="{{ form.rules.id }}"{% endif %}>{{ form.rules.label.text }}</label>
+                {% if form.rules.errors %}
+                    {{ form.rules(class="input is-invalid") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.rules.errors %}<span>{{ error }}</span>{% endfor %}
                     </div>
-                    <br> 
-                    <div class="form-group">
-                            {{ form.rules.label() }}
-                            {{ form.rules(class="form-control-file") }}
-                            {% if form.rules.errors %}
-                                {% for error in form.rules.errors %}
-                                    <span class="text-danger">{{ error }}</span></br>
-                                {% endfor %}
-                            {% endif %}  
-                    </div> 
-                    </fieldset>
-                    <div class="form-group">
-                        {{ form.submit(class="btn btn-outline-info pull-right")}}
-                    </div>
-                </form>
+                {% else %}
+                    {{ form.rules(class="input") }}
+                {% endif %}
+                <span class="field-hint">Hashcat-compatible rules file, newline-delimited.</span>
             </div>
+
         </div>
     </div>
-</article>
+
+    <div class="wizard-nav">
+        <a class="btn" href="{{ url_for('rules.rules_list') }}" role="button">{{ icon('arrowLeft', size=15) }} Cancel</a>
+        <span class="spacer"></span>
+        {{ form.submit(class="btn btn-primary") }}
+    </div>
+</form>
+
 {% endblock content %}

@@ -1,115 +1,77 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Rules · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Rules 
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Rules are a set of instructions to be combined with Wordlists. Hashview comes preloaded with common rules, but you can upload more by clicking the 'Add' button." style="margin-left:5px;"></i>
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('rules.rules_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th scope="col">Name</th>
-                                <th scope="col">Size</th>
-                                <th scope="col">Owner</th>
-                                <th scope="col">Last Updated</th>
-                                <th style="text-align:center;" scope="col">Control</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for rule in rules %}
-                                <tr>
-                                    <td style="vertical-align:middle;">{{ rule.name }}</td>
-                                    <td style="vertical-align:middle;">{{ rule.size }}</td>
-                                    <td style="vertical-align:middle;">
-                                        {% for user in users %}
-                                            {% if user.id == rule.owner_id %}
-                                                {{ user.first_name }} {{ user.last_name }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td style="vertical-align:middle;">
-                                        {{ rule.last_updated }}
-                                    </td>
-                                    <td style="text-align:right; vertical-align:middle;">
-                                        <a class="fa fa-edit btn btn-warning" href="{{ url_for('rules.rules_view', rule_id=rule.id) }}" title="View/Edit"></a>
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{rule.id}}" title="Info"></i></button>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{rule.id}}" title="Delete"></i></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-        </div>
-    </article>
-    {% for rule in rules %}
-    <!-- Info Modal -->
-        <div class="modal fade" id="infoModal{{rule.id}}" tabindex="-1" aria-labelledby="infoModal{{rule.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{rule.id}}Label">Info: {{rule.name}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                    <table class="table">
-                        <thead>
-                          <tbody>
-                              <tr>
-                                <th scope="row">Associated Tasks</th>
-                                <td>
-                                    {% for task in tasks %}
-                                        {% if task.rule_id == rule.id %}
-                                            {{ task.name }} <br>
-                                        {% endif %}
-                                    {% endfor %}
-                                </td>
-                              </tr>
-                          </tbody>
-                      </table>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
-    {% for rule in rules %}
-        <!-- DeleteModal -->
-        <div class="modal fade" id="deleteModal{{rule.id}}" tabindex="-1" aria-labelledby="deleteModal{{rule.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                <h5 class="modal-title" id="deleteModal{{rule.id}}Label">Delete: {{rule.name}} ?</h5>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                This will permanantly delete the rules file. Are you sure you want to continue?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
-                <form action="{{ url_for('rules.rules_delete', rule_id=rule.id) }}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                  </form>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Rules</h1>
+        <div class="page-sub">// rule files combined with wordlists during cracking</div>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('rules.rules_add') }}">{{ icon('plus', size=15) }} New Rule</a>
+</div>
+
+<div class="card">
+    {% if rules %}
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Owner</th>
+                <th>Last Updated</th>
+                <th class="center">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rule in rules %}
+            <tr>
+                <td style="font-weight:500;">{{ rule.name }}</td>
+                <td class="mono" style="color:var(--text-dim);">{{ rule.size }}</td>
+                <td class="mono" style="color:var(--text-dim);">{% for user in users %}{% if user.id == rule.owner_id %}{{ user.first_name }} {{ user.last_name }}{% endif %}{% endfor %}</td>
+                <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ rule.last_updated }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <a class="icon-btn" href="{{ url_for('rules.rules_view', rule_id=rule.id) }}" title="View/Edit">{{ icon('edit', size=15) }}</a>
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ rule.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ rule.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No rules found.</div>
+        <a class="btn btn-primary" href="{{ url_for('rules.rules_add') }}">{{ icon('plus', size=15) }} Add a New Rule</a>
+    </div>
+    {% endif %}
+</div>
+
+{# ---- per-rule modals (native <dialog>, no framework) ---- #}
+{% for rule in rules %}
+<dialog class="hv-dialog" id="info-{{ rule.id }}">
+    <div class="hv-dialog-head"><h3>Info: {{ rule.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">
+        <dl class="kv">
+            <dt>Associated Tasks</dt>
+            <dd>{% for task in tasks %}{% if task.rule_id == rule.id %}{{ task.name }}<br>{% endif %}{% endfor %}</dd>
+        </dl>
+    </div>
+    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+</dialog>
+
+<dialog class="hv-dialog" id="del-{{ rule.id }}">
+    <div class="hv-dialog-head"><h3>Delete {{ rule.name }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the rules file. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('rules.rules_delete', rule_id=rule.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
 {% endblock content %}

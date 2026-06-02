@@ -1,13 +1,6 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<h1>Add Tasks</h1>
-<br>
-Select from the following options to create a new task to be run.
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field %}
+{% block title %}Add Task · Hashview{% endblock %}
 {% block content %}
 <script>
     function showDiv(){
@@ -15,153 +8,163 @@ Select from the following options to create a new task to be run.
         // support all other attack types
         if(Index.value == '0')
         {
-            document.getElementById('dictionary_div').style.display = 'inline';
+            document.getElementById('dictionary_div').style.display = 'block';
             document.getElementById('combinator_div').style.display = 'none';
-            document.getElementById('rules_div').style.display = 'inline';
+            document.getElementById('rules_div').style.display = 'block';
             document.getElementById('maskmode_div').style.display = 'none';
         }
         else if (Index.value == '1')
         {
-            document.getElementById('dictionary_div').style.display = 'inline';
-            document.getElementById('combinator_div').style.display = 'inline';
+            document.getElementById('dictionary_div').style.display = 'block';
+            document.getElementById('combinator_div').style.display = 'block';
             document.getElementById('rules_div').style.display = 'none';
-            document.getElementById('maskmode_div').style.display = 'none';         
-        }        
+            document.getElementById('maskmode_div').style.display = 'none';
+        }
         else if (Index.value == '3')
         {
             document.getElementById('dictionary_div').style.display = 'none';
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'none';
-            document.getElementById('maskmode_div').style.display = 'inline';         
+            document.getElementById('maskmode_div').style.display = 'block';
         }
         else if (Index.value == '6' || Index.value == '7' )
         {
-            document.getElementById('dictionary_div').style.display = 'inline';
+            document.getElementById('dictionary_div').style.display = 'block';
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'none';
-            document.getElementById('maskmode_div').style.display = 'inline';  
+            document.getElementById('maskmode_div').style.display = 'block';
         }
         else
         {
             document.getElementById('dictionary_div').style.display = 'none';
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'none';
-            document.getElementById('maskmode_div').style.display = 'none';          
+            document.getElementById('maskmode_div').style.display = 'none';
         }
     }
 </script>
-<div class="content-section">
-    <form method="POST" action="" enctype="multipart/form-data">
-        {{ tasksForm.hidden_tag() }}
-        <fieldset class="form-group">
-           <div class="form-group">
-                {{ tasksForm.name.label(class="form-control-label") }}
 
-                {% if tasksForm.name.errors %}
-                    {{ tasksForm.name(class="form-control form-control-lg is-invalid") }}
-                    <div class="invalid-feedback">
-                        {% for error in tasksForm.name.errors %}
-                            <span>{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    {{ tasksForm.name(class="form-control form-control-lg") }}
-                {% endif %}
-           </div>
-           <div class="form-group">
-                {{ tasksForm.hc_attackmode.label(class="form-control-label") }}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Add Task</h1>
+        <div class="page-sub">// select from the following options to create a new task to be run</div>
+    </div>
+</div>
+
+<form method="POST" action="" enctype="multipart/form-data">
+    {{ tasksForm.hidden_tag() }}
+
+    <div class="card">
+        <div class="card-body">
+
+            {{ phos_field(tasksForm.name) }}
+
+            <div class="field">
+                <label class="field-label" for="hc_attackmode">{{ tasksForm.hc_attackmode.label.text }}</label>
                 {% if tasksForm.hc_attackmode.errors %}
-                    {{ tasksForm.hc_attackmode(class="form-control form-control-lg is-invalid") }}
+                    {{ tasksForm.hc_attackmode(class="select is-invalid", onchange="showDiv()") }}
                     <div class="invalid-feedback">
                         {% for error in tasksForm.hc_attackmode.errors %}
                             <span>{{ error }}</span>
                         {% endfor %}
                     </div>
                 {% else %}
-                    {{ tasksForm.hc_attackmode(class="form-control form-control-lg", onchange="showDiv()") }}
+                    {{ tasksForm.hc_attackmode(class="select", onchange="showDiv()") }}
                 {% endif %}
             </div>
-            <div class="form-group" style=display:none id="dictionary_div">
-                {{ tasksForm.wl_id.label(class="form-control-label") }}
+
+            <div class="field" style="display:none" id="dictionary_div">
+                <label class="field-label" for="wl_id">{{ tasksForm.wl_id.label.text }}</label>
                 {% if tasksForm.wl_id.errors %}
-                    {{ tasksForm.wl_id(class="form-control form-control-lg is-invalid") }}
+                    {{ tasksForm.wl_id(class="select is-invalid") }}
                     <div class="invalid-feedback">
                         {% for error in tasksForm.wl_id.errors %}
                             <span>{{ error }}</span>
                         {% endfor %}
                     </div>
                 {% else %}
-                    {{ tasksForm.wl_id(class="form-control form-control-lg") }}
+                    {{ tasksForm.wl_id(class="select") }}
                 {% endif %}
             </div>
-            <div class="form-group" style=display:none id="rules_div">
-                {{ tasksForm.rule_id.label(class="form-control-label") }}
+
+            <div class="field" style="display:none" id="rules_div">
+                <label class="field-label" for="rule_id">{{ tasksForm.rule_id.label.text }}</label>
                 {% if tasksForm.rule_id.errors %}
-                    {{ tasksForm.rule_id(class="form-control form-control-lg is-invalid") }}
+                    {{ tasksForm.rule_id(class="select is-invalid") }}
                     <div class="invalid-feedback">
                         {% for error in tasksForm.rule_id.errors %}
                             <span>{{ error }}</span>
                         {% endfor %}
                     </div>
                 {% else %}
-                    {{ tasksForm.rule_id(class="form-control form-control-lg") }}
+                    {{ tasksForm.rule_id(class="select") }}
                 {% endif %}
             </div>
-            <div class="form-group" style=display:none id="maskmode_div">
-                {{ tasksForm.mask.label(class="form-control-label") }}
+
+            <div class="field" style="display:none" id="maskmode_div">
+                <label class="field-label" for="mask">{{ tasksForm.mask.label.text }}</label>
                 {% if tasksForm.mask.errors %}
-                    {{ tasksForm.mask(class="form-control form-control-lg is-invalid") }}
+                    {{ tasksForm.mask(class="input is-invalid") }}
                     <div class="invalid-feedback">
                         {% for error in tasksForm.mask.errors %}
                             <span>{{ error }}</span>
                         {% endfor %}
                     </div>
                 {% else %}
-                    {{ tasksForm.mask(class="form-control form-control-lg") }}
+                    {{ tasksForm.mask(class="input") }}
                 {% endif %}
-            </div> 
-            <div class="form-group" style=display:none id="combinator_div">
-                <br>
-                {{ tasksForm.wl_id_2.label(class="form-control-label") }}
-                {% if tasksForm.wl_id_2.errors %}
-                    {{ tasksForm.wl_id_2(class="form-control form-control-lg is-invalid") }}
-                    <div class="invalid-feedback">
-                        {% for error in tasksForm.wl_id_2.errors %}
-                            <span>{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    {{ tasksForm.wl_id_2(class="form-control form-control-lg") }}
-                {% endif %}
-                <br>
-                {{ tasksForm.j_rule.label(class="form-control-label") }}
-                {% if tasksForm.j_rule.errors %}
-                    {{ tasksForm.j_rule(class="form-control form-control-lg is-invalid") }}
-                    <div class="invalid-feedback">
-                        {% for error in tasksForm.j_rule.errors %}
-                            <span>{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    {{ tasksForm.j_rule(class="form-control form-control-lg") }}
-                {% endif %}
-                <br>
-                {{ tasksForm.k_rule.label(class="form-control-label") }}
-                {% if tasksForm.k_rule.errors %}
-                    {{ tasksForm.k_rule(class="form-control form-control-lg is-invalid") }}
-                    <div class="invalid-feedback">
-                        {% for error in tasksForm.k_rule.errors %}
-                            <span>{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    {{ tasksForm.k_rule(class="form-control form-control-lg") }}
-                {% endif %}                                
-            </div>                              
-        </fieldset>
-        <div class="form-group">
-            {{ tasksForm.submit(class="btn btn-primary pull-right")}}
+            </div>
+
+            <div class="field" style="display:none;margin-bottom:0;" id="combinator_div">
+                <div class="field">
+                    <label class="field-label" for="wl_id_2">{{ tasksForm.wl_id_2.label.text }}</label>
+                    {% if tasksForm.wl_id_2.errors %}
+                        {{ tasksForm.wl_id_2(class="select is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in tasksForm.wl_id_2.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ tasksForm.wl_id_2(class="select") }}
+                    {% endif %}
+                </div>
+                <div class="field">
+                    <label class="field-label" for="j_rule">{{ tasksForm.j_rule.label.text }}</label>
+                    {% if tasksForm.j_rule.errors %}
+                        {{ tasksForm.j_rule(class="input is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in tasksForm.j_rule.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ tasksForm.j_rule(class="input") }}
+                    {% endif %}
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="k_rule">{{ tasksForm.k_rule.label.text }}</label>
+                    {% if tasksForm.k_rule.errors %}
+                        {{ tasksForm.k_rule(class="input is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in tasksForm.k_rule.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ tasksForm.k_rule(class="input") }}
+                    {% endif %}
+                </div>
+            </div>
+
         </div>
-    </form>
-</div>
+    </div>
+
+    <div class="wizard-nav">
+        <a class="btn" href="{{ url_for('tasks.tasks_list') }}" role="button">{{ icon('arrowLeft', size=15) }} Cancel</a>
+        <span class="spacer"></span>
+        {{ tasksForm.submit(class="btn btn-primary") }}
+    </div>
+</form>
+
 {% endblock content %}

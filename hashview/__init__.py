@@ -255,6 +255,67 @@ def create_app(testing=False, config_overrides=None):
     app.add_template_filter(jinja_hex_decode)
     app.add_template_global(get_application_version, get_application_version.__name__)
 
+    @app.context_processor
+    def inject_nav_counts():
+        """Sidebar nav badge counts + agent fleet summary. Only queried for
+        authenticated requests (so login/setup pages do no work), and guarded so a
+        pre-migration database can never break page rendering."""
+        from flask_login import current_user
+        if not getattr(current_user, "is_authenticated", False):
+            return {}
+        try:
+            import re
+            from datetime import datetime, timedelta
+            from hashview.models import (Jobs, Agents, Tasks, TaskGroups,
+                                         Hashfiles, Wordlists, Rules, Users)
+
+            agents = Agents.query.all()
+            cutoff = datetime.now() - timedelta(hours=1)
+
+            def _connected(a):
+                return a.last_checkin is not None and a.last_checkin >= cutoff
+
+            def _hps(s):
+                """Parse a benchmark display string (e.g. '284.6 GH/s') to H/s."""
+                if not s:
+                    return 0.0
+                m = re.match(r"\s*([0-9]*\.?[0-9]+)\s*([kKmMgGtTpP]?)H/s", str(s))
+                if not m:
+                    return 0.0
+                mult = {"": 1, "K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12, "P": 1e15}
+                return float(m.group(1)) * mult.get(m.group(2).upper(), 1)
+
+            def _fmt(h):
+                for unit, div in (("PH/s", 1e15), ("TH/s", 1e12), ("GH/s", 1e9),
+                                  ("MH/s", 1e6), ("kH/s", 1e3)):
+                    if h >= div:
+                        return "%.1f %s" % (h / div, unit)
+                return ("%d H/s" % int(h)) if h else "0 H/s"
+
+            up = sum(1 for a in agents if _connected(a))
+            total_hps = sum(_hps(a.benchmark) for a in agents if _connected(a))
+
+            return {
+                "nav_counts": {
+                    "jobs": Jobs.query.count(),
+                    "agents": len(agents),
+                    "tasks": Tasks.query.count(),
+                    "task_groups": TaskGroups.query.count(),
+                    "hashfiles": Hashfiles.query.count(),
+                    "wordlists": Wordlists.query.count(),
+                    "rules": Rules.query.count(),
+                    "users": Users.query.count(),
+                },
+                "agent_stats": {
+                    "up": up,
+                    "down": len(agents) - up,
+                    "total": len(agents),
+                    "speed": _fmt(total_hps),
+                },
+            }
+        except Exception:  # pragma: no cover - defensive: never break rendering
+            return {}
+
     if not (testing or app.config.get("HASHVIEW_SKIP_SETUP")):
         with app.app_context():
             setup_defaults_if_needed()

@@ -1,339 +1,209 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field, status_badge, priority_pips, wizard_stepper %}
+{% block title %}Create Job · Hashview{% endblock %}
 {% block content %}
+{% set default_tab = 'existing' if job.hashfile_id else 'upload' %}
 <script>
-    function showHashTypeSelected(selectedObject){
-        if (selectedObject.value == 'pwdump'){
-            document.getElementById('pwdump_hash_type_div').style.display = 'inline';
-            document.getElementById('netntlm_hash_type_div').style.display = 'none';
-            document.getElementById('kerberos_hash_type_div').style.display = 'none';
-            document.getElementById('shadow_hash_type_div').style.display = 'none';
-            document.getElementById('hash_type_div').style.display = 'none';
-            document.getElementById('hashfile_div').style.display = 'none';
+    // hashcat-mode -> example hash, shown in the Paste box placeholder
+    var HV_HASH_EXAMPLES = {
+        '1000': 'b4b9b02e6f09a9bd760f388b67351e2b',
+        '5500': 'u4-netntlm::kNS:338d08f8e26de93300000000000000000000000000000000:9526fb8c23a90751cdd619b6cea564742e1e4bf33006ba41:cb8086049ec4736c',
+        '5600': 'admin::N46iSNekpT:08ca45b7d7ea58ee:88dcbe4446168966a153a0064958dac6:5c7830315c7830310000000000000b45c67103d07d7b95acd12ffa11230e0000000052920b85f78d013c31cdb3b92f5d765c783030',
+        '27000': 'u4-netntlm::kNS:338d08f8e26de93300000000000000000000000000000000:9526fb8c23a90751cdd619b6cea564742e1e4bf33006ba41:cb8086049ec4736c',
+        '27100': 'admin::N46iSNekpT:08ca45b7d7ea58ee:88dcbe4446168966a153a0064958dac6:5c7830315c7830310000000000000b45c67103d07d7b95acd12ffa11230e0000000052920b85f78d013c31cdb3b92f5d765c783030',
+        '7500': '$krb5pa$23$user$realm$salt$4e751db65422b2117f7eac7b721932dc8aa0d9966785f3d4625d4815f5d2bb91d09e2826b95c5fd6e8d8',
+        '13100': '$krb5tgs$23$*user$realm$test/spn*$b548e10f5694ae018d7ad63c257af7dc$1b9a9c5a3b1d2c0e...',
+        '18200': '$krb5asrep$23$user@domain.com:3e156ada591263b8aab0965f5aebd837$ee2cb05a3c1d...',
+        '500': '$1$28772684$iEwNOgGugqO9.bIz5sk8k/',
+        '1500': '48c/R8JAv757A',
+        '1800': '$6$52450745$k5ka2p8bFuSmoVT1tzOyyuaREkkKBcCNqoDKzYiJL9RaE8yMnPgh2XzzF0NDrUhgrcLwg78xs1w5pJiypEdFX/',
+        '3200': '$2a$05$LhayLxezLhK1LhWvKxCyLOj0j1u.Kj0jZ0pEmm134uzrQlFvQJLF6',
+        '0': '8743b52063cd84097a65d1633f5c74f5',
+        '100': 'b89eaac7e61417341b710b727768294d0e6a277b',
+        '1400': '127e6fbfe24a750e72930c220a8e138275656b8e5d8f48a98c3c92df2caba935',
+        '1700': '82a9dda829eb7f8ffe9fbe49e45d47d2dad9664fbb7adf72492e3c81ebd3e29134d9bc12212bf83c6840f10e8246b9db54a4859b7ccd0123d86e5872c1e5082f'
+    };
+    var HV_PASTE_DEFAULT = 'Paste one hash per line…';
+    var HV_HAS_EXISTING = {{ 'true' if hashfiles.count() else 'false' }};
+
+    function hvHashTypeExample(sel){
+        var ta = document.getElementById('paste_box');
+        if (!ta) return;
+        var ex = sel && sel.value ? HV_HASH_EXAMPLES[sel.value] : null;
+        if (ex){
+            var label = sel.options[sel.selectedIndex].text.trim();
+            ta.placeholder = 'Example (' + label + '):\n' + ex;
+        } else {
+            ta.placeholder = HV_PASTE_DEFAULT;
         }
-        if (selectedObject.value == 'NetNTLM'){
-            document.getElementById('pwdump_hash_type_div').style.display = 'none';
-            document.getElementById('netntlm_hash_type_div').style.display = 'inline';
-            document.getElementById('kerberos_hash_type_div').style.display = 'none';
-            document.getElementById('shadow_hash_type_div').style.display = 'none';
-            document.getElementById('hash_type_div').style.display = 'none';
-            document.getElementById('hashfile_div').style.display = 'none';
-        }
-        if (selectedObject.value == 'kerberos'){
-            document.getElementById('pwdump_hash_type_div').style.display = 'none';
-            document.getElementById('netntlm_hash_type_div').style.display = 'none';
-            document.getElementById('kerberos_hash_type_div').style.display = 'inline';
-            document.getElementById('shadow_hash_type_div').style.display = 'none';
-            document.getElementById('hash_type_div').style.display = 'none';
-            document.getElementById('hashfile_div').style.display = 'none';
-        }
-        if (selectedObject.value == 'shadow'){
-            document.getElementById('pwdump_hash_type_div').style.display = 'none';
-            document.getElementById('netntlm_hash_type_div').style.display = 'none';
-            document.getElementById('kerberos_hash_type_div').style.display = 'none';
-            document.getElementById('shadow_hash_type_div').style.display = 'inline';
-            document.getElementById('hash_type_div').style.display = 'none';
-            document.getElementById('hashfile_div').style.display = 'none';
-        }
-        if (selectedObject.value == 'user_hash' || selectedObject.value == 'hash_only'){
-            document.getElementById('pwdump_hash_type_div').style.display = 'none';
-            document.getElementById('netntlm_hash_type_div').style.display = 'none';
-            document.getElementById('kerberos_hash_type_div').style.display = 'none';
-            document.getElementById('shadow_hash_type_div').style.display = 'none';
-            document.getElementById('hash_type_div').style.display = 'inline';
-            document.getElementById('hashfile_div').style.display = 'none';
-        }                                       
     }
-    function showHashFileSubmit(){
-        document.getElementById('hashfile_div').style.display = 'inline';
-    } 
-    function auto_grow(element) {
-        element.style.height = "5px";
-        element.style.height = (element.scrollHeight) + "px";
-    }  
+
+    // show the hash-type select that matches the chosen file format
+    function showHashTypeSelected(sel){
+        var map = {pwdump:'pwdump_hash_type_div', NetNTLM:'netntlm_hash_type_div', kerberos:'kerberos_hash_type_div',
+                   shadow:'shadow_hash_type_div', user_hash:'hash_type_div', hash_only:'hash_type_div'};
+        ['pwdump_hash_type_div','netntlm_hash_type_div','kerberos_hash_type_div','shadow_hash_type_div','hash_type_div','hash_type_placeholder']
+            .forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
+        var show = map[sel.value];
+        document.getElementById(show ? show : 'hash_type_placeholder').style.display = 'block';
+        var vsel = show ? document.getElementById(show).querySelector('select') : null;
+        hvHashTypeExample(vsel);
+    }
+
+    // top-level tab switch: upload / paste / existing
+    function hvTab(which){
+        var existing = (which === 'existing');
+        document.getElementById('pane-newhash').style.display = existing ? 'none' : 'block';
+        document.getElementById('pane-existing').style.display = existing ? 'block' : 'none';
+        document.getElementById('upload-pane').style.display = (which === 'upload') ? 'block' : 'none';
+        document.getElementById('paste-pane').style.display = (which === 'paste') ? 'block' : 'none';
+        ['upload','paste','existing'].forEach(function(t){
+            document.getElementById('tab-'+t).classList.toggle('active', t === which);
+        });
+        var ta = document.getElementById('paste_box');
+        if (ta) ta.required = (which === 'paste');
+        // point the (outside-the-card) Next button at the active form
+        var nb = document.getElementById('hf_next');
+        if (nb){
+            nb.setAttribute('form', existing ? 'hf_form_existing' : 'hf_form');
+            nb.style.display = (existing && !HV_HAS_EXISTING) ? 'none' : '';
+        }
+    }
+    function hvFileChosen(input){
+        var n = (input.files && input.files.length) ? input.files[0].name : '';
+        document.getElementById('dropzone_name').textContent = n ? ('Selected: ' + n) : '';
+    }
+    function hvDrop(e){
+        e.preventDefault();
+        document.getElementById('dropzone').classList.remove('drag');
+        var input = document.getElementById('hashfile_input');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+            input.files = e.dataTransfer.files;
+            hvFileChosen(input);
+        }
+    }
+    function auto_grow(el){ el.style.height='5px'; el.style.height=(el.scrollHeight)+'px'; }
 </script>
-<article class="media content-section">
-    <div class="media-body">
-        <div class="card">
-            <h4 class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    Assign Hashes for: {{job.name}}
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Apply hashes to be cracked. You can either copy/paste the desired hashes below, upload a new hashfile, or select from an existing file." style="margin-left:5px;"></i>
-                </div>
-            </h4>
-            <br>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item">            
-                    <div class="steps-horizontal">
-                        <div class="step-horizontal complete">
-                            <div class="step-icon">
-                                <i class="fa fa-briefcase"></i>
-                            </div>
-                            <div class="step-title">Step 1</div>
-                            <div class="step-description">Job Information</div>
-                        </div>
-                        <div class="step-horizontal active">
-                            <div class="step-icon">
-                                <i class="fa fa-file-text"></i>
-                            </div>
-                            <div class="step-title">Step 2</div>
-                            <div class="step-description">Hashfile Assignment</div>
-                        </div>
-                        <div class="step-horizontal">
-                            <div class="step-icon">
-                                <i class="fa fa-database"></i>
-                            </div>
-                            <div class="step-title">Step 3</div>
-                            <div class="step-description">Previously Cracked</div>
-                        </div>
-                        <div class="step-horizontal">
-                            <div class="step-icon">
-                                <i class="fa fa-bell"></i>
-                            </div>
-                            <div class="step-title">Step 4</div>
-                            <div class="step-description">Notifications</div>
-                        </div>
-                        <div class="step-horizontal">
-                            <div class="step-icon">
-                                <i class="fa fa-list"></i>
-                            </div>
-                            <div class="step-title">Step 5</div>
-                            <div class="step-description">Tasks</div>
-                        </div>
-                        <div class="step-horizontal">
-                            <div class="step-icon">
-                                <i class="fa fa-check"></i>
-                            </div>
-                            <div class="step-title">Step 6</div>
-                            <div class="step-description">Review</div>
-                        </div>                
-                    </div>
-                </li>   
-            </ul>
-            <div class="card-body ">
-                <nav>
-                    <div class="nav nav-tabs" id="hashfile-tab" role="tablist">
-                        {% if job.hashfile_id == None %}
-                            <a class="nav-link active" id="nav-new-hashfile-tab" data-bs-toggle="tab" href="#nav-new-hashfile" role="tab" aria-controls="nav-new-hashfile" aria-selected="true">New Hashfile</a>
-                            <a class="nav-link" id="nav-existing-hashfile-tab" data-bs-toggle="tab" href="#nav-existing-hashfile" role="tab" aria-controls="nav-existing-hashfile" aria-selected="false">Existing Hashfile</a>
-                        {% else %}
-                            <a class="nav-link" id="nav-new-hashfile-tab" data-bs-toggle="tab" href="#nav-new-hashfile" role="tab" aria-controls="nav-new-hashfile" aria-selected="false">New Hashfile</a>
-                            <a class="nav-link active" id="nav-existing-hashfile-tab" data-bs-toggle="tab" href="#nav-existing-hashfile" role="tab" aria-controls="nav-existing-hashfile" aria-selected="true">Existing Hashfile</a>
-                        {% endif %}
-                    </div>
-                </nav>
-                <div class="tab-content" id="nav-tabContent">
-                    {% if job.hashfile_id == None %}
-                        <div class="tab-pane fade show active" id="nav-new-hashfile" role="tabpanel" aria-labelledby="nav-new-hashfile-tab">
-                    {% else %}
-                        <div class="tab-pane fade" id="nav-new-hashfile" role="tabpanel" aria-labelledby="nav-new-hashfile-tab">
-                    {% endif %}
-                        <br>
-                        <div class="content-section">
-                            <form action='' id='hf_form' method='post' name='hf_form' enctype='multipart/form-data'>
-                                {{ jobsNewHashFileForm.hidden_tag() }}
-                                <fieldset class="form-group">
-                                    <!-- Hash File Format-->
-                                    <div class="form-group">
-                                        {{ jobsNewHashFileForm.file_type.label(class="form-control-label") }}
-                                        {% if jobsNewHashFileForm.file_type.errors %}
-                                            {{ jobsNewHashFileForm.file_type(class="form-control form-control-lg is-invalid") }}
-                                            <div class="invalid-feedback">
-                                                {% for error in jobsNewHashFileForm.file_type.errors %}
-                                                    <span>{{ error }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            {{ jobsNewHashFileForm.file_type(class="form-control form-control-lg", onchange="showHashTypeSelected(this)") }}
-                                        {% endif %}
-                                    </div> 
-                                    <!-- PwDump Hash Type-->
-                                    <div class="form-group" style=display:none id="pwdump_hash_type_div">
-                                        {{ jobsNewHashFileForm.pwdump_hash_type.label(class="form-control-label") }}
 
-                                        {% if jobsNewHashFileForm.pwdump_hash_type.errors %}
-                                            {{ jobsNewHashFileForm.pwdump_hash_type(class="form-control form-control-lg is-invalid") }}
-                                            <div class="invalid-feedback">
-                                                {% for error in jobsNewHashFileForm.pwdump_hash_type.errors %}
-                                                    <span>{{ error }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            {{ jobsNewHashFileForm.pwdump_hash_type(class="form-control form-control-lg", onchange="showHashFileSubmit()") }}
-                                        {% endif %}
-                                    </div>
-                                    <!-- Net NTLM Hash Type-->
-                                    <div class="form-group" style=display:none id="netntlm_hash_type_div">
-                                        {{ jobsNewHashFileForm.netntlm_hash_type.label(class="form-control-label") }}
-
-                                        {% if jobsNewHashFileForm.netntlm_hash_type.errors %}
-                                            {{ jobsNewHashFileForm.netntlm_hash_type(class="form-control form-control-lg is-invalid") }}
-                                            <div class="invalid-feedback">
-                                                {% for error in jobsNewHashFileForm.netntlm_hash_type.errors %}
-                                                    <span>{{ error }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            {{ jobsNewHashFileForm.netntlm_hash_type(class="form-control form-control-lg", onchange="showHashFileSubmit()") }}
-                                        {% endif %}
-                                    </div>
-                                    <!-- Kerberos Hash Type-->
-                                    <div class="form-group" style=display:none id="kerberos_hash_type_div">
-                                        {{ jobsNewHashFileForm.kerberos_hash_type.label(class="form-control-label") }}
-
-                                        {% if jobsNewHashFileForm.kerberos_hash_type.errors %}
-                                            {{ jobsNewHashFileForm.kerberos_hash_type(class="form-control form-control-lg is-invalid") }}
-                                            <div class="invalid-feedback">
-                                                {% for error in jobsNewHashFileForm.kerberos_hash_type.errors %}
-                                                    <span>{{ error }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            {{ jobsNewHashFileForm.kerberos_hash_type(class="form-control form-control-lg", onchange="showHashFileSubmit()") }}
-                                        {% endif %}
-                                    </div>
-                                    <!-- Shadow Hash Type-->
-                                    <div class="form-group" style=display:none id="shadow_hash_type_div">
-                                        {{ jobsNewHashFileForm.shadow_hash_type.label(class="form-control-label") }}
-
-                                        {% if jobsNewHashFileForm.shadow_hash_type.errors %}
-                                            {{ jobsNewHashFileForm.shadow_hash_type(class="form-control form-control-lg is-invalid") }}
-                                            <div class="invalid-feedback">
-                                                {% for error in jobsNewHashFileForm.shadow_hash_type.errors %}
-                                                    <span>{{ error }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            {{ jobsNewHashFileForm.shadow_hash_type(class="form-control form-control-lg", onchange="showHashFileSubmit()") }}
-                                        {% endif %}
-                                    </div>                                                            
-                                    <!-- Hash Type-->
-                                    <div class="form-group" style=display:none id="hash_type_div">
-                                        {{ jobsNewHashFileForm.hash_type.label(class="form-control-label") }}
-
-                                        {% if jobsNewHashFileForm.hash_type.errors %}
-                                            {{ jobsNewHashFileForm.hash_type(class="form-control form-control-lg is-invalid") }}
-                                            <div class="invalid-feedback">
-                                                {% for error in jobsNewHashFileForm.hash_type.errors %}
-                                                    <span>{{ error }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            {{ jobsNewHashFileForm.hash_type(class="form-control form-control-lg", onchange="showHashFileSubmit()") }}
-                                        {% endif %}
-                                    </div>                    
-                                    <!-- Hashfile Content -->
-                                    <div class="form-group" style=display:none id="hashfile_div">
-                                        <br>
-                                        <br>
-                                        <label class="form-control-label" for="hash_type">Hash File Content</label>
-                                        <nav>
-                                            <div class="nav nav-tabs" id="nav-tab" role="tablist">
-                                                <a class="nav-link active" id="pills-home-tab" data-bs-toggle="tab" href="#pills-home" role="tab" aria-controls="pills-home" aria-selected="true">Individual Hashes</a>
-                                                <a class="nav-link" id="pills-profile-tab" data-bs-toggle="tab" href="#pills-profile" role="tab" aria-controls="pills-profile" aria-selected="false">Upload File</a>
-                                            </div>
-                                        </nav>
-                                        <br>
-                                        <!-- Copy / Paste -->
-                                        <div class="tab-content" id="pills-tabContent">
-                                            <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab">
-                                                <div class="form-group">
-                                                    {{ jobsNewHashFileForm.name.label(class="form-control-label") }}
-
-                                                    {% if jobsNewHashFileForm.name.errors %}
-                                                        {{ jobsNewHashFileForm.name(class="form-control form-control-lg is-invalid") }}
-                                                        <div class="invalid-feedback">
-                                                            {% for error in jobsNewHashFileForm.name.errors %}
-                                                                <span>{{ error }}</span>
-                                                            {% endfor %}
-                                                        </div>
-                                                    {% else %}
-                                                        {{ jobsNewHashFileForm.name(class="form-control form-control-lg", onchange="showHashFileSubmit()") }}
-                                                    {% endif %}
-                                                </div>
-                                                <div class="form-group">
-                                                    {{ jobsNewHashFileForm.hashfilehashes.label(class="form-control-label") }}
-
-                                                    {% if jobsNewHashFileForm.hashfilehashes.errors %}
-                                                        {{ jobsNewHashFileForm.hashfilehashes(class="form-control form-control-lg is-invalid") }}
-                                                        <div class="invalid-feedback">
-                                                            {% for error in jobsNewHashFileForm.hashfilehashes.errors %}
-                                                                <span>{{ error }}</span>
-                                                            {% endfor %}
-                                                        </div>
-                                                    {% else %}
-                                                        {{ jobsNewHashFileForm.hashfilehashes(class="form-control form-control-lg", onchange="showHashFileSubmit()", oninput="auto_grow(this)") }}
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-                                            <!-- File Upload -->
-                                            <div class="tab-pane fade" id="pills-profile" role="tabpanel" aria-labelledby="pills-profile-tab">
-                                                <div class="form-group">
-                                                    {{ jobsNewHashFileForm.hashfile.label() }}
-                                                    {{ jobsNewHashFileForm.hashfile(class="form-control-file") }}
-                                                    {% if jobsNewHashFileForm.hashfile.errors %}
-                                                        {% for error in jobsNewHashFileForm.hashfile.errors %}
-                                                            <span class="text-danger">{{ error }}</span></br>
-                                                        {% endfor %}
-                                                    {% endif %}  
-                                                </div> 
-                                            </div>
-                                        </div>
-                                    </div>
-                                </fieldset>
-                                <br>
-                                <div class="form-group">
-                                    <a class="btn btn-secondary" href="{{ url_for('jobs.jobs_list') }}">Back</a>
-                                    <button class='btn btn-primary pull-right' type='submit'>Next</button>              
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                    {% if job.hashfile_id == None %}
-                        <div class="tab-pane fade" id="nav-existing-hashfile" role="tabpanel" aria-labelledby="nav-existing-hashfile-tab">
-                    {% else %}
-                        <div class="tab-pane fade show active" id="nav-existing-hashfile" role="tabpanel" aria-labelledby="nav-existing-hashfile-tab">      
-                    {% endif %}
-                        <br>
-                        <div class="content-section">
-                            <form action='' class='form-horizontal' id='hf_form' method='post' name='hf_form'>
-                                <fieldset class="form-group">
-                                    <div class="form-group">
-                                        <label class="form-control-label" for="hashfile">Hashfile</label>
-                                        <select class="form-control form-control-lg" id="hashfile_id" name="hashfile_id">
-                                            {% for hashfile in hashfiles %}
-                                                {% if hashfile.id == job.hashfile_id %}
-                                                    <option value='{{hashfile.id}}' selected>
-                                                {% else %}
-                                                    <option value='{{hashfile.id}}'>
-                                                {% endif %}
-                                                    {% for key, value in hashfile_cracked_rate.items() %}
-                                                        {% if key|string() == hashfile.id|string() %}
-                                                            {{ value }} {{hashfile.name}} 
-                                                        {% endif%}
-                                                    {% endfor %}
-                                                </option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                </fieldset>
-                                <br>
-                                <div class="form-group">
-                                    <a class="btn btn-secondary" href="{{ url_for('jobs.jobs_list') }}">Back</a>
-                                    <button class='btn btn-primary pull-right' type='submit'>Next</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Create Job</h1>
+        <div class="page-sub">// hashfile · step 2 of 5</div>
     </div>
-</article>
+</div>
+{{ wizard_stepper('hashfile') }}
+
+{# ---- everything (heading, tabs, submissions) in ONE card ---- #}
+<div class="card">
+    <div class="card-head">
+        <h3>Assign Hashes <span class="req">*</span></h3>
+        <span class="field-hint" style="margin-top:0;">For job: {{ job.name }} — upload a file, paste hashes, or pick an existing hashfile.</span>
+    </div>
+    <div class="card-body">
+
+        {# tabs #}
+        <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+            <button type="button" id="tab-upload"   class="btn tab-btn{% if default_tab == 'upload' %} active{% endif %}"   onclick="hvTab('upload')">{{ icon('upload', size=16) }} Upload file</button>
+            <button type="button" id="tab-paste"    class="btn tab-btn"                                                     onclick="hvTab('paste')">{{ icon('hash', size=16) }} Paste hashes</button>
+            <button type="button" id="tab-existing"  class="btn tab-btn{% if default_tab == 'existing' %} active{% endif %}" onclick="hvTab('existing')">{{ icon('book', size=16) }} Use existing</button>
+        </div>
+
+        {# Upload / Paste share one form #}
+        <div id="pane-newhash" style="display:{{ 'none' if default_tab == 'existing' else 'block' }};">
+            <form action='' id='hf_form' method='post' name='hf_form' enctype='multipart/form-data'>
+                {{ jobsNewHashFileForm.hidden_tag() }}
+
+                <div class="grid" style="grid-template-columns:1fr 1fr; max-width:680px;">
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="file_type">File format <span class="req">*</span></label>
+                        {{ jobsNewHashFileForm.file_type(class=("select is-invalid" if jobsNewHashFileForm.file_type.errors else "select"), onchange="showHashTypeSelected(this)") }}
+                        {% if jobsNewHashFileForm.file_type.errors %}<div class="invalid-feedback">{% for e in jobsNewHashFileForm.file_type.errors %}<span>{{ e }}</span>{% endfor %}</div>{% endif %}
+                    </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label">Hash type <span class="req">*</span></label>
+                        <div id="hash_type_placeholder"><select class="select" disabled><option>— choose a file format first —</option></select></div>
+                        <div id="pwdump_hash_type_div" style="display:none;">{{ jobsNewHashFileForm.pwdump_hash_type(class="select", onchange="hvHashTypeExample(this)") }}</div>
+                        <div id="netntlm_hash_type_div" style="display:none;">{{ jobsNewHashFileForm.netntlm_hash_type(class="select", onchange="hvHashTypeExample(this)") }}</div>
+                        <div id="kerberos_hash_type_div" style="display:none;">{{ jobsNewHashFileForm.kerberos_hash_type(class="select", onchange="hvHashTypeExample(this)") }}</div>
+                        <div id="shadow_hash_type_div" style="display:none;">{{ jobsNewHashFileForm.shadow_hash_type(class="select", onchange="hvHashTypeExample(this)") }}</div>
+                        <div id="hash_type_div" style="display:none;">{{ jobsNewHashFileForm.hash_type(class="select", onchange="hvHashTypeExample(this)") }}</div>
+                    </div>
+                </div>
+
+                <div id="upload-pane" style="display:{{ 'block' if default_tab == 'upload' else 'none' }}; margin-top:20px;">
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label">Hashfile <span class="req">*</span></label>
+                        <div class="dropzone" id="dropzone" onclick="document.getElementById('hashfile_input').click()"
+                             ondragover="event.preventDefault(); this.classList.add('drag');"
+                             ondragleave="this.classList.remove('drag');"
+                             ondrop="hvDrop(event)">
+                            {{ icon('upload', size=34) }}
+                            <div style="margin-top:12px; color:var(--text);">Drop hashfile here or <span style="color:var(--primary); text-decoration:underline; cursor:pointer;">browse</span></div>
+                            <div class="field-hint" id="dropzone_name" style="margin-top:6px;"></div>
+                            {{ jobsNewHashFileForm.hashfile(id="hashfile_input", style="display:none;", onchange="hvFileChosen(this)") }}
+                        </div>
+                        <span class="field-hint">Supports pwdump, NTDS, responder logs, shadow files, kerberos tickets, and more.</span>
+                        {% if jobsNewHashFileForm.hashfile.errors %}{% for e in jobsNewHashFileForm.hashfile.errors %}<span class="field-hint" style="color:var(--red);">{{ e }}</span>{% endfor %}{% endif %}
+                    </div>
+                </div>
+
+                <div id="paste-pane" style="display:none; margin-top:20px;">
+                    <div class="field">
+                        <label class="field-label" for="name">Hashfile name <span class="req">*</span></label>
+                        {{ jobsNewHashFileForm.name(class="input", placeholder="e.g. acme_responder.txt") }}
+                    </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label">Paste hashes <span class="req">*</span> <span style="color:var(--text-mute); font-weight:400;">· one per line</span></label>
+                        {{ jobsNewHashFileForm.hashfilehashes(class="textarea", id="paste_box", oninput="auto_grow(this)", placeholder="Paste one hash per line…") }}
+                        <span class="field-hint">Pick a file format &amp; hash type above to see an example for that type.</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        {# Use existing #}
+        <div id="pane-existing" style="display:{{ 'block' if default_tab == 'existing' else 'none' }};">
+            <form action='' id='hf_form_existing' method='post' name='hf_form'>
+                {% if hashfiles.count() %}
+                {% set ns = namespace(has_match=false) %}
+                {% for hashfile in hashfiles %}{% if hashfile.id == job.hashfile_id %}{% set ns.has_match = true %}{% endif %}{% endfor %}
+                <table class="tbl">
+                    <thead><tr>
+                        <th style="width:40px;"></th><th>Hashfile</th><th>Type</th>
+                        <th class="center">Hashes</th><th class="center">Cracked</th><th>Uploaded</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for hashfile in hashfiles %}
+                        {% set is_sel = (hashfile.id == job.hashfile_id) or (loop.first and not ns.has_match) %}
+                        {% set info = hashfile_info.get(hashfile.id) if hashfile_info is defined else none %}
+                        <tr onclick="this.querySelector('input').checked=true; document.querySelectorAll('#hf_form_existing tbody tr').forEach(function(r){r.classList.remove('selected'); var b=r.querySelector('.sel-box'); if(b){b.classList.remove('on')}}); this.classList.add('selected'); this.querySelector('.sel-box').classList.add('on');" style="cursor:pointer;"{% if is_sel %} class="selected"{% endif %}>
+                            <td class="center">
+                                <span class="sel-box{% if is_sel %} on{% endif %}">{{ icon('check', size=12) }}</span>
+                                <input type="radio" name="hashfile_id" value="{{ hashfile.id }}" style="display:none;"{% if is_sel %} checked{% endif %}>
+                            </td>
+                            <td class="mono" style="font-weight:500; color:{{ 'var(--primary)' if is_sel else 'var(--text)' }};">{{ hashfile.name }}</td>
+                            <td>{% if info and (info.type or info.mode) %}<span class="badge cyan" style="padding:4px 10px;" title="hashcat mode {{ info.mode }}">{{ info.type if info.type else info.mode }}</span>{% else %}<span style="color:var(--text-mute);">—</span>{% endif %}</td>
+                            <td class="center num">{{ "{:,}".format(info.total) if info else 0 }}</td>
+                            <td class="center num">{% if info %}<span style="color:{{ 'var(--primary)' if info.cracked else 'var(--text-mute)' }};">{{ "{:,}".format(info.cracked) }}</span> <span style="color:var(--text-mute);">({{ info.pct_str }})</span>{% else %}—{% endif %}</td>
+                            <td class="mono" style="color:var(--text-mute); font-size:11.5px;">{{ hashfile.uploaded_at.strftime('%b %d, %Y %H:%M') if hashfile.uploaded_at else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="mono" style="color:var(--text-dim); text-align:center; padding:36px 24px;">No existing hashfiles for this customer.</div>
+                {% endif %}
+            </form>
+        </div>
+
+    </div>
+</div>
+
+{# ---- Back / Next OUTSIDE the card; Next submits the active form via the form= attribute ---- #}
+<div class="wizard-nav">
+    <a class="btn" href="{{ url_for('jobs.jobs_list') }}">{{ icon('arrowLeft', size=15) }} Back</a>
+    <span class="spacer"></span>
+    <button type="submit" id="hf_next" form="{{ 'hf_form_existing' if default_tab == 'existing' else 'hf_form' }}" class="btn btn-primary"{% if default_tab == 'existing' and not hashfiles.count() %} style="display:none;"{% endif %}>Next {{ icon('arrowRight', size=15) }}</button>
+</div>
+
 {% endblock content %}

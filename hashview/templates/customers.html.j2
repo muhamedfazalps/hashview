@@ -1,106 +1,86 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Customers · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Customers
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="The following are a list of customers currently configured in Hashview. All Jobs, passwords and hashes will be assigned to a single customer. Deleting a customer will remove ALL data from the system." style="margin-left:5px;"></i>
-                </h4>
-                <div class="card-body ">              
-                    <table class="table table-hover table-sm">
-                        <thead>
-                        <tr>
-                            <th scope="col">Name</th>
-                            <th scope="col">Control</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for customer in customers %}
-                                <tr>
-                                    <td>{{ customer.name }}</td>
-                                    <td style="text-align: right;">
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{customer.id}}" title=Info></button> 
-                                        <a class="fa fa-pie-chart btn btn-warning" href="/analytics?customer_id={{customer.id}}" role="button" title=Analytics></a> 
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{customer.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>    
-        </div>
-    </article>
-    {% for customer in customers %}
-    <!-- InfoModal -->
-    <div class="modal fade" id="infoModal{{customer.id}}" tabindex="-1" aria-labelledby="infoModal{{customer.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{customer.id}}Label">Info: {{customer.name}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            </div>
-            <div class="modal-body">
-                <table class="table">
-                      <tbody>
-                          <tr>
-                            <th scope="row">Associated Jobs</th>
-                            <td>
-                                {% for job in jobs %}
-                                    {% if job.customer_id == customer.id %}
-                                        {{ job.name }} <br>
-                                    {% endif %}
-                                {% endfor %}
-                            </td>
-                          </tr>
-                          <tr>
-                            <th scope="row">Associated Hashfiles</th>
-                            <td>
-                                {% for hashfile in hashfiles %}
-                                    {% if hashfile.customer_id == customer.id %}
-                                        {{ hashfile.name }} <br>
-                                    {% endif %}
-                                {% endfor %}    
-                            </td>
-                          </tr>
-                      </tbody>
-                  </table>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-        </div>
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Customers</h1>
+        <div class="page-sub">// jobs, passwords &amp; hashes are scoped to a single customer</div>
     </div>
-    {% endfor %}
-    {% for customer in customers %}
-    <!-- DeleteModal -->
-    <div class="modal fade" id="deleteModal{{customer.id}}" tabindex="-1" aria-labelledby="deleteModal{{customer.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="deleteModal{{customer.id}}Label">Delete: {{customer.name}} ?</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            </div>
-            <div class="modal-body">
-            This will permanantly delete the customer and any associated hashfiles and hashes. Are you sure you want to continue?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <form action="{{ url_for('customers.customers_delete', customer_id=customer.id) }}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-            </div>
-        </div>
-        </div>
+</div>
+
+<div class="card">
+    {% if customers %}
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th class="center" style="width:160px;">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr>
+                <td style="font-weight:500;">{{ customer.name }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ customer.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <a class="icon-btn" href="/analytics?customer_id={{ customer.id }}" role="button" title="Analytics">{{ icon('chart', size=15) }}</a>
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ customer.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim);">No customers found.</div>
     </div>
-    {% endfor %}
+    {% endif %}
+</div>
+
+{# ---- per-customer info modals (native <dialog>, no framework) ---- #}
+{% for customer in customers %}
+<dialog class="hv-dialog" id="info-{{ customer.id }}">
+    <div class="hv-dialog-head"><h3>Info: {{ customer.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">
+        <dl class="kv">
+            <dt>Associated Jobs</dt>
+            <dd>
+                {% for job in jobs %}
+                    {% if job.customer_id == customer.id %}
+                        {{ job.name }}<br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+            <dt>Associated Hashfiles</dt>
+            <dd>
+                {% for hashfile in hashfiles %}
+                    {% if hashfile.customer_id == customer.id %}
+                        {{ hashfile.name }}<br>
+                    {% endif %}
+                {% endfor %}
+            </dd>
+        </dl>
+    </div>
+    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+</dialog>
+{% endfor %}
+
+{# ---- per-customer delete modals ---- #}
+{% for customer in customers %}
+<dialog class="hv-dialog" id="del-{{ customer.id }}">
+    <div class="hv-dialog-head"><h3>Delete {{ customer.name }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the customer and any associated hashfiles and hashes. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('customers.customers_delete', customer_id=customer.id) }}" method="POST" style="display:inline;">
+            <input class="btn btn-danger" type="submit" value="Delete">
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
 {% endblock content %}

@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, flash, url_for, current_app, request
 from flask_login import login_required, current_user
-from sqlalchemy import func
+from sqlalchemy import func, case
 from hashview.jobs.forms import JobsForm, JobsNewHashFileForm, JobsNotificationsForm, JobSummaryForm
 from hashview.models import HashNotifications, JobNotifications, Jobs, Customers, Hashfiles, Users, HashfileHashes, Hashes, JobTasks, Tasks, TaskGroups, Settings, Wordlists
 from hashview.utils.utils import save_file, import_hashfilehashes, build_hashcat_command, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile
@@ -94,15 +94,49 @@ def jobs_assigned_hashfile(job_id):
     hashfiles = Hashfiles.query.filter_by(customer_id=job.customer_id)
     jobs_new_hashfile_form = JobsNewHashFileForm()
     hashfile_cracked_rate = {}
+    hashfile_info = {}
+
+    # Reverse-map hashcat modes -> concise friendly names from the form's own choices.
+    # Keep the FIRST label seen for a mode (deterministic). A mode can map to several
+    # schemes, so the numeric mode is ALSO shown in the UI; the name is only a hint and
+    # never stands alone for an ambiguous mode.
+    hash_type_names = {}
+    for _sel in (jobs_new_hashfile_form.hash_type, jobs_new_hashfile_form.pwdump_hash_type,
+                 jobs_new_hashfile_form.netntlm_hash_type, jobs_new_hashfile_form.kerberos_hash_type,
+                 jobs_new_hashfile_form.shadow_hash_type):
+        for _val, _label in _sel.choices:
+            if _val and str(_val) not in hash_type_names:
+                _name = _label.split(') ', 1)[1] if ') ' in _label else _label
+                hash_type_names[str(_val)] = _name.split(' / ')[0].split(',')[0].strip()
 
     if job.status == 'Running' or job.status == 'Queued':
         flash('You can not edit a running or queued job. First stop and remove job from queue before editing.', 'danger')
         return redirect(url_for('jobs.list', job_id=job_id))
 
     for hashfile in hashfiles:
-        cracked_cnt = db.session.query(Hashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
-        total = db.session.query(Hashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile.id).count()
+        # one aggregated query per hashfile: total hashes, cracked count, representative mode
+        agg = db.session.query(
+            func.count(Hashes.id),
+            func.coalesce(func.sum(case((Hashes.cracked == True, 1), else_=0)), 0),
+            func.min(Hashes.hash_type)
+        ).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+         .filter(HashfileHashes.hashfile_id == hashfile.id).first()
+        total = agg[0] or 0
+        cracked_cnt = int(agg[1] or 0)
+        ht = str(agg[2]) if agg[2] is not None else ''
         hashfile_cracked_rate[hashfile.id] = "(" + str(cracked_cnt) + "/" + str(total) + ")"
+        if total:
+            _pct = (cracked_cnt / total) * 100
+            pct_str = '<1%' if 0 < _pct < 1 else ('%d%%' % round(_pct))
+        else:
+            pct_str = '0%'
+        hashfile_info[hashfile.id] = {
+            'mode': ht,
+            'type': hash_type_names.get(ht, ''),
+            'total': total,
+            'cracked': cracked_cnt,
+            'pct_str': pct_str,
+        }
 
     if jobs_new_hashfile_form.validate_on_submit():
 
@@ -181,7 +215,7 @@ def jobs_assigned_hashfile(job_id):
 
             return redirect(str(hashfile.id))
 
-    elif request.method == 'POST' and request.form['hashfile_id']:
+    elif request.method == 'POST' and request.form.get('hashfile_id'):
         # User selected an existing hashfile
         job.hashfile_id = request.form['hashfile_id']
         db.session.commit()
@@ -201,7 +235,7 @@ def jobs_assigned_hashfile(job_id):
         for error in jobs_new_hashfile_form.submit.errors:
             print(str(error))
 
-    return render_template('jobs_assigned_hashfiles.html.j2', title='Jobs Assigned Hashfiles', hashfiles=hashfiles, job=job, jobsNewHashFileForm=jobs_new_hashfile_form, hashfile_cracked_rate=hashfile_cracked_rate)
+    return render_template('jobs_assigned_hashfiles.html.j2', title='Jobs Assigned Hashfiles', hashfiles=hashfiles, job=job, jobsNewHashFileForm=jobs_new_hashfile_form, hashfile_cracked_rate=hashfile_cracked_rate, hashfile_info=hashfile_info)
 
 @jobs.route("/jobs/<int:job_id>/assigned_hashfile/<int:hashfile_id>", methods=['GET'])
 @login_required
@@ -230,7 +264,12 @@ def jobs_list_tasks(job_id):
     wordlists = Wordlists.query.all()
     # Right now we're doing nested loops in the template, this could probably be solved with a left/join select
 
-    return render_template('jobs_assigned_tasks.html.j2', title='Jobs Assigned Tasks', job=job, tasks=tasks, job_tasks=job_tasks, task_groups=task_groups, wordlists=wordlists)
+    # Does this job have per-hash alerts? Drives the conditional "Alert Hashes" wizard step.
+    alert_hashes = False
+    if job.hashfile_id:
+        alert_hashes = db.session.query(HashNotifications).join(HashfileHashes, HashNotifications.hash_id == HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id == job.hashfile_id).first() is not None
+
+    return render_template('jobs_assigned_tasks.html.j2', title='Jobs Assigned Tasks', job=job, tasks=tasks, job_tasks=job_tasks, task_groups=task_groups, wordlists=wordlists, alert_hashes=alert_hashes)
 
 @jobs.route("/jobs/<int:job_id>/assign_task/<int:task_id>", methods=['GET'])
 @login_required

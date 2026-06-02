@@ -1,132 +1,63 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field %}
+{% block title %}Profile · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Profile
-                </h4>
-                <div class="card-body">
-                    <div class="content-section">
-                        <form method="POST" action="" enctype="multipart/form-data">
-                            {{ form.hidden_tag() }}
-                            <fieldset class="form-group">
-                                <div class="form-group">
-                                    {{ form.first_name.label(class="form-control-label") }}
 
-                                    {% if form.first_name.errors %}
-                                        {{ form.first_name(class="form-control form-control-lg is-invalid") }}
-                                        <div class="invalid-feedback">
-                                            {% for error in form.first_name.errors %}
-                                                <span>{{ error }}</span>
-                                            {% endfor %}
-                                        </div>
-                                    {% else %}
-                                        {{ form.first_name(class="form-control form-control-lg") }}
-                                    {% endif %}
-                                </div>
-                                <div class="form-group">
-                                    {{ form.last_name.label(class="form-control-label") }}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Profile</h1>
+        <div class="page-sub">// manage your account details and notification credentials</div>
+    </div>
+</div>
 
-                                    {% if form.last_name.errors %}
-                                        {{ form.last_name(class="form-control form-control-lg is-invalid") }}
-                                        <div class="invalid-feedback">
-                                            {% for error in form.last_name.errors %}
-                                                <span>{{ error }}</span>
-                                            {% endfor %}
-                                        </div>
-                                    {% else %}
-                                        {{ form.last_name(class="form-control form-control-lg") }}
-                                    {% endif %}
-                                </div>
-                                <div class="form-group">
-                                    {{ form.email.label(class="form-control-label") }}
+<form method="POST" action="" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
 
-                                    {% if form.email.errors %}
-                                        {{ form.email(class="form-control form-control-lg is-invalid") }}
-                                        <div class="invalid-feedback">
-                                            {% for error in form.email.errors %}
-                                                <span>{{ error }}</span>
-                                            {% endfor %}
-                                        </div>
-                                    {% else %}
-                                        {{ form.email(class="form-control form-control-lg") }}
-                                    {% endif %}
-                                </div>                                
-                                <div class="form-group">
-                                    <div class="form-outline">
-                                        <label for="usr">User API Key:</label> 
-                                        <div class="form-outline mb-3" style="width: 22rem">
-                                            <div class="input-group"> 
-                                                {% if current_user.api_key %}
-                                                    <input class="form-control form-control" id="formControlReadonly" type="text" value={{current_user.api_key}} aria-label="readonly input example" readonly/>
-                                                {% else %}
-                                                    <input class="form-control form-control" id="formControlReadonly" type="text" value="No key set" aria-label="readonly input example" readonly/>
-                                                {% endif %}
-                                                <label class="form-label" for="formControlReadonly"></label>    
-                                                <div class="input-group-append">
-                                                    <a class="fa fa-refresh btn btn-warning fa-2x" href="/profile/generate_api_key" role="button" title=start></a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>                
-                                <div class="form-group">
-                                    {{ form.pushover_user_key.label(class="form-control-label") }}
-                                    {% if form.pushover_user_key.errors %}
-                                        {{ form.pushover_user_key(class="form-control form-control-lg is-invalid") }}
-                                        <div class="invalid-feedback">
-                                            {% for error in form.pushover_user_key.errors %}
-                                                <span>{{ error }}</span>
-                                            {% endfor %}
-                                        </div>
-                                    {% else %}
-                                        {% if current_user.pushover_user_key %}
-                                            {{ form.pushover_user_key(class="form-control form-control-lg", placeholder="Pushover Key Set") }}
-                                        {% else %}
-                                            {{ form.pushover_user_key(class="form-control form-control-lg") }}
-                                        {% endif %}
-                                    {% endif %}
-                                </div>
-                                <div class="form-group">
-                                    {{ form.pushover_app_id.label(class="form-control-label") }}
-                                    {% if form.pushover_app_id.errors %}
-                                        {{ form.pushover_app_id(class="form-control form-control-lg is-invalid") }}
-                                        <div class="invalid-feedback">
-                                            {% for error in form.pushover_app_id.errors %}
-                                                <span>{{ error }}</span>
-                                            {% endfor %}
-                                        </div>
-                                    {% else %}
-                                        {% if current_user.pushover_app_id %}
-                                            {{ form.pushover_app_id(class="form-control form-control-lg", placeholder="Pushover Id Set") }}
-                                        {% else %}
-                                            {{ form.pushover_app_id(class="form-control form-control-lg") }}
-                                        {% endif %}
-                                    {% endif %}
-                                </div>                
-                            </fieldset>
-                            <br>
-                            <div class="form-group">
-                                {{ form.submit(class="btn btn-primary pull-right") }}
-                                {% if not current_user.pushover_app_id or not current_user.pushover_user_key %}
-                                    <a class="btn btn-success disabled" href="#">Test Pushover</a>
-                                {% else %}
-                                    <a class="btn btn-success " href="{{ url_for('users.send_test_pushover') }}">Test Pushover</a>
-                                {% endif %}
-                                <a class="btn btn-success " href="{{ url_for('users.send_test_email') }}">Test Email</a>
-                            </div>
-                        </form>
-                    </div>
+    <div class="card">
+        <div class="card-body">
+
+            {{ phos_field(form.first_name) }}
+            {{ phos_field(form.last_name) }}
+            {{ phos_field(form.email) }}
+
+            <div class="field">
+                <label class="field-label" for="formControlReadonly">User API Key</label>
+                <div style="display:flex; gap:8px; align-items:stretch;">
+                    {% if current_user.api_key %}
+                        <input class="input mono" id="formControlReadonly" type="text" value="{{ current_user.api_key }}" aria-label="User API Key" readonly style="flex:1;"/>
+                    {% else %}
+                        <input class="input mono" id="formControlReadonly" type="text" value="No key set" aria-label="User API Key" readonly style="flex:1;"/>
+                    {% endif %}
+                    <a class="btn" href="{{ url_for('users.generate_api_key') }}" role="button" title="Generate new API key">{{ icon('refresh', size=15) }} Generate</a>
                 </div>
             </div>
+
+            {% if current_user.pushover_user_key %}
+                {{ phos_field(form.pushover_user_key, placeholder='Pushover Key Set') }}
+            {% else %}
+                {{ phos_field(form.pushover_user_key) }}
+            {% endif %}
+
+            {% if current_user.pushover_app_id %}
+                {{ phos_field(form.pushover_app_id, placeholder='Pushover Id Set') }}
+            {% else %}
+                {{ phos_field(form.pushover_app_id) }}
+            {% endif %}
+
         </div>
-    </article>
+    </div>
+
+    <div class="wizard-nav">
+        <a class="btn" href="{{ url_for('main.home') }}" role="button">{{ icon('arrowLeft', size=15) }} Cancel</a>
+        <span class="spacer"></span>
+        {% if not current_user.pushover_app_id or not current_user.pushover_user_key %}
+            <a class="btn disabled" href="#" aria-disabled="true">{{ icon('bell', size=15) }} Test Pushover</a>
+        {% else %}
+            <a class="btn" href="{{ url_for('users.send_test_pushover') }}">{{ icon('bell', size=15) }} Test Pushover</a>
+        {% endif %}
+        <a class="btn" href="{{ url_for('users.send_test_email') }}">{{ icon('mail', size=15) }} Test Email</a>
+        {{ form.submit(class="btn btn-primary") }}
+    </div>
+</form>
+
 {% endblock content %}

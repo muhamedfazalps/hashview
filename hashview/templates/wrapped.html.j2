@@ -1,26 +1,37 @@
 {% extends "layout.html.j2" %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Hashview Wrapped · Hashview{% endblock %}
 {% block header %}
-<br>
-<h1>Hashview Wrapped</h1>
-<br>
-These are some fun statistics on passwords recovered by you from the past year. Click to advance to next statistic.
-<br>
-<br>
-<br>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Hashview Wrapped</h1>
+        <div class="page-sub">// some fun statistics on passwords recovered by you from the past year — click the arrows to advance</div>
+    </div>
+</div>
 {% endblock header %}
 {% block content %}
 <style>
-    .carousel-control-prev {
-        left: -80px !important;
+    /* dependency-free carousel: native horizontal scroll-snap + JS arrows/dots */
+    .wrap-carousel { position: relative; }
+    .wrap-track {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+        scrollbar-width: none;
     }
-    .carousel-control-next {
-        right: -80px !important;
+    .wrap-track::-webkit-scrollbar { display: none; }
+    .wrap-slide { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; padding: 2px; }
+    .wrap-nav { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 18px; }
+    .wrap-dots { display: flex; gap: 7px; }
+    .wrap-dot {
+        width: 8px; height: 8px; border-radius: 50%; padding: 0;
+        background: var(--surface-3); border: 1px solid var(--border-bright); cursor: pointer;
+        transition: background .15s, border-color .15s;
     }
-    .text-subtle {
-        color: #8a8a8a !important;
-    }
+    .wrap-dot.active { background: var(--primary); border-color: var(--primary); box-shadow: var(--glow-sm); }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@tsparticles/confetti@3.0.3/tsparticles.confetti.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/confetti.bundle.min.js') }}"></script>
 <script type="text/javascript">
     window.onload = function() {
         const duration = 15 * 1000,
@@ -56,459 +67,490 @@ These are some fun statistics on passwords recovered by you from the past year. 
         }, 250);
 };
 </script>
-<article class="media content-section">
-    <div id="tsparticles"></div>
-    <div class="media-body">
-        <div id="carouselExampleIndicators" class="carousel slide">
-            <div class="carousel-inner">
-              <div class="carousel-item active">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">Longest Password</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">Your longest recovered password: {{longest_password_personal}}</h6>
-                        <p class="card-text">Your longest password was {{ longest_password_personal | length }} characters long and is ranked {{longest_password_personal_rank}} out of {{longest_password_all_cnt}} of all recovered passwords this past year.</p>
-                    </div>   
-                </div>
-                <br>
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Top 10 longest passwords recovered by everyone
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Length</th>                        
-                                <th scope="col">Recovery Date</th>
-                                <th scope="col">Plaintext</th>
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in longest_password_all_table %}
-                                    <tr>
-                                        <td>{{ entry.length }}</td>                                
-                                        <td>{{ entry.recovered_at }}</td>
-                                        <td>{{ entry.plaintext }}</td>
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-              </div>
-              <div class="carousel-item">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">Total Password Recovered By You</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">Warming the planet one hash at a time.</h6>
-                        <p class="card-text">
-                            {% if total_passwords_recovered_personal_pct > 50 %}
-                                You recovered {{total_passwords_recovered_personal_cnt}} passwords last year. This puts you in the top {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
-                            {% else %}
-                                You recovered {{total_passwords_recovered_personal_cnt}} passwords last year. This puts you in the bottom {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
-                            {% endif %}
-                        </p>
-                      </div>   
-                </div>
-                <br>                
-                <div class="card border-dark mb-2">
-                    <h4 class="card-header">
-                        Most Passwords Recovered by Everyone
-                    </h4>
-                    <div class="card-body">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_passwords_recovered_all_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>  
-                <br> 
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Effective Tasks Overall
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Task Name</th>
-                                <th scope="col">Task Author</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_effective_tasks_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.task_name }}</td>
-                                        <td>{{ entry.task_author }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-              </div>
-              <div class="carousel-item">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">NTLM</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">The bigger the NTDS.dit, the harder they fall</h6>
-                        <p class="card-text">
-                            {% if total_ntlm_recovered_personal_cnt == 0 %}
-                                You recovered no NTLM hashes this year. Did you even try?
-                            {% elif total_ntlm_recovered_personal_pct > 50 %}
-                                You recovered {{ total_ntlm_recovered_personal_cnt }} NTLM hashes last year. This puts you in the top {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
-                            {% else %}
-                                You recovered {{ total_ntlm_recovered_personal_cnt }} NTLM hashes last year. This puts you in the bottom {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
-                            {% endif %}
-                        </p>
-                      </div>   
-                </div>
-                <br>                
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most NTLM Hashes Recovered by Everyone
-                    </h4>
-                    <div class="card-body">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in total_ntlm_recovered_all_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div> 
-                <br>
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Effective Tasks for NTLM in {{previous_year}}
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Task Name</th>
-                                <th scope="col">Task Author</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_effective_tasks_ntlm_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.task_name }}</td>
-                                        <td>{{ entry.task_author }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>   
-              </div>
-              <div class="carousel-item">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">NetNTLMv1</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">Responder --lm still worked in {{ previous_year }}?!</h6>
-                        <p class="card-text">
-                            {% if total_ntlmv1_recovered_personal_cnt == 0 %}
-                                You recovered no NTLMv1 hashes this year. Did you even try?
-                            {% elif total_ntlmv1_recovered_personal_pct > 50 %}
-                                You recovered {{ total_ntlmv1_recovered_personal_cnt }} NTLMv1 hashes last year. This puts you in the top {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
-                            {% else %}
-                                You recovered {{ total_ntlmv1_recovered_personal_cnt }} NTLMv1 hashes last year. This puts you in the bottom {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
-                            {% endif %}                            
-                        </p>
-                      </div>   
-                </div>
-                <br>                
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Recovered NetNTLMv1 passwords by Everyone
-                    </h4>
-                    <div class="card-body">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in total_ntlmv1_recovered_all_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>  
-                <br>
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Effective Tasks for NetNTLMv1 in {{previous_year}}
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Task Name</th>
-                                <th scope="col">Task Author</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_effective_tasks_ntlmv1_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.task_name }}</td>
-                                        <td>{{ entry.task_author }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>                   
-              </div>              
-              <div class="carousel-item">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">NetNTLMv2</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">Responder still worked in {{ previous_year }}?!</h6>
-                        <p class="card-text">
-                            {% if total_ntlmv2_recovered_personal_cnt == 0 %}
-                                You recovered no NTLMv2 hashes this year. Did you even try?
-                            {% elif total_ntlmv2_recovered_personal_pct > 50 %}
-                                You recovered {{ total_ntlmv2_recovered_personal_cnt }} NTLMv2 hashes last year. This puts you in the top {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
-                            {% else %}
-                                You recovered {{ total_ntlmv2_recovered_personal_cnt }} NTLMv2 hashes last year. This puts you in the bottom {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
-                            {% endif %}                            
-                        </p>
-                      </div>   
-                </div>
-                <br>                
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Recovered NetNTLMv2 passwords by Everyone
-                    </h4>
-                    <div class="card-body">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in total_ntlmv2_recovered_all_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>  
-                <br>
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Effective Tasks for NetNTLMv2 in {{previous_year}}
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Task Name</th>
-                                <th scope="col">Task Author</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_effective_tasks_ntlmv2_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.task_name }}</td>
-                                        <td>{{ entry.task_author }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>                   
-              </div>
-              <div class="carousel-item">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">Kerberos</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">Includes etypes 17, 28 and 23</h6>
-                        <p class="card-text">
-                            {% if total_kerberos_recovered_personal_cnt == 0 %}
-                                You recovered no Kerberos hashes this year. Did you even try?
-                            {% elif total_ntlmv2_recovered_personal_pct > 50 %}
-                                You recovered {{ total_kerberos_recovered_personal_cnt }} Kerberos hashes last year. This puts you in the top {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
-                            {% else %}
-                                You recovered {{ total_kerberos_recovered_personal_cnt }} Kerberos hashes last year. This puts you in the bottom {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
-                            {% endif %}                                 
-                        </p>
-                      </div>   
-                </div>
-                <br>                
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Kerberos Passwords Recovered by Everyone
-                    </h4>
-                    <div class="card-body">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in total_kerberos_recovered_all_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>  
-                <br>
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Effective Tasks for Kerberos in {{previous_year}}
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Task Name</th>
-                                <th scope="col">Task Author</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_effective_tasks_kerberos_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.task_name }}</td>
-                                        <td>{{ entry.task_author }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>                   
-              </div>
+<div id="tsparticles"></div>
+
+<div class="wrap-carousel">
+  <div class="wrap-track" id="wrapTrack">
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">Longest Password</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">Your longest recovered password: {{longest_password_personal}}</h6>
+                <p style="margin:0; color:var(--text-dim);">Your longest password was {{ longest_password_personal | length }} characters long and is ranked {{longest_password_personal_rank}} out of {{longest_password_all_cnt}} of all recovered passwords this past year.</p>
             </div>
-              <div class="carousel-item">
-                <div class="card border-dark">
-                    <div class="card-body">
-                        <h5 class="card-title">DCC2</h5>
-                        <h6 class="card-subtitle mb-2 text-subtle">Your pretty leat if you cracked one of these.</h6>
-                        <p class="card-text">
-                            {% if total_dcc2_recovered_personal_cnt == 0 %}
-                                You recovered no DCC2 hashes this year. Its okay, they're quite hard
-                            {% elif total_dcc2_recovered_personal_pct > 50 %}
-                                You recovered {{ total_dcc2_recovered_personal_cnt }} DCC2 hashes last year. This puts you in the top {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
-                            {% else %}
-                                You recovered {{ total_dcc2_recovered_personal_cnt }} DCC2 hashes last year. This puts you in the bottom {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
-                            {% endif %}                                 
-                        </p>
-                      </div>   
-                </div>
-                <br>                
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most DCC2 Passwords Recovered by Everyone
-                    </h4>
-                    <div class="card-body">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Recovered By</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in total_dcc2_recovered_all_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.email_address }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>  
-                <br>
-                <div class="card border-dark">
-                    <h4 class="card-header">
-                        Most Effective Tasks for DCC2 in {{previous_year}}
-                    </h4>
-                    <div class="card-body ">              
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th scope="col">Count</th>                        
-                                <th scope="col">Task Name</th>
-                                <th scope="col">Task Author</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in most_effective_tasks_dcc2_table %}
-                                    <tr>
-                                        <td>{{ entry.count }}</td>                                
-                                        <td>{{ entry.task_name }}</td>
-                                        <td>{{ entry.task_author }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>                   
-              </div>
-            </div>            
-            <a class="carousel-control-prev" href="#carouselExampleIndicators" role="button" data-bs-target="#carouselExampleIndicators" data-bs-slide="prev">
-              <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-            </a>
-            <a class="carousel-control-next" href="#carouselExampleIndicators" role="button" data-bs-target="#carouselExampleIndicators" data-bs-slide="next">
-              <span class="carousel-control-next-icon" aria-hidden="true"></span>
-            </a>
-        </div>    
+        </div>
         <br>
-              
+        <div class="card">
+            <div class="card-head">
+                <h3>Top 10 longest passwords recovered by everyone</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Length</th>
+                        <th scope="col">Recovery Date</th>
+                        <th scope="col">Plaintext</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in longest_password_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.length }}</td>
+                                <td>{{ entry.recovered_at }}</td>
+                                <td>{{ entry.plaintext }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-</article>
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">Total Password Recovered By You</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">Warming the planet one hash at a time.</h6>
+                <p style="margin:0; color:var(--text-dim);">
+                    {% if total_passwords_recovered_personal_pct > 50 %}
+                        You recovered {{total_passwords_recovered_personal_cnt}} passwords last year. This puts you in the top {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
+                    {% else %}
+                        You recovered {{total_passwords_recovered_personal_cnt}} passwords last year. This puts you in the bottom {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
+                    {% endif %}
+                </p>
+              </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Passwords Recovered by Everyone</h3>
+            </div>
+            <div class="card-body">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_passwords_recovered_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Effective Tasks Overall</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Task Author</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_effective_tasks_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.task_name }}</td>
+                                <td>{{ entry.task_author }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">NTLM</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">The bigger the NTDS.dit, the harder they fall</h6>
+                <p style="margin:0; color:var(--text-dim);">
+                    {% if total_ntlm_recovered_personal_cnt == 0 %}
+                        You recovered no NTLM hashes this year. Did you even try?
+                    {% elif total_ntlm_recovered_personal_pct > 50 %}
+                        You recovered {{ total_ntlm_recovered_personal_cnt }} NTLM hashes last year. This puts you in the top {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
+                    {% else %}
+                        You recovered {{ total_ntlm_recovered_personal_cnt }} NTLM hashes last year. This puts you in the bottom {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
+                    {% endif %}
+                </p>
+              </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most NTLM Hashes Recovered by Everyone</h3>
+            </div>
+            <div class="card-body">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in total_ntlm_recovered_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Effective Tasks for NTLM in {{previous_year}}</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Task Author</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_effective_tasks_ntlm_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.task_name }}</td>
+                                <td>{{ entry.task_author }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">NetNTLMv1</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">Responder --lm still worked in {{ previous_year }}?!</h6>
+                <p style="margin:0; color:var(--text-dim);">
+                    {% if total_ntlmv1_recovered_personal_cnt == 0 %}
+                        You recovered no NTLMv1 hashes this year. Did you even try?
+                    {% elif total_ntlmv1_recovered_personal_pct > 50 %}
+                        You recovered {{ total_ntlmv1_recovered_personal_cnt }} NTLMv1 hashes last year. This puts you in the top {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
+                    {% else %}
+                        You recovered {{ total_ntlmv1_recovered_personal_cnt }} NTLMv1 hashes last year. This puts you in the bottom {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
+                    {% endif %}
+                </p>
+              </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Recovered NetNTLMv1 passwords by Everyone</h3>
+            </div>
+            <div class="card-body">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in total_ntlmv1_recovered_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Effective Tasks for NetNTLMv1 in {{previous_year}}</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Task Author</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_effective_tasks_ntlmv1_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.task_name }}</td>
+                                <td>{{ entry.task_author }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">NetNTLMv2</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">Responder still worked in {{ previous_year }}?!</h6>
+                <p style="margin:0; color:var(--text-dim);">
+                    {% if total_ntlmv2_recovered_personal_cnt == 0 %}
+                        You recovered no NTLMv2 hashes this year. Did you even try?
+                    {% elif total_ntlmv2_recovered_personal_pct > 50 %}
+                        You recovered {{ total_ntlmv2_recovered_personal_cnt }} NTLMv2 hashes last year. This puts you in the top {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
+                    {% else %}
+                        You recovered {{ total_ntlmv2_recovered_personal_cnt }} NTLMv2 hashes last year. This puts you in the bottom {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
+                    {% endif %}
+                </p>
+              </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Recovered NetNTLMv2 passwords by Everyone</h3>
+            </div>
+            <div class="card-body">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in total_ntlmv2_recovered_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Effective Tasks for NetNTLMv2 in {{previous_year}}</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Task Author</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_effective_tasks_ntlmv2_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.task_name }}</td>
+                                <td>{{ entry.task_author }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">Kerberos</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">Includes etypes 17, 28 and 23</h6>
+                <p style="margin:0; color:var(--text-dim);">
+                    {% if total_kerberos_recovered_personal_cnt == 0 %}
+                        You recovered no Kerberos hashes this year. Did you even try?
+                    {% elif total_ntlmv2_recovered_personal_pct > 50 %}
+                        You recovered {{ total_kerberos_recovered_personal_cnt }} Kerberos hashes last year. This puts you in the top {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
+                    {% else %}
+                        You recovered {{ total_kerberos_recovered_personal_cnt }} Kerberos hashes last year. This puts you in the bottom {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
+                    {% endif %}
+                </p>
+              </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Kerberos Passwords Recovered by Everyone</h3>
+            </div>
+            <div class="card-body">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in total_kerberos_recovered_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Effective Tasks for Kerberos in {{previous_year}}</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Task Author</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_effective_tasks_kerberos_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.task_name }}</td>
+                                <td>{{ entry.task_author }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="wrap-slide">
+        <div class="card">
+            <div class="card-body">
+                <h5 style="margin:0 0 6px; color:var(--text);">DCC2</h5>
+                <h6 style="margin:0 0 10px; color:var(--text-mute);">Your pretty leat if you cracked one of these.</h6>
+                <p style="margin:0; color:var(--text-dim);">
+                    {% if total_dcc2_recovered_personal_cnt == 0 %}
+                        You recovered no DCC2 hashes this year. Its okay, they're quite hard
+                    {% elif total_dcc2_recovered_personal_pct > 50 %}
+                        You recovered {{ total_dcc2_recovered_personal_cnt }} DCC2 hashes last year. This puts you in the top {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
+                    {% else %}
+                        You recovered {{ total_dcc2_recovered_personal_cnt }} DCC2 hashes last year. This puts you in the bottom {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
+                    {% endif %}
+                </p>
+              </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most DCC2 Passwords Recovered by Everyone</h3>
+            </div>
+            <div class="card-body">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Recovered By</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in total_dcc2_recovered_all_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.email_address }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <br>
+        <div class="card">
+            <div class="card-head">
+                <h3>Most Effective Tasks for DCC2 in {{previous_year}}</h3>
+            </div>
+            <div class="card-body ">
+                <table class="tbl">
+                    <thead>
+                    <tr>
+                        <th scope="col">Count</th>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Task Author</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in most_effective_tasks_dcc2_table %}
+                            <tr>
+                                <td class="num">{{ entry.count }}</td>
+                                <td>{{ entry.task_name }}</td>
+                                <td>{{ entry.task_author }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <div class="wrap-nav">
+    <button class="btn btn-sm" type="button" onclick="wrapMove(-1)">{{ icon('arrowLeft', size=14) }} Prev</button>
+    <div class="wrap-dots" id="wrapDots"></div>
+    <button class="btn btn-sm" type="button" onclick="wrapMove(1)">Next {{ icon('arrowRight', size=14) }}</button>
+  </div>
+</div>
+
+<script>
+(function () {
+    var track = document.getElementById('wrapTrack');
+    var dotsWrap = document.getElementById('wrapDots');
+    if (!track) return;
+    var count = track.children.length;
+    var idx = 0;
+
+    for (var i = 0; i < count; i++) {
+        var d = document.createElement('button');
+        d.type = 'button';
+        d.className = 'wrap-dot' + (i === 0 ? ' active' : '');
+        d.setAttribute('aria-label', 'Slide ' + (i + 1));
+        (function (n) { d.addEventListener('click', function () { wrapGo(n); }); })(i);
+        dotsWrap.appendChild(d);
+    }
+    function syncDots() {
+        var dots = dotsWrap.children;
+        for (var i = 0; i < dots.length; i++) { dots[i].classList.toggle('active', i === idx); }
+    }
+    function clamp(n) { return Math.max(0, Math.min(count - 1, n)); }
+    window.wrapGo = function (n) {
+        idx = clamp(n);
+        track.scrollTo({ left: idx * track.clientWidth, behavior: 'smooth' });
+        syncDots();
+    };
+    window.wrapMove = function (delta) { wrapGo(idx + delta); };
+
+    var t;
+    track.addEventListener('scroll', function () {
+        clearTimeout(t);
+        t = setTimeout(function () { idx = clamp(Math.round(track.scrollLeft / track.clientWidth)); syncDots(); }, 90);
+    });
+})();
+</script>
+<br>
 {% endblock content %}

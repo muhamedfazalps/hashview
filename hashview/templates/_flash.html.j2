@@ -1,0 +1,8 @@
+{# Flashed messages, styled with the phosphor .flash palette (phosphor-app.css). #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}

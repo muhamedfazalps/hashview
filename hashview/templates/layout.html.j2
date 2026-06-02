@@ -1,85 +1,93 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Hashview v0.8.2</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
-        <!-- <link rel="stylesheet" type="type/css" href="{{ url_for('static', filename='main.css') }}">"-->
-        <link type="text/css" rel="stylesheet" href="/static/main.css"/>
-    </head>
-    <body>
-        <header class="site-header">
-            <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-                <div class="container">
-                    <a class="navbar-brand me-4" href="{{ url_for('main.home') }}">Hashview (v0.8.2)</a>
-                    {% if current_user.is_authenticated %}
-                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse" id="navbarNav">
-                        <ul class="navbar-nav ms-auto">
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('jobs.jobs_list') }}">Jobs</a>
-                            </li>
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="tasksDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    Tasks
-                                </a>
-                                <div class="dropdown-menu" aria-labelledby="tasksDropdown">
-                                    <a class="dropdown-item" href="{{ url_for('tasks.tasks_list') }}">Tasks</a>
-                                    <a class="dropdown-item" href="{{ url_for('task_groups.task_groups_list') }}">Task Groups</a>
-                                </div>
-                            </li>
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="manageDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    Manage
-                                </a>
-                                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="manageDropdown">
-                                    {% if current_user.admin %}
-                                        <a class="dropdown-item" href="{{ url_for('customers.customers_list') }}">Customers</a>
-                                        <a class="dropdown-item" href="{{ url_for('agents.agents_list') }}">Agents</a>
-                                        <a class="dropdown-item" href="{{ url_for('settings.settings_list') }}">Settings</a>
-                                        <a class="dropdown-item" href="{{ url_for('users.users_list') }}">User Accounts</a>
-                                        <div class="dropdown-divider"></div>
-                                    {% endif %}
-                                    <a class="dropdown-item" href="{{ url_for('analytics.get_analytics') }}">Analytics</a>
-                                    <a class="dropdown-item" href="{{ url_for('searches.searches_list') }}">Search</a>
-                                    <a class="dropdown-item" href="{{ url_for('wordlists.wordlists_list') }}">Wordlists</a>
-                                    <a class="dropdown-item" href="{{ url_for('hashfiles.hashfiles_list' )}}">Hashfiles</a>
-                                    <a class="dropdown-item" href="{{ url_for('rules.rules_list') }}">Rules</a>
-                                    <a class="dropdown-item" href="{{ url_for('notifications.notifications_list') }}">Notifications</a>
-                                    <a class="dropdown-item" href="{{ url_for('users.profile') }}">Profile</a>
-                                    <a class="dropdown-item" href="{{ url_for('users.logout') }}">Logout</a>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                    {% endif %}
-                </div>
-            </nav>
-        </header>
-        <br>
-        <br>
-        <main role="main" class="container">
-            <div class="row">
-                <div class="col-md-12">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}">
-                            {{ message }}
-                            </div>
-                        {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-                    {% block header %}{% endblock %}
-                    {% block content %}{% endblock %}
-                </div>
-              </div>
-        </main>
+<html lang="en" data-glow="subtle" data-scanlines="{% block scanlines %}on{% endblock %}" data-density="comfortable">
+{% from "icons.html.j2" import icon %}
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Hashview v{{ get_application_version() }}{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js" integrity="sha384-G/EV+4j2dNv+tEPo3++6LCgdCROaejBqfUeNjuKAiuXbjrxilcCdDz6ZAVfHWe1Y" crossorigin="anonymous"></script>
-    </body>
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+
+    {# --- Phosphor Console design system (self-hosted) --- #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='fonts/plex.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/phosphor.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/phosphor-app.css') }}">
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="scanlines"></div>
+
+    {% if current_user.is_authenticated %}
+    {# ---------- authenticated app shell: sidebar + topbar + page ---------- #}
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">#</div>
+                <div>
+                    <div class="brand-name">hash<b>view</b><span class="cursor-blink"></span></div>
+                    <div class="brand-sub">v{{ get_application_version() }} · recovery console</div>
+                </div>
+            </div>
+
+            {% include "_console_nav.html.j2" %}
+
+            <div class="sidebar-foot">
+                {% if agent_stats is defined %}
+                <div class="agent-mini" title="{{ agent_stats.up }} running · {{ agent_stats.down }} disconnected · {{ agent_stats.speed }} total">
+                    <span class="dot-led {{ 'on' if agent_stats.up else 'off' }}"></span>
+                    <span><b>{{ agent_stats.up }}</b> up · <b>{{ agent_stats.down }}</b> down · <b>{{ agent_stats.speed }}</b></span>
+                </div>
+                {% endif %}
+                <div class="user-chip">
+                    <div class="avatar">{{ current_user.first_name[0]|upper }}{{ current_user.last_name[0]|upper }}</div>
+                    <div style="flex:1; min-width:0;">
+                        <a href="{{ url_for('users.profile') }}" class="nm" style="text-decoration:none; color:var(--text); display:block;">{{ current_user.first_name }} {{ current_user.last_name }}</a>
+                        <div class="rl">{{ 'admin' if current_user.admin else 'operator' }}</div>
+                    </div>
+                    <a href="{{ url_for('users.logout') }}" title="Log out" style="color:var(--text-mute); display:flex; align-items:center;">{{ icon('power', size=16) }}</a>
+                </div>
+            </div>
+        </aside>
+
+        <div class="main">
+            <div class="topbar">
+                <div class="topbar-spacer"></div>
+                {% if running_jobs is defined and queued_jobs is defined %}
+                <div class="top-stat"><span class="dot-led run"></span> <b>{{ running_jobs|length }}</b> running · <b style="color:var(--amber);">{{ queued_jobs|length }}</b> queued</div>
+                {% endif %}
+                <div class="top-stat" style="padding-left:16px; border-left:1px solid var(--border);">{{ icon('clock', size=14) }} <span class="clock" id="hv-clock">--:--:--</span></div>
+            </div>
+
+            <div class="page">
+                {% include "_flash.html.j2" %}
+                {% block header %}{% endblock %}
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    {# ---------- unauthenticated: centered card (login / password reset) ---------- #}
+    <div class="auth-body">
+        <div class="auth-wrap">
+            <div class="brand-lg"><span class="brand-mark">#</span> hash<b>view</b></div>
+            {% include "_flash.html.j2" %}
+            {% block content_anon %}{% endblock %}
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+    (function () {
+        var el = document.getElementById('hv-clock');
+        if (!el) return;
+        function pad(n) { return String(n).padStart(2, '0'); }
+        function tick() { var d = new Date(); el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+        tick();
+        setInterval(tick, 1000);
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
 </html>
