@@ -93,6 +93,7 @@ def home():
         .limit(12).all()
     recovery_feed = [
         {
+            'id': h.id,
             'time': h.recovered_at.strftime('%H:%M:%S') if h.recovered_at else '—',
             'account': _hexdec(username) or '—',
             'plaintext': _hexdec(h.plaintext),

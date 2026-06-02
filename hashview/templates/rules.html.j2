@@ -8,7 +8,7 @@
         <h1 class="page-title">Rules</h1>
         <div class="page-sub">// {{ rules|length }} rulesets applied as mutations over wordlists</div>
     </div>
-    <a class="btn btn-primary" href="{{ url_for('rules.rules_add') }}">{{ icon('plus', size=15) }} New Rule</a>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-rule-modal').showModal()">{{ icon('upload', size=15) }} Upload rules</button>
 </div>
 
 <div class="card">
@@ -55,10 +55,61 @@
     {% else %}
     <div class="card-body" style="text-align:center; padding:48px 24px;">
         <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No rules found.</div>
-        <a class="btn btn-primary" href="{{ url_for('rules.rules_add') }}">{{ icon('plus', size=15) }} Add a New Rule</a>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-rule-modal').showModal()">{{ icon('upload', size=15) }} Upload rules</button>
     </div>
     {% endif %}
 </div>
+
+{# ---- upload-rule modal (opened from the "Upload rules" button) ---- #}
+<dialog class="hv-dialog" id="upload-rule-modal" style="max-width:560px; width:92vw;">
+    <div class="hv-dialog-head">
+        {{ icon('rule', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Upload Rule</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">hashcat-compatible .rule file</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('rules.rules_add') }}" enctype="multipart/form-data">
+        {{ rulesForm.hidden_tag() }}
+        {{ rulesForm.name(id="rule-up-name", style="display:none;") }}
+        <div class="hv-dialog-body">
+            <div class="dropzone" id="rule-dropzone" onclick="document.getElementById('rule-up-file').click()"
+                 ondragover="event.preventDefault(); this.classList.add('drag');"
+                 ondragleave="this.classList.remove('drag');"
+                 ondrop="hvRuleDrop(event)">
+                {{ icon('upload', size=34) }}
+                <div style="margin-top:12px; color:var(--text);">Drop a <span class="mono" style="color:var(--primary);">.rule</span> file here or <span style="color:var(--primary); text-decoration:underline;">browse</span></div>
+                <div class="field-hint mono" id="rule-dropzone-name" style="margin-top:8px;">best64.rule, dive.rule, OneRuleToRuleThemAll.rule… one transform per line</div>
+                {{ rulesForm.rules(id="rule-up-file", style="display:none;", onchange="hvRuleChosen(this)") }}
+            </div>
+            {% if rulesForm.rules.errors %}<div class="invalid-feedback">{% for e in rulesForm.rules.errors %}<span>{{ e }}</span>{% endfor %}</div>{% endif %}
+        </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('upload', size=15) }} Upload rule</button>
+        </div>
+    </form>
+</dialog>
+<script>
+    function hvRuleChosen(input){
+        var n = (input.files && input.files.length) ? input.files[0].name : '';
+        var hint = document.getElementById('rule-dropzone-name');
+        if (hint) hint.textContent = n ? ('Selected: ' + n) : 'best64.rule, dive.rule, OneRuleToRuleThemAll.rule… one transform per line';
+        var nameEl = document.getElementById('rule-up-name');
+        if (nameEl && n) nameEl.value = n;
+    }
+    function hvRuleDrop(e){
+        e.preventDefault();
+        var dz = document.getElementById('rule-dropzone');
+        if (dz) dz.classList.remove('drag');
+        var input = document.getElementById('rule-up-file');
+        if (input && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+            input.files = e.dataTransfer.files;
+            hvRuleChosen(input);
+        }
+    }
+</script>
 
 {# ---- per-rule modals (native <dialog>, no framework) ---- #}
 {% for rule in rules %}

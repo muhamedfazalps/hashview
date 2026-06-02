@@ -27,10 +27,10 @@
         {% set delta = (fig1_values[-1] - fig1_values[-2]) if fig1_values and fig1_values|length > 1 else 0 %}
         <div class="kpi-foot">{% if delta >= 0 %}<span class="up">▲ {{ delta }}</span>{% else %}<span class="down">▼ {{ delta|abs }}</span>{% endif %} vs yesterday</div>
     </div>
-    <div class="kpi">
+    <div class="kpi" style="cursor:pointer;" onclick="document.getElementById('agent-fleet-modal').showModal()" title="View agent fleet">
         <div class="kpi-label">{{ icon('cpu', size=13) }} Agents online</div>
         <div class="kpi-value">{{ ns.online }}<span style="font-size:16px;color:var(--text-dim);">/{{ agents|length }}</span></div>
-        <div class="kpi-foot mono">{{ agents|length }} configured</div>
+        <div class="kpi-foot mono">{{ agents|length }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
     </div>
     <div class="kpi">
         <div class="kpi-label">{{ icon('jobs', size=13) }} Jobs</div>
@@ -44,10 +44,15 @@
     </div>
 </div>
 
-{# ---------- Agent fleet + recovery chart ---------- #}
-<div class="card" style="margin-bottom: var(--gap);">
-        <div class="card-head"><span class="dot-led {% if agents|length == 0 %}idle{% elif ns.online == agents|length %}on{% elif ns.online == 0 %}off{% else %}run{% endif %}" title="{% if agents|length == 0 %}No agents configured{% elif ns.online == agents|length %}All agents online{% elif ns.online == 0 %}All agents offline{% else %}{{ agents|length - ns.online }} of {{ agents|length }} offline{% endif %}"></span><h3>Agent Fleet</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">{{ ns.online }}/{{ agents|length }} online</span></div>
-        <div class="card-body">
+{# ---------- Agent fleet (modal, opened from the "Agents online" KPI) ---------- #}
+<dialog class="hv-dialog" id="agent-fleet-modal" style="max-width:840px; width:92vw;">
+    <div class="hv-dialog-head">
+        <span class="dot-led {% if agents|length == 0 %}idle{% elif ns.online == agents|length %}on{% elif ns.online == 0 %}off{% else %}run{% endif %}"></span>
+        <h3>Agent Fleet</h3>
+        <span class="mono" style="font-size:11px;color:var(--text-mute);">{{ ns.online }}/{{ agents|length }} online</span>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <div class="hv-dialog-body" style="max-height:70vh; overflow-y:auto;">
             {% if agents %}
             <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
                 {% for agent in agents %}
@@ -88,8 +93,8 @@
             {% else %}
             <div class="mono" style="color:var(--text-mute);padding:8px 0;">No agents configured. <a href="{{ url_for('agents.agents_list') }}" style="color:var(--primary);">Add one</a>.</div>
             {% endif %}
-        </div>
     </div>
+</dialog>
 
 {# ---------- Passwords recovered + live recovery feed (full width) ---------- #}
 <div class="card" style="margin-bottom: var(--gap);">
@@ -105,9 +110,9 @@
         {% if recovery_feed %}
         <table class="tbl">
             <thead><tr><th>Time</th><th>Account</th><th>Plaintext</th><th class="center">Type</th><th>Recovered By</th></tr></thead>
-            <tbody>
+            <tbody id="recovery-feed-body">
                 {% for r in recovery_feed %}
-                <tr{% if loop.first %} style="background:rgba(var(--primary-rgb),0.06); box-shadow:inset 2px 0 0 var(--primary);"{% endif %}>
+                <tr data-key="{{ r.id }}">
                     <td class="mono" style="color:var(--text-dim);">{{ r.time }}</td>
                     <td class="mono" style="color:var(--text-dim);">{{ r.account }}</td>
                     <td class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ r.plaintext }}</td>
@@ -122,6 +127,30 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+(function () {
+    // Glow (yellow flash, then fade) each newly-arrived recovery-feed row.
+    // The dashboard auto-refreshes every 60s; sessionStorage tracks which rows
+    // we've already shown so only genuinely-new entries flash (and nothing flashes
+    // on the very first page view of the session).
+    var body = document.getElementById('recovery-feed-body');
+    if (!body) return;
+    var STORE = 'hv_recovery_feed_seen';
+    var prev = null;
+    try { prev = JSON.parse(sessionStorage.getItem(STORE) || 'null'); } catch (e) {}
+    var seen = prev ? new Set(prev) : null;
+    var current = [];
+    body.querySelectorAll('tr[data-key]').forEach(function (tr) {
+        var k = tr.getAttribute('data-key');
+        current.push(k);
+        if (seen && !seen.has(k)) {
+            tr.classList.add('feed-fresh');
+        }
+    });
+    try { sessionStorage.setItem(STORE, JSON.stringify(current)); } catch (e) {}
+})();
+</script>
 
 {# ---------- Jobs ---------- #}
 {% if not running_jobs and not queued_jobs %}

@@ -67,7 +67,7 @@ def tasks_list():
         db.func.count(Hashes.id).label('recovered_count')
     ).filter(Hashes.cracked == '1').group_by(Hashes.task_id).all()
 
-    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order)
+    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order, rules=Rules.query.all(), tasksForm=TasksForm())
 
 @tasks.route("/tasks/add", methods=['GET', 'POST'])
 @login_required

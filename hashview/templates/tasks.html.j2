@@ -2,16 +2,23 @@
 {% from "icons.html.j2" import icon %}
 {% block title %}Tasks · Hashview{% endblock %}
 {% block content %}
+{% macro hcount(n) -%}
+{%- if n and n >= 1000000 -%}{{ (n / 1000000)|round(1) }}M{%- elif n and n >= 1000 -%}{{ (n / 1000)|round(1) }}K{%- else -%}{{ n or 0 }}{%- endif -%}
+{%- endmacro %}
 
 <div class="page-head">
     <div>
         <h1 class="page-title">Tasks</h1>
         <div class="page-sub">// Predefined hashcat commands. Any number of tasks can be assigned to a job · {{ pagination.total }} total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
     </div>
-    <a class="btn btn-primary" href="{{ url_for('tasks.tasks_add') }}">{{ icon('plus', size=15) }} Add Task</a>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-task-modal').showModal()">{{ icon('plus', size=15) }} Add Task</button>
 </div>
 
 <div class="card">
+    <div class="card-head" style="justify-content:flex-end;">
+        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('search', size=16) }}</span>
+        <input type="text" id="task-filter" class="input" style="width:260px; flex:none;" placeholder="filter tasks…" autocomplete="off" oninput="hvFilterTasks(this.value)">
+    </div>
     {% if tasks %}
     <table class="tbl">
         <thead>
@@ -43,9 +50,9 @@
                 <th class="center" style="width:140px;">Control</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="task-tbody">
             {% for task in tasks %}
-            <tr>
+            <tr data-name="{{ task.name|lower }}">
                 <td style="font-weight:500;">
                     <span style="display:inline-flex; align-items:center; gap:9px;">
                         <span style="color:var(--text-mute); display:inline-flex;">{{ icon('task', size=16) }}</span>
@@ -92,12 +99,13 @@
                 </td>
             </tr>
             {% endfor %}
+            <tr id="task-no-match" style="display:none;"><td colspan="5" style="text-align:center; padding:28px 16px; color:var(--text-mute);" class="mono">No tasks match that filter.</td></tr>
         </tbody>
     </table>
     {% else %}
     <div class="card-body" style="text-align:center; padding:48px 24px;">
         <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No tasks found.</div>
-        <a class="btn btn-primary" href="{{ url_for('tasks.tasks_add') }}">{{ icon('plus', size=15) }} Add a Task</a>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('add-task-modal').showModal()">{{ icon('plus', size=15) }} Add a Task</button>
     </div>
     {% endif %}
 </div>
@@ -127,6 +135,136 @@
     {% endif %}
 </div>
 {% endif %}
+
+<script>
+function hvFilterTasks(q){
+    q = (q || '').trim().toLowerCase();
+    var shown = 0;
+    document.querySelectorAll('#task-tbody tr[data-name]').forEach(function(tr){
+        var hit = !q || (tr.getAttribute('data-name') || '').indexOf(q) !== -1;
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+    });
+    var none = document.getElementById('task-no-match');
+    if (none) none.style.display = shown === 0 ? '' : 'none';
+}
+</script>
+
+{# ---- add-task modal (opened from the "Add Task" button) ---- #}
+<dialog class="hv-dialog" id="add-task-modal" style="max-width:680px; width:94vw;">
+    <div class="hv-dialog-head">
+        {{ icon('task', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">New Task</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">define a reusable attack</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('tasks.tasks_add') }}">
+        {{ tasksForm.hidden_tag() }}
+        <input type="hidden" name="hc_attackmode" id="atk-mode" value="0">
+        <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+
+            <div class="field">
+                <label class="field-label" for="atk-name">Task name <span class="req">*</span></label>
+                <input class="input" type="text" name="name" id="atk-name" placeholder="e.g. rockyou + OneRule" autocomplete="off" required>
+            </div>
+
+            <div class="field">
+                <label class="field-label">Attack mode</label>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn tab-btn active" id="atk-t-dict"     onclick="hvAtk('dict')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('book', size=18) }}<span>Dictionary</span></button>
+                    <button type="button" class="btn tab-btn"        id="atk-t-dictrule" onclick="hvAtk('dictrule')" style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('rule', size=18) }}<span>Dict + Rule</span></button>
+                    <button type="button" class="btn tab-btn"        id="atk-t-mask"     onclick="hvAtk('mask')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('hash', size=18) }}<span>Mask</span></button>
+                    <button type="button" class="btn tab-btn"        id="atk-t-hybrid"   onclick="hvAtk('hybrid')"   style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('zap', size=18) }}<span>Hybrid</span></button>
+                    <button type="button" class="btn tab-btn"        id="atk-t-combo"    onclick="hvAtk('combo')"    style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('copy', size=18) }}<span>Combinator</span></button>
+                </div>
+                <span class="field-hint" id="atk-hint" style="margin-top:8px;">↳ Straight wordlist run</span>
+            </div>
+
+            {# Wordlist — dictionary, dict+rule, hybrid, combinator #}
+            <div class="field" id="atk-fld-wl">
+                <label class="field-label">Wordlist <span class="req">*</span></label>
+                <select class="select" name="wl_id">
+                    {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
+                </select>
+            </div>
+
+            {# Rule — dict+rule #}
+            <div class="field" id="atk-fld-rule" style="display:none;">
+                <label class="field-label">Rule</label>
+                <select class="select" name="rule_id" id="atk-rule-sel">
+                    <option value="None">— none —</option>
+                    {% for r in rules %}<option value="{{ r.id }}">{{ r.name }} · {{ hcount(r.size) }} rules</option>{% endfor %}
+                </select>
+            </div>
+
+            {# Second wordlist — combinator #}
+            <div class="field" id="atk-fld-wl2" style="display:none;">
+                <label class="field-label">Second wordlist <span class="req">*</span></label>
+                <select class="select" name="wl_id_2">
+                    {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
+                </select>
+            </div>
+
+            {# Hybrid order — hybrid #}
+            <div class="field" id="atk-fld-order" style="display:none;">
+                <label class="field-label">Order</label>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn tab-btn active" id="atk-ho-wm" onclick="hvHybridOrder(6)">Wordlist → Mask</button>
+                    <button type="button" class="btn tab-btn"        id="atk-ho-mw" onclick="hvHybridOrder(7)">Mask → Wordlist</button>
+                </div>
+            </div>
+
+            {# Mask — mask, hybrid #}
+            <div class="field" id="atk-fld-mask" style="display:none;">
+                <label class="field-label">Hashcat mask <span class="req">*</span></label>
+                <input class="input mono" type="text" name="mask" placeholder="?l?l?l?l?d?d" autocomplete="off">
+            </div>
+
+            {# Combinator optional rules #}
+            <div class="field" id="atk-fld-jrule" style="display:none;">
+                <label class="field-label">Left rule <span style="color:var(--text-mute); font-weight:400;">· optional (-j)</span></label>
+                <input class="input mono" type="text" name="j_rule" placeholder="e.g. $-" autocomplete="off">
+            </div>
+            <div class="field" id="atk-fld-krule" style="display:none; margin-bottom:0;">
+                <label class="field-label">Right rule <span style="color:var(--text-mute); font-weight:400;">· optional (-k)</span></label>
+                <input class="input mono" type="text" name="k_rule" placeholder="e.g. $!" autocomplete="off">
+            </div>
+        </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('plus', size=15) }} Create task</button>
+        </div>
+    </form>
+</dialog>
+<script>
+(function () {
+    var HYBRID = 6;
+    function show(id, on) { var e = document.getElementById(id); if (e) e.style.display = on ? 'block' : 'none'; }
+    window.hvAtk = function (mode) {
+        var tabs = {dict:'atk-t-dict', dictrule:'atk-t-dictrule', mask:'atk-t-mask', hybrid:'atk-t-hybrid', combo:'atk-t-combo'};
+        for (var k in tabs) { var b = document.getElementById(tabs[k]); if (b) b.classList.toggle('active', k === mode); }
+        var atk = document.getElementById('atk-mode'), hint = document.getElementById('atk-hint'), ruleSel = document.getElementById('atk-rule-sel');
+        // hide everything, reset rule to "none" (ignored by the backend for non dict+rule modes)
+        show('atk-fld-wl', false); show('atk-fld-rule', false); show('atk-fld-wl2', false);
+        show('atk-fld-order', false); show('atk-fld-mask', false); show('atk-fld-jrule', false); show('atk-fld-krule', false);
+        if (ruleSel) ruleSel.value = 'None';
+        if (mode === 'dict')          { atk.value = '0'; show('atk-fld-wl', true); hint.textContent = '↳ Straight wordlist run'; }
+        else if (mode === 'dictrule') { atk.value = '0'; show('atk-fld-wl', true); show('atk-fld-rule', true); if (ruleSel && ruleSel.options.length > 1) ruleSel.selectedIndex = 1; hint.textContent = '↳ Wordlist mutated by a rules file'; }
+        else if (mode === 'mask')     { atk.value = '3'; show('atk-fld-mask', true); hint.textContent = '↳ Brute-force a hashcat mask'; }
+        else if (mode === 'hybrid')   { atk.value = String(HYBRID); show('atk-fld-order', true); show('atk-fld-wl', true); show('atk-fld-mask', true); hint.textContent = '↳ Wordlist combined with a mask'; }
+        else if (mode === 'combo')    { atk.value = '1'; show('atk-fld-wl', true); show('atk-fld-wl2', true); show('atk-fld-jrule', true); show('atk-fld-krule', true); hint.textContent = '↳ Two wordlists combined · optional -j/-k rules'; }
+    };
+    window.hvHybridOrder = function (m) {
+        HYBRID = m;
+        document.getElementById('atk-mode').value = String(m);
+        document.getElementById('atk-ho-wm').classList.toggle('active', m === 6);
+        document.getElementById('atk-ho-mw').classList.toggle('active', m === 7);
+    };
+    window.hvAtk('dict');
+})();
+</script>
 
 {# ---- per-task modals (native <dialog>, no framework) ---- #}
 {% for task in tasks %}

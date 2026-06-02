@@ -2,6 +2,7 @@
 {% from "icons.html.j2" import icon %}
 {% block title %}Customers · Hashview{% endblock %}
 {% block content %}
+<style>.customers-tbl thead th { padding-top: 14px; padding-bottom: 14px; }</style>
 
 <div class="page-head">
     <div>
@@ -12,7 +13,7 @@
 
 <div class="card">
     {% if customers %}
-    <table class="tbl">
+    <table class="tbl customers-tbl">
         <thead>
             <tr>
                 <th>Name</th>

@@ -8,7 +8,7 @@
         <h1 class="page-title">Wordlists</h1>
         <div class="page-sub">// plaintext &amp; auto-generated wordlists</div>
     </div>
-    <a class="btn btn-primary" href="{{ url_for('wordlists.wordlists_add') }}">{{ icon('plus', size=15) }} New Wordlist</a>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-wordlist-modal').showModal()">{{ icon('upload', size=15) }} Upload Wordlist</button>
 </div>
 
 <div class="card">
@@ -18,7 +18,8 @@
         <span style="margin-left:auto; display:inline-flex; align-items:center; gap:9px; color:var(--text-mute);">{{ icon('search', size=16) }}<input type="text" id="wl-filter" class="input" style="width:240px; flex:none;" placeholder="filter wordlists…" autocomplete="off" oninput="hvFilterWordlists(this.value)"></span>
     </div>
     {% if static_wordlists %}
-    <table class="tbl">
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:32%;"><col style="width:14%;"><col style="width:18%;"><col style="width:20%;"><col style="width:16%;"></colgroup>
         <thead>
             <tr>
                 <th>Name</th>
@@ -60,7 +61,7 @@
     {% else %}
     <div class="card-body" style="text-align:center; padding:48px 24px;">
         <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No static wordlists found.</div>
-        <a class="btn btn-primary" href="{{ url_for('wordlists.wordlists_add') }}">{{ icon('plus', size=15) }} New Wordlist</a>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-wordlist-modal').showModal()">{{ icon('upload', size=15) }} Upload Wordlist</button>
     </div>
     {% endif %}
 </div>
@@ -71,11 +72,13 @@
         <span class="field-hint" style="margin-top:0;">Auto-generated and updated whenever new data is added to the system.</span>
     </div>
     {% if dynamic_wordlists %}
-    <table class="tbl">
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:32%;"><col style="width:14%;"><col style="width:18%;"><col style="width:20%;"><col style="width:16%;"></colgroup>
         <thead>
             <tr>
                 <th>Name</th>
                 <th>Size</th>
+                <th></th>
                 <th>Last Updated</th>
                 <th class="center">Control</th>
             </tr>
@@ -90,6 +93,7 @@
                     </span>
                 </td>
                 <td class="mono num" style="color:var(--primary);">{{ "{:,}".format(wordlist.size) }}</td>
+                <td></td>
                 <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ wordlist.last_updated }}</td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
@@ -99,7 +103,7 @@
                 </td>
             </tr>
             {% endfor %}
-            <tr class="wl-no-match" style="display:none;"><td colspan="4" style="text-align:center; padding:24px 16px; color:var(--text-mute);" class="mono">No wordlists match that filter.</td></tr>
+            <tr class="wl-no-match" style="display:none;"><td colspan="5" style="text-align:center; padding:24px 16px; color:var(--text-mute);" class="mono">No wordlists match that filter.</td></tr>
         </tbody>
     </table>
     {% else %}
@@ -108,6 +112,57 @@
     </div>
     {% endif %}
 </div>
+
+{# ---- upload-wordlist modal (opened from the "Upload Wordlist" button) ---- #}
+<dialog class="hv-dialog" id="upload-wordlist-modal" style="max-width:560px; width:92vw;">
+    <div class="hv-dialog-head">
+        {{ icon('book', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Upload Wordlist</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">plaintext, newline-delimited file</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('wordlists.wordlists_add') }}" enctype="multipart/form-data">
+        {{ wordlistsForm.hidden_tag() }}
+        {{ wordlistsForm.name(id="wl-up-name", style="display:none;") }}
+        <div class="hv-dialog-body">
+            <div class="dropzone" id="wl-dropzone" onclick="document.getElementById('wl-up-file').click()"
+                 ondragover="event.preventDefault(); this.classList.add('drag');"
+                 ondragleave="this.classList.remove('drag');"
+                 ondrop="hvWlDrop(event)">
+                {{ icon('upload', size=34) }}
+                <div style="margin-top:12px; color:var(--text);">Drop a wordlist file here or <span style="color:var(--primary); text-decoration:underline;">browse</span></div>
+                <div class="field-hint mono" id="wl-dropzone-name" style="margin-top:8px;">rockyou.txt, weakpass.txt, … one password per line</div>
+                {{ wordlistsForm.wordlist(id="wl-up-file", style="display:none;", onchange="hvWlChosen(this)") }}
+            </div>
+            {% if wordlistsForm.wordlist.errors %}<div class="invalid-feedback">{% for e in wordlistsForm.wordlist.errors %}<span>{{ e }}</span>{% endfor %}</div>{% endif %}
+        </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('upload', size=15) }} Upload Wordlist</button>
+        </div>
+    </form>
+</dialog>
+<script>
+    function hvWlChosen(input){
+        var n = (input.files && input.files.length) ? input.files[0].name : '';
+        var hint = document.getElementById('wl-dropzone-name');
+        if (hint) hint.textContent = n ? ('Selected: ' + n) : 'rockyou.txt, weakpass.txt, … one password per line';
+        var nameEl = document.getElementById('wl-up-name');
+        if (nameEl && n) nameEl.value = n;
+    }
+    function hvWlDrop(e){
+        e.preventDefault();
+        var dz = document.getElementById('wl-dropzone');
+        if (dz) dz.classList.remove('drag');
+        var input = document.getElementById('wl-up-file');
+        if (input && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+            input.files = e.dataTransfer.files;
+            hvWlChosen(input);
+        }
+    }
+</script>
 
 {# ---- per-wordlist modals (native <dialog>, no framework) ---- #}
 {% for wordlist in wordlists %}

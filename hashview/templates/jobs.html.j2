@@ -20,6 +20,10 @@
 </div>
 
 <div class="card">
+    <div class="card-head" style="justify-content:flex-end;">
+        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('search', size=16) }}</span>
+        <input type="text" id="job-filter" class="input" style="width:260px; flex:none;" placeholder="filter jobs…" autocomplete="off" oninput="hvFilterJobs(this.value)">
+    </div>
     {% if jobs %}
     <table class="tbl">
         <thead>
@@ -29,9 +33,9 @@
                 <th>Owner</th><th>Created</th><th class="center">Control</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="job-tbody">
             {% for job in jobs %}
-            <tr>
+            <tr data-name="{{ job.name|lower }}{% for c in customers %}{% if c.id == job.customer_id %} {{ c.name|lower }}{% endif %}{% endfor %}">
                 <td class="mono" style="color:var(--text-mute);">{{ job.id }}</td>
                 <td style="font-weight:500;">{{ job.name }}</td>
                 <td style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %}</td>
@@ -78,6 +82,7 @@
                 </td>
             </tr>
             {% endfor %}
+            <tr id="job-no-match" style="display:none;"><td colspan="10" style="text-align:center; padding:28px 16px; color:var(--text-mute);" class="mono">No jobs match that filter.</td></tr>
         </tbody>
     </table>
     {% else %}
@@ -113,6 +118,20 @@
     {% endif %}
 </div>
 {% endif %}
+
+<script>
+function hvFilterJobs(q){
+    q = (q || '').trim().toLowerCase();
+    var shown = 0;
+    document.querySelectorAll('#job-tbody tr[data-name]').forEach(function(tr){
+        var hit = !q || (tr.getAttribute('data-name') || '').indexOf(q) !== -1;
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+    });
+    var none = document.getElementById('job-no-match');
+    if (none) none.style.display = shown === 0 ? '' : 'none';
+}
+</script>
 
 {# ---- per-job modals (native <dialog>, no framework) ---- #}
 {% for job in jobs %}

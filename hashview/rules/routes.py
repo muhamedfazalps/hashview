@@ -21,7 +21,7 @@ def rules_list():
     jobs = Jobs.query.all()
     jobtasks = JobTasks.query.all()
     users = Users.query.all()
-    return render_template('rules.html.j2', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users)
+    return render_template('rules.html.j2', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users, rulesForm=RulesForm())
 
 @rules.route("/rules/add", methods=['GET', 'POST'])
 @login_required

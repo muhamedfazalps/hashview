@@ -16,13 +16,15 @@
         <span class="field-hint" style="margin-top:0;">Alerts triggered when a subscribed job changes state.</span>
     </div>
     {% if job_notifications %}
-    <table class="tbl">
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:28%;"><col style="width:24%;"><col style="width:14%;"><col style="width:18%;"><col style="width:16%;"></colgroup>
         <thead>
             <tr>
                 <th>Job Name</th>
                 <th>Hash File</th>
+                <th></th>
                 <th>Method</th>
-                <th class="center" style="width:120px;">Control</th>
+                <th class="center">Control</th>
             </tr>
         </thead>
         <tbody>
@@ -46,6 +48,7 @@
                         {% endif %}
                     {% endfor %}
                 </td>
+                <td></td>
                 <td style="color:var(--text-dim);">{{ job_notification.method }}</td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
@@ -63,19 +66,21 @@
     {% endif %}
 </div>
 
-<div class="card">
+<div class="card" style="margin-top:var(--gap);">
     <div class="card-head">
         <h3>Hash Notifications</h3>
         <span class="field-hint" style="margin-top:0;">Alerts triggered when a subscribed hash is recovered.</span>
     </div>
     {% if hash_notifications %}
-    <table class="tbl">
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:28%;"><col style="width:24%;"><col style="width:14%;"><col style="width:18%;"><col style="width:16%;"></colgroup>
         <thead>
             <tr>
                 <th>Hash</th>
+                <th></th>
                 <th>Hashtype</th>
                 <th>Method</th>
-                <th class="center" style="width:120px;">Control</th>
+                <th class="center">Control</th>
             </tr>
         </thead>
         <tbody>
@@ -84,6 +89,7 @@
                 {% for hash in hashes %}
                     {% if hash_notification.hash_id == hash.id %}
                         <td class="mono" style="color:var(--text-dim); word-break:break-all;">{{ hash.ciphertext }}</td>
+                        <td></td>
                         <td class="num">{{ hash.hash_type }}</td>
                     {% endif %}
                 {% endfor %}

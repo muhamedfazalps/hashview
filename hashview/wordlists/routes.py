@@ -18,7 +18,7 @@ def wordlists_list():
     wordlists = Wordlists.query.all()
     tasks = Tasks.query.all()
     users = Users.query.all()
-    return render_template('wordlists.html.j2', title='Wordlists', static_wordlists=static_wordlists, dynamic_wordlists=dynamic_wordlists, wordlists=wordlists, tasks=tasks, users=users)
+    return render_template('wordlists.html.j2', title='Wordlists', static_wordlists=static_wordlists, dynamic_wordlists=dynamic_wordlists, wordlists=wordlists, tasks=tasks, users=users, wordlistsForm=WordlistsForm())
 
 @wordlists.route("/wordlists/add", methods=['GET', 'POST'])
 @login_required
