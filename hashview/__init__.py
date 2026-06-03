@@ -254,6 +254,102 @@ def create_app(testing=False, config_overrides=None):
 
     app.add_template_filter(jinja_hex_decode)
     app.add_template_global(get_application_version, get_application_version.__name__)
+    # Expose a csrf_token() template global (no global CSRFProtect is installed) so the
+    # account-settings modal in the layout can post to the CSRF-protected profile route.
+    from flask_wtf.csrf import generate_csrf
+    app.jinja_env.globals['csrf_token'] = generate_csrf
+
+    @app.context_processor
+    def inject_nav_counts():
+        """Sidebar nav badge counts + agent fleet summary. Only queried for
+        authenticated requests (so login/setup pages do no work), and guarded so a
+        pre-migration database can never break page rendering."""
+        from flask_login import current_user
+        if not getattr(current_user, "is_authenticated", False):
+            return {}
+        try:
+            import re
+            from datetime import datetime, timedelta
+            from sqlalchemy import text
+            from hashview.models import (db, Jobs, Agents, Tasks, TaskGroups,
+                                         Hashfiles, Wordlists, Rules, Users, Customers)
+
+            agents = Agents.query.all()
+            # last_checkin is stamped with the database clock (api.update_heartbeat uses
+            # func.now()); derive the cutoff from that SAME clock so the comparison is
+            # independent of whatever timezone this web process runs in. Falls back to the
+            # process clock only if the DB time can't be read.
+            try:
+                db_now = db.session.execute(text("SELECT NOW()")).scalar()
+                if isinstance(db_now, str):
+                    db_now = datetime.strptime(db_now[:19], '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                db_now = None
+            cutoff = (db_now or datetime.utcnow()) - timedelta(hours=1)
+
+            # An agent is "up" when it's connected (recent check-in) and in a
+            # running or idle/ready state; the speed total only counts agents actively
+            # cracking ("Working"). Everything else (pending, stale, never checked in,
+            # disconnected) counts as down/offline.
+            up_states = {'working', 'syncing', 'idle', 'authorized', 'online'}
+            running_states = {'working'}
+
+            def _connected(a):
+                return a.last_checkin is not None and a.last_checkin >= cutoff
+
+            def _state(a):
+                return (a.status or '').strip().lower()
+
+            def _hps(s):
+                """Parse a benchmark display string (e.g. '284.6 GH/s') to H/s."""
+                if not s:
+                    return 0.0
+                m = re.match(r"\s*([0-9]*\.?[0-9]+)\s*([kKmMgGtTpP]?)H/s", str(s))
+                if not m:
+                    return 0.0
+                mult = {"": 1, "K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12, "P": 1e15}
+                return float(m.group(1)) * mult.get(m.group(2).upper(), 1)
+
+            def _fmt(h):
+                for unit, div in (("PH/s", 1e15), ("TH/s", 1e12), ("GH/s", 1e9),
+                                  ("MH/s", 1e6), ("kH/s", 1e3)):
+                    if h >= div:
+                        return "%.1f %s" % (h / div, unit)
+                return ("%d H/s" % int(h)) if h else "0 H/s"
+
+            # Single source of truth for "is this agent up" (sidebar, agents page, AND
+            # the dashboard all read from this, so they can never disagree).
+            up_ids = {a.id for a in agents if _connected(a) and _state(a) in up_states}
+            up = len(up_ids)
+            total_hps = sum(_hps(a.benchmark) for a in agents
+                            if _connected(a) and _state(a) in running_states)
+
+            return {
+                "nav_counts": {
+                    "jobs": Jobs.query.count(),
+                    "agents": len(agents),
+                    "tasks": Tasks.query.count(),
+                    "task_groups": TaskGroups.query.count(),
+                    "hashfiles": Hashfiles.query.count(),
+                    "wordlists": Wordlists.query.count(),
+                    "rules": Rules.query.count(),
+                    "users": Users.query.count(),
+                    "customers": Customers.query.count(),
+                },
+                "agent_stats": {
+                    "up": up,
+                    "down": len(agents) - up,
+                    "total": len(agents),
+                    "speed": _fmt(total_hps),
+                    "online_ids": up_ids,
+                },
+                "job_queue": {
+                    "running": Jobs.query.filter_by(status='Running').count(),
+                    "queued": Jobs.query.filter_by(status='Queued').count(),
+                },
+            }
+        except Exception:  # pragma: no cover - defensive: never break rendering
+            return {}
 
     if not (testing or app.config.get("HASHVIEW_SKIP_SETUP")):
         with app.app_context():

@@ -1,43 +1,18 @@
 {% extends "layout.html.j2" %}
-{% block content %}
-<br>
-<br>
-<br>
-<br>
-<br>
-<article class="media content-section">
-    <div class="media-body">
-        <div class="card">
-            <h4 class="card-header">
-                Reset Password
-            </h4>
-            <div class="card-body "> 
-                <div class="content-section">
-                    <form method="POST" action="">
-                        {{ form.hidden_tag() }}
-                        <fieldset class="form-group">
-                            <div class="form-group">
-                                {{ form.email.label(class="form-control-label") }}
-                                {% if form.email.errors %}
-                                    {{ form.email(class="form-control form-control-lg is-invalid") }}
-                                    <div class="invalid-feedback">
-                                        {% for error in form.email.errors %}
-                                            <span>{{ error }}</span>
-                                        {% endfor %}
-                                    </div>
-                                {% else %}
-                                    {{ form.email(class="form-control form-control-lg") }}
-                                {% endif %}
-                            </div>
-                        </fieldset>
-                        <br>
-                        <div class="form-group">
-                            {{ form.submit(class="btn btn-outline-info pull-right") }}
-                        </div>
-                    </form>
-                </div>
-            </div>
+{% from "macros.html.j2" import phos_field %}
+{% block title %}Reset Password · Hashview{% endblock %}
+{% block content_anon %}
+<div class="card">
+    <div class="card-body">
+        <div class="auth-title">Reset Password</div>
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+            {{ phos_field(form.email) }}
+            {{ form.submit(class="btn btn-primary btn-block") }}
+        </form>
+        <div class="auth-foot">
+            <a class="auth-link" href="{{ url_for('users.login_get') }}">Back to login</a>
         </div>
     </div>
-</article>
-{% endblock content %}
+</div>
+{% endblock %}

@@ -4,8 +4,19 @@ from flask_login import login_required, current_user
 from hashview.tasks.forms import TasksForm
 from hashview.models import TaskGroups, Tasks, Wordlists, Rules, Users, Jobs, JobTasks, Hashes
 from hashview.models import db
+import os
 
 tasks = Blueprint('tasks', __name__)
+
+
+def _human_size(num):
+    """Human-readable byte size (e.g. 133 MB) for the task info modal."""
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if num < 1024 or unit == 'TB':
+            if unit == 'B':
+                return '%d B' % num
+            return ('%.1f %s' % (num, unit)).replace('.0 ', ' ')
+        num /= 1024.0
 
 @tasks.route("/tasks", methods=['GET', 'POST'])
 @login_required
@@ -67,7 +78,29 @@ def tasks_list():
         db.func.count(Hashes.id).label('recovered_count')
     ).filter(Hashes.cracked == '1').group_by(Hashes.task_id).all()
 
-    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order)
+    # Best-effort on-disk byte size for wordlists referenced by the tasks on this page
+    # (the info modal shows "<size> · <N> words"). Missing files just omit the byte size.
+    wl_by_id = {w.id: w for w in wordlists}
+    referenced_wl = set()
+    for t in tasks:
+        if t.wl_id:
+            referenced_wl.add(t.wl_id)
+        if t.wl_id_2:
+            referenced_wl.add(t.wl_id_2)
+    wl_filesize = {}
+    for wid in referenced_wl:
+        w = wl_by_id.get(wid)
+        if w and w.path:
+            try:
+                wl_filesize[wid] = _human_size(os.path.getsize(w.path))
+            except OSError:
+                pass
+
+    # Tasks assigned to one or more jobs cannot be edited (the edit route enforces this
+    # too); the list view uses this to disable the edit button for those tasks.
+    tasks_in_jobs = {jt.task_id for jt in job_tasks}
+
+    return render_template('tasks.html.j2', title='tasks', tasks=tasks, users=users, jobs=jobs, job_tasks=job_tasks, wordlists=wordlists, task_groups=task_groups, task_recovery_performance=task_recovery_performance, pagination=pagination, sort_by=sort_by, sort_order=sort_order, rules=Rules.query.all(), wl_filesize=wl_filesize, tasks_in_jobs=tasks_in_jobs, tasksForm=TasksForm())
 
 @tasks.route("/tasks/add", methods=['GET', 'POST'])
 @login_required
@@ -248,7 +281,9 @@ def task_edit(task_id):
             if tasksForm.hc_attackmode.data == 0:
                 task.name = tasksForm.name.data
                 task.wl_id = tasksForm.wl_id.data
-                task.rule_id = tasksForm.rule_id.data
+                # Normalize the 'None' sentinel to NULL (matches tasks_add); storing the
+                # literal string 'None' into the integer rule_id column raises MySQL 1366.
+                task.rule_id = None if tasksForm.rule_id.data == 'None' else tasksForm.rule_id.data
                 task.hc_attackmode = tasksForm.hc_attackmode.data
                 task.hc_mask = None
 

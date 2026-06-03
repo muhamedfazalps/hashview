@@ -32,7 +32,7 @@ def _add_rule(page, live_server, name: str) -> None:
     expect(page.get_by_role("heading", name=re.compile(r"Add Rules"))).to_be_visible()
     page.locator("input[name='name']").fill(name)
     page.set_input_files("input[name='rules']", str(EXAMPLE_RULE))
-    page.get_by_role("button", name=re.compile(r"upload", re.I)).click()
+    page.get_by_role("button", name="upload", exact=True).click()
     expect(page).to_have_url(re.compile(r".*/rules/?$"))
     expect(page.get_by_text("Rules File created!", exact=False)).to_be_visible()
 
@@ -40,11 +40,10 @@ def _add_rule(page, live_server, name: str) -> None:
 def _delete_rule_via_modal(page, name: str) -> None:
     row = _row_for_rule(page, name)
     expect(row).to_be_visible()
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/rules/delete/'] input[type='submit'], "
-                  "form[action*='/rules/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/rules/delete/'] button[type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/rules/?$"))
     expect(page.get_by_text("Rule file has been deleted!", exact=False)).to_be_visible()
 

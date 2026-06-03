@@ -8,7 +8,7 @@ from playwright.sync_api import expect
 def test_redirects_to_login(page, live_server):
     page.goto(f"{live_server}/", wait_until="domcontentloaded")
     expect(page).to_have_url(re.compile(r".*/login.*"))
-    expect(page.locator("legend", has_text="Log In")).to_be_visible()
+    expect(page.locator(".auth-title", has_text="Log In")).to_be_visible()
 
 
 @pytest.mark.e2e

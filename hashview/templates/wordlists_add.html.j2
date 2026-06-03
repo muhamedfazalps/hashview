@@ -1,56 +1,47 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field %}
+{% block title %}Add Wordlist · Hashview{% endblock %}
 {% block content %}
-<article class="media content-section">
-    <div class="media-body">
-        <div class="card">
-            <h4 class="card-header">
-                Add Wordlist
-                <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Select and upload your wordlist file." style="margin-left:5px;"></i>
-            </h4>
-            <div class="card-body "> 
-                <div class="content-section">
-                    <form method="POST" action="" enctype="multipart/form-data">
-                        {{ form.hidden_tag() }}
-                        <fieldset class="form-group">
-                        <div class="form-group">
-                            {{ form.name.label(class="form-control-label") }}
 
-                            {% if form.name.errors %}
-                                {{ form.name(class="form-control form-control-lg is-invalid") }}
-                                <div class="invalid-feedback">
-                                    {% for error in form.name.errors %}
-                                        <span>{{ error }}</span>
-                                    {% endfor %}
-                                </div>
-                            {% else %}
-                                {{ form.name(class="form-control form-control-lg") }}
-                            {% endif %}
-                        </div> 
-                        <br>
-                        <div class="form-group">
-                                {{ form.wordlist.label() }}
-                                {{ form.wordlist(class="form-control-file") }}
-                                {% if form.wordlist.errors %}
-                                    {% for error in form.wordlist.errors %}
-                                        <span class="text-danger">{{ error }}</span></br>
-                                    {% endfor %}
-                                {% endif %}  
-                        </div> 
-                        </fieldset>
-                        <div class="form-group">
-                            {{ form.submit(class="btn btn-outline-info pull-right")}}
-                        </div>
-                    </form>
-                </div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Add Wordlist</h1>
+        <div class="page-sub">// select and upload your wordlist file</div>
+    </div>
+</div>
+
+<form method="POST" action="" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
+
+    <div class="card">
+        <div class="card-head">
+            {{ icon('book', size=15) }}<h3>Wordlist</h3>
+        </div>
+        <div class="card-body">
+
+            {{ phos_field(form.name) }}
+
+            <div class="field" style="margin-bottom:0;">
+                <label class="field-label"{% if form.wordlist.id %} for="{{ form.wordlist.id }}"{% endif %}>{{ form.wordlist.label.text }}</label>
+                {% if form.wordlist.errors %}
+                    {{ form.wordlist(class="input is-invalid") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.wordlist.errors %}<span>{{ error }}</span>{% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.wordlist(class="input") }}
+                {% endif %}
+                <span class="field-hint">Plaintext, newline-delimited file. Uploaded as a static wordlist.</span>
             </div>
+
         </div>
     </div>
-</article>
+
+    <div class="wizard-nav">
+        <a class="btn" href="{{ url_for('wordlists.wordlists_list') }}" role="button">{{ icon('arrowLeft', size=15) }} Cancel</a>
+        <span class="spacer"></span>
+        {{ form.submit(class="btn btn-primary") }}
+    </div>
+</form>
+
 {% endblock content %}

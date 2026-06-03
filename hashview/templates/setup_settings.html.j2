@@ -1,22 +1,14 @@
 {% extends "setup_base.html.j2" %}
+{% from "macros.html.j2" import phos_field with context %}
 
-
-{% from "macros.html.j2" import make_form_group with context %}
-
+{% block setup_title %}Set Initial Settings{% endblock %}
 
 {% block content %}
-<h2 style="margin-top: 1rem; margin-bottom: 1rem;">Set Initial Settings</h2>
-<div class="content-section">
-    <form method="POST" action="/setup/settings">
-        {{ form.hidden_tag() }}
-        <fieldset class="form-group">
-            {{ make_form_group('retention_period')  }}
-            {{ make_form_group('max_runtime_tasks') }}
-            {{ make_form_group('max_runtime_jobs')  }}
-        </fieldset>
-        <div class="form-group">
-            {{ form.submit(class="btn btn-primary pull-right")}}
-        </div>
-    </form>
-</div>
+<form method="POST" action="/setup/settings">
+    {{ form.hidden_tag() }}
+    {{ phos_field(form.retention_period) }}
+    {{ phos_field(form.max_runtime_tasks) }}
+    {{ phos_field(form.max_runtime_jobs) }}
+    {{ form.submit(class="btn btn-primary btn-block") }}
+</form>
 {% endblock %}

@@ -1,0 +1,54 @@
+{# Phosphor Console sidebar navigation — data-driven, admin-gated,
+   active state derived from request.endpoint / request.blueprint,
+   count badges from the inject_nav_counts() context processor. #}
+{% from "icons.html.j2" import icon %}
+
+{% set nav_groups = [
+  ('monitor', [
+    ('main.home', 'grid', 'Dashboard', none)
+  ]),
+  ('work', [
+    ('jobs.jobs_list', 'jobs', 'Jobs', 'jobs'),
+    ('tasks.tasks_list', 'task', 'Tasks', 'tasks'),
+    ('task_groups.task_groups_list', 'group', 'Task Groups', 'task_groups')
+  ]),
+  ('resources', [
+    ('hashfiles.hashfiles_list', 'file', 'Hashfiles', 'hashfiles'),
+    ('wordlists.wordlists_list', 'book', 'Wordlists', 'wordlists'),
+    ('rules.rules_list', 'rule', 'Rules', 'rules')
+  ]),
+  ('insight', [
+    ('analytics.get_analytics', 'chart', 'Analytics', none),
+    ('searches.searches_list', 'search', 'Search', none),
+    ('notifications.notifications_list', 'bell', 'Notifications', none)
+  ])
+] %}
+
+{% macro nav_item(ep, ico, label, count_key=none) -%}
+  {%- set bp = ep.split('.')[0] -%}
+  {%- set is_active = (request.endpoint == ep) or (bp != 'main' and request.blueprint == bp) -%}
+  {%- set cnt = (nav_counts.get(count_key) if (count_key and nav_counts is defined) else none) -%}
+  <a class="nav-item{% if is_active %} active{% endif %}" href="{{ url_for(ep) }}">
+    {{ icon(ico, cls='ico', size=17) }}<span>{{ label }}</span>
+    {%- if cnt %}<span class="nav-badge">{{ cnt }}</span>{% endif -%}
+  </a>
+{%- endmacro %}
+
+<nav class="nav">
+  {% for group_label, items in nav_groups %}
+    <div class="nav-group">
+      <div class="nav-group-label">{{ group_label }}</div>
+      {% for ep, ico, label, count_key in items %}{{ nav_item(ep, ico, label, count_key) }}{% endfor %}
+    </div>
+  {% endfor %}
+
+  {% if current_user.admin %}
+    <div class="nav-group">
+      <div class="nav-group-label">admin</div>
+      {{ nav_item('customers.customers_list', 'briefcase', 'Customers', 'customers') }}
+      {{ nav_item('agents.agents_list', 'cpu', 'Agents', 'agents') }}
+      {{ nav_item('users.users_list', 'users', 'Users', 'users') }}
+      {{ nav_item('settings.settings_list', 'settings', 'Settings', none) }}
+    </div>
+  {% endif %}
+</nav>

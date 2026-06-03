@@ -1,85 +1,200 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Hashview v0.8.2</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
-        <!-- <link rel="stylesheet" type="type/css" href="{{ url_for('static', filename='main.css') }}">"-->
-        <link type="text/css" rel="stylesheet" href="/static/main.css"/>
-    </head>
-    <body>
-        <header class="site-header">
-            <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-                <div class="container">
-                    <a class="navbar-brand me-4" href="{{ url_for('main.home') }}">Hashview (v0.8.2)</a>
-                    {% if current_user.is_authenticated %}
-                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse" id="navbarNav">
-                        <ul class="navbar-nav ms-auto">
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('jobs.jobs_list') }}">Jobs</a>
-                            </li>
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="tasksDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    Tasks
-                                </a>
-                                <div class="dropdown-menu" aria-labelledby="tasksDropdown">
-                                    <a class="dropdown-item" href="{{ url_for('tasks.tasks_list') }}">Tasks</a>
-                                    <a class="dropdown-item" href="{{ url_for('task_groups.task_groups_list') }}">Task Groups</a>
-                                </div>
-                            </li>
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="manageDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    Manage
-                                </a>
-                                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="manageDropdown">
-                                    {% if current_user.admin %}
-                                        <a class="dropdown-item" href="{{ url_for('customers.customers_list') }}">Customers</a>
-                                        <a class="dropdown-item" href="{{ url_for('agents.agents_list') }}">Agents</a>
-                                        <a class="dropdown-item" href="{{ url_for('settings.settings_list') }}">Settings</a>
-                                        <a class="dropdown-item" href="{{ url_for('users.users_list') }}">User Accounts</a>
-                                        <div class="dropdown-divider"></div>
-                                    {% endif %}
-                                    <a class="dropdown-item" href="{{ url_for('analytics.get_analytics') }}">Analytics</a>
-                                    <a class="dropdown-item" href="{{ url_for('searches.searches_list') }}">Search</a>
-                                    <a class="dropdown-item" href="{{ url_for('wordlists.wordlists_list') }}">Wordlists</a>
-                                    <a class="dropdown-item" href="{{ url_for('hashfiles.hashfiles_list' )}}">Hashfiles</a>
-                                    <a class="dropdown-item" href="{{ url_for('rules.rules_list') }}">Rules</a>
-                                    <a class="dropdown-item" href="{{ url_for('notifications.notifications_list') }}">Notifications</a>
-                                    <a class="dropdown-item" href="{{ url_for('users.profile') }}">Profile</a>
-                                    <a class="dropdown-item" href="{{ url_for('users.logout') }}">Logout</a>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                    {% endif %}
-                </div>
-            </nav>
-        </header>
-        <br>
-        <br>
-        <main role="main" class="container">
-            <div class="row">
-                <div class="col-md-12">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}">
-                            {{ message }}
-                            </div>
-                        {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-                    {% block header %}{% endblock %}
-                    {% block content %}{% endblock %}
-                </div>
-              </div>
-        </main>
+<html lang="en" data-glow="subtle" data-scanlines="{% block scanlines %}on{% endblock %}" data-density="comfortable">
+{% from "icons.html.j2" import icon %}
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Hashview v{{ get_application_version() }}{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js" integrity="sha384-G/EV+4j2dNv+tEPo3++6LCgdCROaejBqfUeNjuKAiuXbjrxilcCdDz6ZAVfHWe1Y" crossorigin="anonymous"></script>
-    </body>
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+
+    {# --- Phosphor Console design system (self-hosted) --- #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='fonts/plex.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/phosphor.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/phosphor-app.css') }}">
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="scanlines"></div>
+
+    {% if current_user.is_authenticated %}
+    {# ---------- authenticated app shell: sidebar + topbar + page ---------- #}
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">#</div>
+                <div>
+                    <div class="brand-name">hash<b>view</b><span class="cursor-blink"></span></div>
+                    <div class="brand-sub">v{{ get_application_version() }} · recovery console</div>
+                </div>
+            </div>
+
+            {% include "_console_nav.html.j2" %}
+
+            <div class="sidebar-foot">
+                {% if agent_stats is defined %}
+                <div class="agent-mini" title="{{ agent_stats.up }} up (running/idle) · {{ agent_stats.down }} offline/disconnected · {{ agent_stats.speed }} from running agents">
+                    <span class="dot-led {{ 'on' if agent_stats.up else 'off' }}"></span>
+                    <span><b>{{ agent_stats.up }}</b> up · <b>{{ agent_stats.down }}</b> down · <b>{{ agent_stats.speed }}</b></span>
+                </div>
+                {% endif %}
+                <div class="user-chip">
+                    <div class="avatar" onclick="document.getElementById('account-settings-modal').showModal()" title="Account settings" style="cursor:pointer;">{{ current_user.first_name[0]|upper }}{{ current_user.last_name[0]|upper }}</div>
+                    <div style="flex:1; min-width:0;">
+                        <a href="#" class="nm" onclick="document.getElementById('account-settings-modal').showModal(); return false;" title="Account settings" style="text-decoration:none; color:var(--text); display:block; cursor:pointer;">{{ current_user.first_name }} {{ current_user.last_name }}</a>
+                        <div class="rl">{{ 'admin' if current_user.admin else 'operator' }}</div>
+                    </div>
+                    <a href="{{ url_for('users.logout') }}" title="Log out" style="color:var(--text-mute); display:flex; align-items:center;">{{ icon('power', size=16) }}</a>
+                </div>
+            </div>
+        </aside>
+
+        <div class="main">
+            <div class="topbar">
+                <div class="topbar-spacer"></div>
+                {% if job_queue is defined %}
+                <div class="top-stat">
+                    {% if job_queue.running %}<span class="dot-led run"></span>{% endif %}
+                    <b style="color:{{ 'var(--primary)' if job_queue.running else 'var(--text)' }};">{{ job_queue.running }}</b> running
+                </div>
+                <div class="top-stat"><b style="color:var(--amber);">{{ job_queue.queued }}</b> queued</div>
+                {% endif %}
+                <div class="top-stat" style="padding-left:16px; border-left:1px solid var(--border);">{{ icon('clock', size=14) }} <span class="clock" id="hv-clock">--:--:--</span></div>
+            </div>
+
+            <div class="page">
+                {% include "_flash.html.j2" %}
+                {% block header %}{% endblock %}
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    {# ---- account settings modal (opened from the sidebar name / avatar) ---- #}
+    {% set as_handle = current_user.email_address.split('@')[0] %}
+    {% set as_role = 'administrator' if current_user.admin else 'operator' %}
+    {% set as_key = current_user.api_key or '' %}
+    {% set as_mask = (as_key[:8] ~ '••••••••••' ~ as_key[-4:]) if as_key else 'No key set' %}
+    <style>
+    #account-settings-modal .as-sec { font-family:var(--mono); font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin:22px 0 12px; display:flex; align-items:center; gap:10px; }
+    #account-settings-modal .as-sec::after { content:""; flex:1; height:1px; background:var(--border-soft); }
+    </style>
+    <dialog class="hv-dialog" id="account-settings-modal" style="max-width:660px; width:96vw;">
+        <div class="hv-dialog-head">
+            {{ icon('users', size=16) }}
+            <div style="line-height:1.2;">
+                <h3 style="margin:0;">Account Settings</h3>
+                <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">{{ as_handle }} · {{ as_role }}</div>
+            </div>
+            <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+        </div>
+        <form method="POST" action="{{ url_for('users.profile') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+                {# identity strip #}
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ current_user.first_name[:1]|upper }}{{ current_user.last_name[:1]|upper }}</span>
+                    <div style="line-height:1.3; min-width:0;">
+                        <div style="font-weight:600; color:var(--text);">{{ current_user.first_name }} {{ current_user.last_name }}</div>
+                        <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:2px;">{{ as_handle }} · {{ as_role }}</div>
+                    </div>
+                </div>
+
+                {# IDENTITY #}
+                <div class="as-sec">Identity</div>
+                <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-first">First name <span class="req">*</span></label>
+                        <input class="input" type="text" name="first_name" id="as-first" value="{{ current_user.first_name }}" autocomplete="off" required>
+                    </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-last">Last name <span class="req">*</span></label>
+                        <input class="input" type="text" name="last_name" id="as-last" value="{{ current_user.last_name }}" autocomplete="off" required>
+                    </div>
+                </div>
+                <div class="field" style="margin-top:16px; margin-bottom:0;">
+                    <label class="field-label" for="as-email">Email address <span class="req">*</span></label>
+                    <div style="display:flex; gap:8px; align-items:stretch;">
+                        <input class="input" type="email" name="email" id="as-email" value="{{ current_user.email_address }}" autocomplete="off" required style="flex:1;">
+                        <a class="btn" href="{{ url_for('users.send_test_email', next=request.path) }}" role="button" style="flex:none;">{{ icon('mail', size=15) }} Test email</a>
+                    </div>
+                </div>
+
+                {# API ACCESS #}
+                <div class="as-sec">API access</div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label">Personal API key</label>
+                    <div style="display:flex; gap:8px; align-items:stretch;">
+                        <div style="position:relative; flex:1; min-width:0;">
+                            <input class="input mono" id="as-apikey" type="text" data-full="{{ as_key }}" data-mask="{{ as_mask }}" value="{{ as_mask }}" readonly style="padding-right:38px; width:100%;">
+                            <button type="button" class="icon-btn" onclick="hvApiReveal()" title="Show / hide" style="position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:none;">{{ icon('eye', size=15) }}</button>
+                        </div>
+                        <button type="button" class="btn" onclick="hvApiCopy()" style="flex:none;">{{ icon('copy', size=15) }} Copy</button>
+                        <a class="btn" href="{{ url_for('users.generate_api_key', next=request.path) }}" role="button" style="flex:none;">{{ icon('refresh', size=15) }} Generate</a>
+                    </div>
+                    <span class="field-hint" style="margin-top:8px; display:block;">Used to authenticate against the Hashview REST API. Regenerating immediately revokes the previous key.</span>
+                </div>
+
+                {# PUSHOVER #}
+                <div class="as-sec">Pushover notifications</div>
+                <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-pu-key">User key</label>
+                        <input class="input mono" type="text" name="pushover_user_key" id="as-pu-key" value="{{ current_user.pushover_user_key or '' }}" placeholder="u…" autocomplete="off">
+                    </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-pu-app">App API token</label>
+                        <input class="input mono" type="text" name="pushover_app_id" id="as-pu-app" value="{{ current_user.pushover_app_id or '' }}" placeholder="a…" autocomplete="off">
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <a class="btn" href="{{ url_for('users.send_test_pushover', next=request.path) }}" role="button">{{ icon('bell', size=15) }} Send test notification</a>
+                </div>
+                <span class="field-hint" style="margin-top:8px; display:block;">Enter both your Pushover user key and an app token to enable push alerts.</span>
+            </div>
+            <div class="hv-dialog-foot">
+                <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Update profile</button>
+            </div>
+        </form>
+    </dialog>
+    <script>
+    function hvApiReveal() {
+        var i = document.getElementById('as-apikey'); if (!i) return;
+        var full = i.getAttribute('data-full'); if (!full) return;
+        i.value = (i.value === full) ? i.getAttribute('data-mask') : full;
+    }
+    function hvApiCopy() {
+        var i = document.getElementById('as-apikey'); if (!i) return;
+        var full = i.getAttribute('data-full'); if (!full) return;
+        if (navigator.clipboard) { navigator.clipboard.writeText(full); }
+        else { var was = i.value; i.value = full; i.select(); document.execCommand('copy'); i.value = was; }
+    }
+    </script>
+
+    {% else %}
+    {# ---------- unauthenticated: centered card (login / password reset) ---------- #}
+    <div class="auth-body">
+        <div class="auth-wrap">
+            <div class="brand-lg"><span class="brand-mark">#</span><span>hash<b>view</b></span></div>
+            {% include "_flash.html.j2" %}
+            {% block content_anon %}{% endblock %}
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+    (function () {
+        var el = document.getElementById('hv-clock');
+        if (!el) return;
+        function pad(n) { return String(n).padStart(2, '0'); }
+        function tick() { var d = new Date(); el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+        tick();
+        setInterval(tick, 1000);
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
 </html>

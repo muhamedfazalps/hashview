@@ -1,250 +1,415 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import status_badge %}
+{% block title %}Tasks · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Tasks 
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Tasks are predefined hashcat commands. Any number of tasks can be assigned to a job" style="margin-left:5px;"></i>
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('tasks.tasks_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">            
-                    <table class="table table-hover table-sm">
-                    <thead>
-                    <tr>
-                        <th scope="col">
-                            <a href="{{ url_for('tasks.tasks_list', sort_by='name', sort_order='desc' if sort_by == 'name' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
-                                Task Name
-                                {% if sort_by == 'name' %}
-                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
-                                {% else %}
-                                    <i class="fa fa-sort text-muted"></i>
-                                {% endif %}
-                            </a>
-                        </th>
-                        <th scope="col">
-                            <a href="{{ url_for('tasks.tasks_list', sort_by='owner', sort_order='desc' if sort_by == 'owner' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
-                                Owner
-                                {% if sort_by == 'owner' %}
-                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
-                                {% else %}
-                                    <i class="fa fa-sort text-muted"></i>
-                                {% endif %}
-                            </a>
-                        </th>
-                        <th scope="col">
-                            <a href="{{ url_for('tasks.tasks_list', sort_by='type', sort_order='desc' if sort_by == 'type' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
-                                Type
-                                {% if sort_by == 'type' %}
-                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
-                                {% else %}
-                                    <i class="fa fa-sort text-muted"></i>
-                                {% endif %}
-                            </a>
-                        </th>
-                        <th scope="col">
-                            <a href="{{ url_for('tasks.tasks_list', sort_by='recovered', sort_order='desc' if sort_by == 'recovered' and sort_order == 'asc' else 'asc', page=1) }}" class="text-decoration-none text-dark">
-                                Passwords Recovered
-                                {% if sort_by == 'recovered' %}
-                                    <i class="fa fa-sort-{{ 'asc' if sort_order == 'asc' else 'desc' }}"></i>
-                                {% else %}
-                                    <i class="fa fa-sort text-muted"></i>
-                                {% endif %}
-                            </a>
-                        </th>
-                        <th style="width:140px" scope="col">Control</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for task in tasks %}
-                            <tr>
-                                <td style="vertical-align:middle;">{{ task.name }}</td>
-                                <td style="vertical-align:middle;">
-                                    {% for user in users %}
-                                        {% if user.id == task.owner_id %}
-                                            {{ user.first_name }} {{ user.last_name }}
-                                        {% endif %}
-                                    {% endfor %}
-                                </td>
-                                <td style="vertical-align:middle;">
-                                    {% if task.hc_attackmode == 0 %}
-                                        Straight (Wordlist + Rules)
-                                    {% elif task.hc_attackmode == 1 %}
-                                        Combination (Wordlist1, Rule1, Wordlist2, Rule2)                                      
-                                    {% elif task.hc_attackmode == 3 %}
-                                        Brute-force (Maskmode)
-                                    {% elif task.hc_attackmode == 6 %}
-                                        Hybrid (Wordlist + Mask)
-                                    {% elif task.hc_attackmode == 7 %}
-                                        Hybrid (Mask + Wordlist)
-                                    {% else %}
-                                        UNDEF?
-                                    {% endif %}
-                                </td>
-                                <td style="vertical-align:middle;">
-                                    {% set ns = namespace(recovered_count=0) %}
-                                    {% for performance in task_recovery_performance %}
-                                        {% if performance.task_id == task.id %}
-                                            {% set ns.recovered_count = performance.recovered_count %}
-                                        {% endif %}
-                                    {% endfor %}
-                                    {{ ns.recovered_count }}
-                                <td style=vertical-align:middle;>
-                                    <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{task.id}}" title=Info></button>
-                                    <a class="fa fa-edit btn btn-warning" href="/tasks/edit/{{task.id}}" role="button" title=Edit></a>
-                                    <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{task.id}}" title=Delete></button>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                    </table>
-                </div>
-                <!-- Pagination Controls -->
-        <nav aria-label="Tasks pagination">
-            <ul class="pagination justify-content-center">
-                {% if pagination.has_prev %}
-                <li class="page-item">
-                    <a class="page-link" href="{{ url_for('tasks.tasks_list', page=pagination.prev_num, sort_by=sort_by, sort_order=sort_order) }}" aria-label="Previous">
-                        <span aria-hidden="true">&laquo; Prev</span>
-                    </a>
-                </li>
-                {% else %}
-                <li class="page-item disabled">
-                    <span class="page-link">&laquo; Prev</span>
-                </li>
-                {% endif %}
+{% macro hcount(n) -%}
+{%- if n and n >= 1000000 -%}{{ (n / 1000000)|round(1) }}M{%- elif n and n >= 1000 -%}{{ (n / 1000)|round(1) }}K{%- else -%}{{ n or 0 }}{%- endif -%}
+{%- endmacro %}
+{% macro kv_label(t) -%}<div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:6px;">{{ t }}</div>{%- endmacro %}
 
-                {% for p in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
-                    {% if p %}
-                        {% if p == pagination.page %}
-                        <li class="page-item active"><span class="page-link" >{{ p }}</span></li>
-                        {% else %}
-                        <li class="page-item"><a class="page-link"  href="{{ url_for('tasks.tasks_list', page=p, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a></li>
+{# Shared body for the Add-task and Edit-task modals. `p` is the element-id prefix
+   ('atk' or 'etk') so the two modals stay independent; the name= attributes are fixed
+   so both post the same fields. The edit modal fills the values client-side on open. #}
+{% macro task_modal_body(p, wordlists, rules) %}
+<input type="hidden" name="hc_attackmode" id="{{ p }}-mode" value="0">
+<div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+    <div class="field">
+        <label class="field-label" for="{{ p }}-name">Task name <span class="req">*</span></label>
+        <input class="input" type="text" name="name" id="{{ p }}-name" placeholder="e.g. rockyou + OneRule" autocomplete="off" required>
+    </div>
+    <div class="field">
+        <label class="field-label">Attack mode</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn tab-btn active" id="{{ p }}-t-dict"     onclick="hvAtkSet('{{ p }}','dict')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('book', size=18) }}<span>Dictionary</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-dictrule" onclick="hvAtkSet('{{ p }}','dictrule')" style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('rule', size=18) }}<span>Dict + Rule</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-mask"     onclick="hvAtkSet('{{ p }}','mask')"     style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('hash', size=18) }}<span>Mask</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-hybrid"   onclick="hvAtkSet('{{ p }}','hybrid')"   style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('zap', size=18) }}<span>Hybrid</span></button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-t-combo"    onclick="hvAtkSet('{{ p }}','combo')"    style="flex-direction:column; height:auto; padding:12px 8px; min-width:96px; gap:6px;">{{ icon('copy', size=18) }}<span>Combinator</span></button>
+        </div>
+        <span class="field-hint" id="{{ p }}-hint" style="margin-top:8px;">↳ Straight wordlist run</span>
+    </div>
+
+    {# Wordlist — dictionary, dict+rule, hybrid, combinator #}
+    <div class="field" id="{{ p }}-fld-wl">
+        <label class="field-label">Wordlist <span class="req">*</span></label>
+        <select class="select" name="wl_id" id="{{ p }}-wl">
+            {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
+        </select>
+    </div>
+
+    {# Rule — dict+rule #}
+    <div class="field" id="{{ p }}-fld-rule" style="display:none;">
+        <label class="field-label">Rule</label>
+        <select class="select" name="rule_id" id="{{ p }}-rule">
+            <option value="None">— none —</option>
+            {% for r in rules %}<option value="{{ r.id }}">{{ r.name }} · {{ hcount(r.size) }} rules</option>{% endfor %}
+        </select>
+    </div>
+
+    {# Second wordlist — combinator #}
+    <div class="field" id="{{ p }}-fld-wl2" style="display:none;">
+        <label class="field-label">Second wordlist <span class="req">*</span></label>
+        <select class="select" name="wl_id_2" id="{{ p }}-wl2">
+            {% for wl in wordlists %}<option value="{{ wl.id }}">{{ wl.name }} · {{ hcount(wl.size) }} words</option>{% endfor %}
+        </select>
+    </div>
+
+    {# Hybrid order — hybrid #}
+    <div class="field" id="{{ p }}-fld-order" style="display:none;">
+        <label class="field-label">Order</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn tab-btn active" id="{{ p }}-ho-wm" onclick="hvHybridOrder('{{ p }}',6)">Wordlist → Mask</button>
+            <button type="button" class="btn tab-btn"        id="{{ p }}-ho-mw" onclick="hvHybridOrder('{{ p }}',7)">Mask → Wordlist</button>
+        </div>
+    </div>
+
+    {# Mask — mask, hybrid #}
+    <div class="field" id="{{ p }}-fld-mask" style="display:none;">
+        <label class="field-label">Hashcat mask <span class="req">*</span></label>
+        <input class="input mono" type="text" name="mask" id="{{ p }}-mask" placeholder="?l?l?l?l?d?d" autocomplete="off">
+    </div>
+
+    {# Combinator optional rules #}
+    <div class="field" id="{{ p }}-fld-jrule" style="display:none;">
+        <label class="field-label">Left rule <span style="color:var(--text-mute); font-weight:400;">· optional (-j)</span></label>
+        <input class="input mono" type="text" name="j_rule" id="{{ p }}-jrule" placeholder="e.g. $-" autocomplete="off">
+    </div>
+    <div class="field" id="{{ p }}-fld-krule" style="display:none; margin-bottom:0;">
+        <label class="field-label">Right rule <span style="color:var(--text-mute); font-weight:400;">· optional (-k)</span></label>
+        <input class="input mono" type="text" name="k_rule" id="{{ p }}-krule" placeholder="e.g. $!" autocomplete="off">
+    </div>
+</div>
+{% endmacro %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Tasks</h1>
+        <div class="page-sub">// Predefined hashcat commands. Any number of tasks can be assigned to a job · {{ pagination.total }} total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-task-modal').showModal()">{{ icon('plus', size=15) }} Add Task</button>
+</div>
+
+<div class="card">
+    <div class="card-head" style="justify-content:flex-end;">
+        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('search', size=16) }}</span>
+        <input type="text" id="task-filter" class="input" style="width:260px; flex:none;" placeholder="filter tasks…" autocomplete="off" oninput="hvFilterTasks(this.value)">
+    </div>
+    {% if tasks %}
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>
+                    <a href="{{ url_for('tasks.tasks_list', sort_by='name', sort_order='desc' if sort_by == 'name' and sort_order == 'asc' else 'asc', page=1) }}" style="color:inherit; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                        Task Name
+                        {% if sort_by == 'name' %}{{ icon('arrowUp' if sort_order == 'asc' else 'arrowDown', size=12) }}{% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('tasks.tasks_list', sort_by='owner', sort_order='desc' if sort_by == 'owner' and sort_order == 'asc' else 'asc', page=1) }}" style="color:inherit; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                        Owner
+                        {% if sort_by == 'owner' %}{{ icon('arrowUp' if sort_order == 'asc' else 'arrowDown', size=12) }}{% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('tasks.tasks_list', sort_by='type', sort_order='desc' if sort_by == 'type' and sort_order == 'asc' else 'asc', page=1) }}" style="color:inherit; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                        Type
+                        {% if sort_by == 'type' %}{{ icon('arrowUp' if sort_order == 'asc' else 'arrowDown', size=12) }}{% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="{{ url_for('tasks.tasks_list', sort_by='recovered', sort_order='desc' if sort_by == 'recovered' and sort_order == 'asc' else 'asc', page=1) }}" style="color:inherit; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                        Passwords Recovered
+                        {% if sort_by == 'recovered' %}{{ icon('arrowUp' if sort_order == 'asc' else 'arrowDown', size=12) }}{% endif %}
+                    </a>
+                </th>
+                <th class="center" style="width:140px;">Control</th>
+            </tr>
+        </thead>
+        <tbody id="task-tbody">
+            {% for task in tasks %}
+            <tr data-name="{{ task.name|lower }}">
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('task', size=16) }}</span>
+                        {{ task.name }}
+                    </span>
+                </td>
+                <td style="color:var(--text-dim);">
+                    {% for user in users %}
+                        {% if user.id == task.owner_id %}
+                            {{ user.first_name }} {{ user.last_name }}
                         {% endif %}
+                    {% endfor %}
+                </td>
+                <td>
+                    {% if task.hc_attackmode == 0 %}
+                        <span class="badge green">Straight (Wordlist + Rules)</span>
+                    {% elif task.hc_attackmode == 1 %}
+                        <span class="badge dim">Combination (Wordlist1, Rule1, Wordlist2, Rule2)</span>
+                    {% elif task.hc_attackmode == 3 %}
+                        <span class="badge cyan">Brute-force (Maskmode)</span>
+                    {% elif task.hc_attackmode == 6 %}
+                        <span class="badge amber">Hybrid (Wordlist + Mask)</span>
+                    {% elif task.hc_attackmode == 7 %}
+                        <span class="badge amber">Hybrid (Mask + Wordlist)</span>
                     {% else %}
-                    <li class="page-item disabled"><span class="page-link" >…</span></li>
+                        <span class="badge red">UNDEF?</span>
                     {% endif %}
-                {% endfor %}
+                </td>
+                <td class="mono num">
+                    {% set ns = namespace(recovered_count=0) %}
+                    {% for performance in task_recovery_performance %}
+                        {% if performance.task_id == task.id %}
+                            {% set ns.recovered_count = performance.recovered_count %}
+                        {% endif %}
+                    {% endfor %}
+                    <span style="color:{{ 'var(--primary)' if ns.recovered_count else 'var(--text-mute)' }};{% if ns.recovered_count %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(ns.recovered_count|int) }}</span>
+                </td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ task.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        {% if tasks_in_jobs is defined and task.id in tasks_in_jobs %}
+                        <span class="icon-btn" style="opacity:.4; cursor:not-allowed;" title="Locked — task is assigned to a job">{{ icon('edit', size=15) }}</span>
+                        {% else %}
+                        <button type="button" class="icon-btn" title="Edit" onclick='hvEditTask({id:{{ task.id }}, name:{{ task.name|tojson }}, mode:{{ task.hc_attackmode|tojson }}, wl_id:{{ task.wl_id|tojson }}, wl_id_2:{{ task.wl_id_2|tojson }}, rule_id:{{ task.rule_id|tojson }}, mask:{{ task.hc_mask|tojson }}, j_rule:{{ task.j_rule|tojson }}, k_rule:{{ task.k_rule|tojson }}})'>{{ icon('edit', size=15) }}</button>
+                        {% endif %}
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ task.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            <tr id="task-no-match" style="display:none;"><td colspan="5" style="text-align:center; padding:28px 16px; color:var(--text-mute);" class="mono">No tasks match that filter.</td></tr>
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No tasks found.</div>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('add-task-modal').showModal()">{{ icon('plus', size=15) }} Add a Task</button>
+    </div>
+    {% endif %}
+</div>
 
-                {% if pagination.has_next %}
-                <li class="page-item">
-                    <a class="page-link"  href="{{ url_for('tasks.tasks_list', page=pagination.next_num, sort_by=sort_by, sort_order=sort_order) }}" aria-label="Next">
-                        <span aria-hidden="true">Next &raquo;</span>
-                    </a>
-                </li>
-                {% else %}
-                <li class="page-item disabled">
-                    <span class="page-link" >Next &raquo;</span>
-                </li>
-                {% endif %}
-            </ul>
-        </nav>
-            </div>
-        </div>
-    </article>
-    {% for task in tasks %}
-    <!-- Info Modal -->
-        <div class="modal fade" id="infoModal{{task.id}}" tabindex="-1" aria-labelledby="infoModal{{task.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{task.id}}Label">Info: {{task.name}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                    <table class="table">
-                        <thead>
-                            <tbody>
-                                <tr>
-                                <th scope="row">Associated Jobs</th>
-                                <td>
-                                    {% set associated_jobs = namespace(value=0) %}
-                                    {% for job_task in job_tasks %}
-                                        {% if job_task.task_id == task.id %}
-                                            {% for job in jobs %}
-                                                {% if job.id == job_task.job_id%}
-                                                    {% set associated_jobs.value = 1 %}
-                                                    {{ job.name }} <br>
-                                                {% endif %}
-                                            {% endfor %}
-                                        {% endif %}
-                                    {% endfor %}
-                                    {% if associated_jobs.value == 0 %}
-                                        <i>none</i><br>
-                                    {% endif %}
-                                </td>
-                                </tr>
-                                <tr>
-                                <th scope="row">Associated Wordlists</th>
-                                <td>
-                                    {% set associated_wordlists = namespace(value=0) %}
-                                    {% for wordlist in wordlists %}
-                                        {% if wordlist.id == task.wl_id %}
-                                            {% set associated_wordlists.value = 1 %}
-                                            {{ wordlist.name }} <br>
-                                        {% endif %}
-                                    {% endfor %}    
-                                    {% if associated_wordlists.value == 0 %}
-                                        <i>none</i><br>
-                                    {% endif %}
-                                </td>
-                                </tr>
-                                <tr>                              
-                                <th scope="row">Associated Task Groups</th>
-                                <td>
-                                    {% set associated_task_groups = namespace(value=0) %}
-                                    {% for task_group in task_groups %}
-                                        {% if task.id|string() in task_group.tasks %}
-                                            {% set associated_task_groups.value = 1 %}
-                                            {{ task_group.name }} <br>
-                                        {% endif %}
-                                    {% endfor %}
-                                    {% if associated_task_groups.value == 0 %}
-                                        <i>none</i><br>
-                                    {% endif %}                                    
-                                </td>
-                                </tr>
-                            </tbody>
-                    </table>
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-            </div>
-        </div>
+{% if pagination.pages and pagination.pages > 1 %}
+<div class="pager">
+    {% if pagination.has_prev %}
+        <a class="pager-btn" href="{{ url_for('tasks.tasks_list', page=pagination.prev_num, sort_by=sort_by, sort_order=sort_order) }}">‹ Prev</a>
+    {% else %}
+        <span class="pager-btn disabled">‹ Prev</span>
+    {% endif %}
+    {% for p in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
+        {% if p %}
+            {% if p == pagination.page %}
+                <span class="pager-btn active">{{ p }}</span>
+            {% else %}
+                <a class="pager-btn" href="{{ url_for('tasks.tasks_list', page=p, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a>
+            {% endif %}
+        {% else %}
+            <span class="pager-btn disabled">…</span>
+        {% endif %}
     {% endfor %}
-    {% for task in tasks %}
-        <!-- DeleteModal -->
-        <div class="modal fade" id="deleteModal{{task.id}}" tabindex="-1" aria-labelledby="deleteModal{{task.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                <h5 class="modal-title" id="deleteModal{{task.id}}Label">Delete: {{task.name}} ?</h5>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                This will permanantly delete the task. Are you sure you want to continue?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
-                <form action="{{ url_for('tasks.tasks_delete', task_id=task.id) }}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-                </div>
-            </div>
+    {% if pagination.has_next %}
+        <a class="pager-btn" href="{{ url_for('tasks.tasks_list', page=pagination.next_num, sort_by=sort_by, sort_order=sort_order) }}">Next ›</a>
+    {% else %}
+        <span class="pager-btn disabled">Next ›</span>
+    {% endif %}
+</div>
+{% endif %}
+
+<script>
+function hvFilterTasks(q){
+    q = (q || '').trim().toLowerCase();
+    var shown = 0;
+    document.querySelectorAll('#task-tbody tr[data-name]').forEach(function(tr){
+        var hit = !q || (tr.getAttribute('data-name') || '').indexOf(q) !== -1;
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+    });
+    var none = document.getElementById('task-no-match');
+    if (none) none.style.display = shown === 0 ? '' : 'none';
+}
+</script>
+
+{# ---- add-task modal (opened from the "Add Task" button) ---- #}
+<dialog class="hv-dialog" id="add-task-modal" style="max-width:680px; width:94vw;">
+    <div class="hv-dialog-head">
+        {{ icon('task', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">New Task</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">define a reusable attack</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('tasks.tasks_add') }}" id="atk-form">
+        {{ tasksForm.hidden_tag() }}
+        {{ task_modal_body('atk', wordlists, rules) }}
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('plus', size=15) }} Create task</button>
+        </div>
+    </form>
+</dialog>
+
+{# ---- edit-task modal (opened from a task's edit button; pre-filled client-side) ---- #}
+<dialog class="hv-dialog" id="edit-task-modal" style="max-width:680px; width:94vw;">
+    <div class="hv-dialog-head">
+        {{ icon('task', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Edit Task</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">change this reusable attack</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('tasks.tasks_list') }}" id="etk-form">
+        {{ tasksForm.hidden_tag() }}
+        {{ task_modal_body('etk', wordlists, rules) }}
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Save changes</button>
+        </div>
+    </form>
+</dialog>
+<script>
+(function () {
+    var registry = {};
+    function make(p) {
+        var HYBRID = 6;
+        function el(s) { return document.getElementById(p + '-' + s); }
+        function show(s, on) { var e = el(s); if (e) e.style.display = on ? 'block' : 'none'; }
+        function setMode(mode, fromUser) {
+            ['dict', 'dictrule', 'mask', 'hybrid', 'combo'].forEach(function (k) { var b = el('t-' + k); if (b) b.classList.toggle('active', k === mode); });
+            var atk = el('mode'), hint = el('hint'), ruleSel = el('rule');
+            show('fld-wl', false); show('fld-rule', false); show('fld-wl2', false);
+            show('fld-order', false); show('fld-mask', false); show('fld-jrule', false); show('fld-krule', false);
+            if (mode === 'dict')          { atk.value = '0'; show('fld-wl', true); hint.textContent = '↳ Straight wordlist run'; }
+            else if (mode === 'dictrule') { atk.value = '0'; show('fld-wl', true); show('fld-rule', true); hint.textContent = '↳ Wordlist mutated by a rules file'; }
+            else if (mode === 'mask')     { atk.value = '3'; show('fld-mask', true); hint.textContent = '↳ Brute-force a hashcat mask'; }
+            else if (mode === 'hybrid')   { atk.value = String(HYBRID); show('fld-order', true); show('fld-wl', true); show('fld-mask', true); hint.textContent = '↳ Wordlist combined with a mask'; }
+            else if (mode === 'combo')    { atk.value = '1'; show('fld-wl', true); show('fld-wl2', true); show('fld-jrule', true); show('fld-krule', true); hint.textContent = '↳ Two wordlists combined · optional -j/-k rules'; }
+            // only reset the rule select on a user tab-switch; programmatic prefill sets it explicitly
+            if (fromUser && ruleSel) { ruleSel.value = 'None'; if (mode === 'dictrule' && ruleSel.options.length > 1) ruleSel.selectedIndex = 1; }
+        }
+        function setHybridOrder(m) { HYBRID = m; el('mode').value = String(m); var a = el('ho-wm'), b = el('ho-mw'); if (a) a.classList.toggle('active', m === 6); if (b) b.classList.toggle('active', m === 7); }
+        return { setMode: setMode, setHybridOrder: setHybridOrder };
+    }
+    ['atk', 'etk'].forEach(function (p) { if (document.getElementById(p + '-mode')) registry[p] = make(p); });
+    window.hvAtkSet = function (p, mode) { if (registry[p]) registry[p].setMode(mode, true); };
+    window.hvHybridOrder = function (p, m) { if (registry[p]) registry[p].setHybridOrder(m); };
+    function setSel(id, val) { var s = document.getElementById(id); if (s) s.value = String(val); }
+    window.hvEditTask = function (d) {
+        var R = registry['etk']; if (!R) return;
+        var f = document.getElementById('etk-form'); if (f) f.action = '/tasks/edit/' + d.id;
+        var nm = document.getElementById('etk-name'); if (nm) nm.value = d.name || '';
+        var tab = 'dict';
+        if (d.mode === 1) tab = 'combo';
+        else if (d.mode === 3) tab = 'mask';
+        else if (d.mode === 6 || d.mode === 7) tab = 'hybrid';
+        else if (d.mode === 0 && d.rule_id != null) tab = 'dictrule';
+        R.setMode(tab, false);
+        if (tab === 'hybrid') R.setHybridOrder(d.mode);
+        if (d.wl_id != null) setSel('etk-wl', d.wl_id);
+        if (d.wl_id_2 != null) setSel('etk-wl2', d.wl_id_2);
+        setSel('etk-rule', (d.rule_id != null) ? d.rule_id : 'None');
+        var mk = document.getElementById('etk-mask'); if (mk) mk.value = d.mask || '';
+        var jr = document.getElementById('etk-jrule'); if (jr) jr.value = d.j_rule || '';
+        var kr = document.getElementById('etk-krule'); if (kr) kr.value = d.k_rule || '';
+        document.getElementById('edit-task-modal').showModal();
+    };
+    if (registry['atk']) registry['atk'].setMode('dict', true);
+    if (registry['etk']) registry['etk'].setMode('dict', false);
+})();
+</script>
+
+{# ---- per-task modals (native <dialog>, no framework) ---- #}
+{% for task in tasks %}
+<dialog class="hv-dialog" id="info-{{ task.id }}" style="max-width:680px; width:94vw;">
+    {% set has_rule = task.rule_id is not none and task.rule_id != 'None' and task.rule_id != 0 %}
+    {% set meta = namespace(badge='DICTIONARY', ico='book', desc='Straight wordlist run', sub='Dictionary attack') %}
+    {% if task.hc_attackmode == 0 and has_rule %}
+        {% set meta.badge = 'DICT + RULE' %}{% set meta.ico = 'rule' %}{% set meta.desc = 'Wordlist mutated by a ruleset' %}{% set meta.sub = 'Dict + Rule attack' %}
+    {% elif task.hc_attackmode == 1 %}
+        {% set meta.badge = 'COMBINATOR' %}{% set meta.ico = 'copy' %}{% set meta.desc = 'Two wordlists combined' %}{% set meta.sub = 'Combinator attack' %}
+    {% elif task.hc_attackmode == 3 %}
+        {% set meta.badge = 'MASK' %}{% set meta.ico = 'hash' %}{% set meta.desc = 'Brute-force by character pattern' %}{% set meta.sub = 'Mask attack' %}
+    {% elif task.hc_attackmode == 6 %}
+        {% set meta.badge = 'HYBRID' %}{% set meta.ico = 'zap' %}{% set meta.desc = 'Wordlist then mask' %}{% set meta.sub = 'Hybrid attack' %}
+    {% elif task.hc_attackmode == 7 %}
+        {% set meta.badge = 'HYBRID' %}{% set meta.ico = 'zap' %}{% set meta.desc = 'Mask then wordlist' %}{% set meta.sub = 'Hybrid attack' %}
+    {% endif %}
+    {% set ns = namespace(wl='', wl2='', rule='', wlsize=0, recovered=0) %}
+    {% for w in wordlists %}{% if w.id == task.wl_id %}{% set ns.wl = w.name %}{% set ns.wlsize = w.size %}{% endif %}{% if w.id == task.wl_id_2 %}{% set ns.wl2 = w.name %}{% endif %}{% endfor %}
+    {% for r in rules %}{% if r.id == task.rule_id %}{% set ns.rule = r.name %}{% endif %}{% endfor %}
+    {% for p in task_recovery_performance %}{% if p.task_id == task.id %}{% set ns.recovered = p.recovered_count %}{% endif %}{% endfor %}
+
+    <div class="hv-dialog-head">
+        {{ icon('info', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">{{ task.name }}</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">{{ meta.sub }}</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+        {# summary strip #}
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">
+            <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ icon(meta.ico, size=20) }}</span>
+            <div style="line-height:1.5;">
+                <span class="badge cyan">{{ meta.badge }}</span>
+                <div style="color:var(--text-dim); margin-top:5px;">{{ meta.desc }}</div>
             </div>
         </div>
-    {% endfor %}
+
+        {# detail grid (no keyspace, no estimated runtime) #}
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px 24px;">
+            <div>{{ kv_label('Wordlist') }}<div class="mono" style="color:{{ 'var(--text)' if ns.wl else 'var(--text-mute)' }};">{{ ns.wl if ns.wl else 'none' }}</div></div>
+            {% if task.hc_attackmode == 3 or task.hc_attackmode == 6 or task.hc_attackmode == 7 %}
+            <div>{{ kv_label('Mask pattern') }}<div class="mono" style="color:var(--cyan);">{{ task.hc_mask if task.hc_mask else '—' }}</div></div>
+            {% elif task.hc_attackmode == 1 %}
+            <div>{{ kv_label('Second wordlist') }}<div class="mono" style="color:{{ 'var(--text)' if ns.wl2 else 'var(--text-mute)' }};">{{ ns.wl2 if ns.wl2 else 'none' }}</div></div>
+            {% else %}
+            <div>{{ kv_label('Rule') }}<div class="mono" style="color:{{ 'var(--cyan)' if has_rule else 'var(--text-mute)' }};">{{ ns.rule if has_rule else 'none' }}</div></div>
+            {% endif %}
+            {% if task.wl_id %}
+            <div>{{ kv_label('List size') }}<div style="color:var(--text);">{% if wl_filesize is defined and wl_filesize.get(task.wl_id) %}{{ wl_filesize[task.wl_id] }} · {% endif %}{{ "{:,}".format(ns.wlsize|int) }} words</div></div>
+            {% endif %}
+            <div>{{ kv_label('Historical hits') }}<div><span class="mono" style="color:{{ 'var(--primary)' if ns.recovered else 'var(--text-mute)' }};{% if ns.recovered %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(ns.recovered|int) }}</span> <span style="color:var(--text-dim);">passwords recovered</span></div></div>
+        </div>
+
+        {# used-in jobs #}
+        {% set jl = namespace(count=0) %}
+        {% for jt in job_tasks %}{% if jt.task_id == task.id %}{% for j in jobs %}{% if j.id == jt.job_id %}{% set jl.count = jl.count + 1 %}{% endif %}{% endfor %}{% endif %}{% endfor %}
+        <div style="margin-top:24px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('jobs', size=14) }} Used in {{ jl.count }} job{{ '' if jl.count == 1 else 's' }}</div>
+            {% if jl.count %}
+            {% for jt in job_tasks %}{% if jt.task_id == task.id %}{% for j in jobs %}{% if j.id == jt.job_id %}
+            <div class="card" style="margin-bottom:8px; padding:12px 14px; display:flex; align-items:center; gap:10px;">
+                <span class="dot-led {% if j.status == 'Running' %}run{% elif j.status == 'Completed' %}on{% elif j.status == 'Canceled' %}off{% else %}idle{% endif %}"></span>
+                <span class="mono" style="color:var(--text-mute);">#{{ j.id }}</span>
+                <span style="font-weight:600; color:var(--text);">{{ j.name }}</span>
+                <span style="margin-left:auto;">{{ status_badge(j.status) }}</span>
+            </div>
+            {% endif %}{% endfor %}{% endif %}{% endfor %}
+            {% else %}
+            <div class="mono" style="color:var(--text-mute);">Not used in any jobs yet.</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}" role="button">{{ icon('play', size=15) }} Run in new job</a>
+    </div>
+</dialog>
+
+<dialog class="hv-dialog" id="del-{{ task.id }}">
+    <div class="hv-dialog-head"><h3>Delete {{ task.name }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the task. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('tasks.tasks_delete', task_id=task.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
 {% endblock content %}

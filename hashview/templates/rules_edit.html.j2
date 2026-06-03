@@ -1,31 +1,37 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon %}
+{% block title %}Edit Rule · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Rule: Edit {{ rule.name }}
-                </h4>
-                <div class="card-body ">
-                    <form method="POST" action="">
-                        <div class="form-group">
-                            <textarea class="form-control" name="content" rows="20" {% if not can_edit %}disabled{% endif %}>{{ content }}</textarea>
-                        </div>
-                        {% if can_edit %}
-                            <div class="form-group">
-                                <button type="submit" class="btn btn-outline-info pull-right">Update</button>
-                            </div>
-                        {% endif %}
-                    </form>
-                </div>
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Edit Rule</h1>
+        <div class="page-sub">// {{ rule.name }}{% if not can_edit %} · read-only{% endif %}</div>
+    </div>
+    <a class="btn" href="{{ url_for('rules.rules_list') }}" role="button">{{ icon('arrowLeft', size=15) }} Back</a>
+</div>
+
+<form method="POST" action="">
+    <div class="card">
+        <div class="card-head">
+            {{ icon('rule', size=15) }}<h3>{{ rule.name }}</h3>
+        </div>
+        <div class="card-body">
+            <div class="field" style="margin-bottom:0;">
+                <label class="field-label" for="content">Rule Contents</label>
+                <textarea class="textarea mono" id="content" name="content" rows="20" spellcheck="false"{% if not can_edit %} disabled{% endif %}>{{ content }}</textarea>
+                <span class="field-hint">Hashcat-compatible rules, one per line.</span>
             </div>
         </div>
-    </article>
+    </div>
+
+    {% if can_edit %}
+    <div class="wizard-nav">
+        <a class="btn" href="{{ url_for('rules.rules_list') }}" role="button">{{ icon('arrowLeft', size=15) }} Cancel</a>
+        <span class="spacer"></span>
+        <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Update</button>
+    </div>
+    {% endif %}
+</form>
+
 {% endblock content %}

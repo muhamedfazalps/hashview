@@ -1,75 +1,89 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<style>
-    .card-body {
-        overflow: visible !important;
-    }
-    .card {
-        overflow: visible !important;
-    }
-    .media-body {
-        overflow: visible !important;
-    }
-    .content-section {
-        overflow: visible !important;
-    }
-</style>
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Assign Tasks · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Assign Task to Group: {{task_group.name}}
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Each task will be ran once in order selected You can create new tasks by selecting 'tasks' in the above menu." style="margin-left:5px;"></i>
-                </h4>
-                <div class="card-body ">  
-                    <table class="table">
-                    <thead>
-                    <tr>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Type</th>
-                        <th style="text-align:center;" scope="col">Control</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for task_group_task in task_group_tasks %}
-                            {% for task in tasks %}
-                                {% if task_group_task == task.id %}
-                                    <tr>
-                                        <td style="vertical-align:middle;">{{ task.name }}</td>
-                                        <td style="vertical-align:middle;">{{ task.hc_attackmode}}</td>
-                                        <td style="text-align:right; vertical-align:middle;">
-                                            <a class="fa fa-arrow-up btn btn-success btn-sm" href="/task_groups/assigned_tasks/{{task_group.id}}/promote_task/{{task.id}}" role="button" title='Move Up'></a>
-                                            <a class="fa fa-arrow-down btn btn-success btn-sm" href="/task_groups/assigned_tasks/{{task_group.id}}/demote_task/{{task.id}}" role="button" title='Move Down'></a>
-                                            <a class="fa fa-trash btn btn-danger btn-sm" href="/task_groups/assigned_tasks/{{task_group.id}}/remove_task/{{task.id}}" role="button" title=delete></a>
-                                        </td>
-                                    </tr>
-                                {% endif %}
-                            {% endfor %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Assign Tasks</h1>
+        <div class="page-sub">// {{ task_group.name }} · each task runs once in the order selected</div>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('task_groups.task_groups_list') }}" role="button">{{ icon('check', size=15) }} Done</a>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; align-items: start;">
+
+    {# ============ Task Library ============ #}
+    <div class="card" style="overflow: visible;">
+        <div class="card-head">
+            {{ icon('book', size=16) }}
+            <h3>Task Library</h3>
+        </div>
+        <div class="card-body" style="overflow: visible;">
+            <div class="page-sub" style="margin-bottom: 14px;">
+                {{ icon('info', size=13) }} Add tasks to this group. Each task runs once in the order selected. Create new tasks from the Tasks menu.
+            </div>
+
+            <details style="position:relative;">
+                <summary class="btn btn-primary" style="list-style:none; cursor:pointer;">
+                    {{ icon('plus', size=15) }} Add Task
+                </summary>
+                <div class="card" style="margin-top:8px; max-height:300px; overflow-y:auto;">
+                    <div class="card-body" style="padding:6px;">
+                        {% for task in tasks %}
+                            <a class="btn btn-ghost btn-block" style="justify-content:flex-start;" href="/task_groups/assigned_tasks/{{task_group.id}}/add_task/{{task.id}}">{{ icon('task', size=14) }} {{task.name}}</a>
+                        {% else %}
+                            <div class="page-sub" style="padding:8px 10px;">No tasks available.</div>
                         {% endfor %}
-                    </tbody>
-                    </table>
-<div class="d-flex justify-content-between align-items-center" style="margin-bottom: 20px;">
-    <div class="dropdown" style="position: static;">
-<button class="btn btn-success dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-    Add Task
-</button>
-        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" style="position: absolute;">
-            {% for task in tasks %}
-                <a class="dropdown-item" href="/task_groups/assigned_tasks/{{task_group.id}}/add_task/{{task.id}}">{{task.name}}</a>
-            {% endfor %}
+                    </div>
+                </div>
+            </details>
         </div>
     </div>
-    <a class="btn btn-primary" href="{{url_for('task_groups.task_groups_list')}}" role="button">Done</a>
-</div>
-                </div>
-            </div>
+
+    {# ============ Assigned Tasks ============ #}
+    <div class="card">
+        <div class="card-head">
+            {{ icon('list', size=16) }}
+            <h3>Assigned Tasks</h3>
         </div>
-    </article>
+        <div class="card-body" style="padding:0;">
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th>Task Name</th>
+                        <th>Type</th>
+                        <th class="center">Control</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task_group_task in task_group_tasks %}
+                        {% for task in tasks %}
+                            {% if task_group_task == task.id %}
+                                <tr>
+                                    <td style="font-weight:500;">{{ task.name }}</td>
+                                    <td style="color:var(--text-dim);">{{ task.hc_attackmode }}</td>
+                                    <td class="center">
+                                        <div style="display:flex; gap:4px; justify-content:center;">
+                                            <a class="icon-btn" href="/task_groups/assigned_tasks/{{task_group.id}}/promote_task/{{task.id}}" role="button" title="Move Up">{{ icon('arrowUp', size=15) }}</a>
+                                            <a class="icon-btn" href="/task_groups/assigned_tasks/{{task_group.id}}/demote_task/{{task.id}}" role="button" title="Move Down">{{ icon('arrowDown', size=15) }}</a>
+                                            <a class="icon-btn act-del" href="/task_groups/assigned_tasks/{{task_group.id}}/remove_task/{{task.id}}" role="button" title="Delete">{{ icon('trash', size=15) }}</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="3" style="text-align:center; padding:32px 16px; color:var(--text-dim);">
+                                No tasks assigned yet. Add some from the library.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 {% endblock content %}

@@ -1,22 +1,16 @@
 {% extends "setup_base.html.j2" %}
+{% from "macros.html.j2" import phos_field with context %}
 
-{% from "macros.html.j2" import make_form_group with context %}
+{% block setup_title %}Edit Admin User{% endblock %}
 
 {% block content %}
-<h2 style="margin-top: 1rem; margin-bottom: 1rem;">Edit Admin User</h2>
-<div class="content-section">
-    <form method="POST" action="/setup/admin-pass">
-        {{ form.hidden_tag() }}
-        <fieldset class="form-group">
-            {{ make_form_group('first_name')       }}
-            {{ make_form_group('last_name')        }}
-            {{ make_form_group('email_address')    }}
-            {{ make_form_group('password')         }}
-            {{ make_form_group('confirm_password') }}
-        </fieldset>
-        <div class="form-group">
-            {{ form.submit(class="btn btn-primary pull-right")}}
-        </div>
-    </form>
-</div>
+<form method="POST" action="/setup/admin-pass">
+    {{ form.hidden_tag() }}
+    {{ phos_field(form.first_name) }}
+    {{ phos_field(form.last_name) }}
+    {{ phos_field(form.email_address) }}
+    {{ phos_field(form.password) }}
+    {{ phos_field(form.confirm_password) }}
+    {{ form.submit(class="btn btn-primary btn-block") }}
+</form>
 {% endblock %}

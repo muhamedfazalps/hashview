@@ -1,0 +1,335 @@
+/* ============================================================
+   HASHVIEW — Phosphor Console: app-specific additions
+   Thin layer on top of phosphor.css (the vendored design system,
+   which is kept pristine). Everything Flask/server-rendering needs
+   that the React prototype handled in JS or never had to.
+   ============================================================ */
+
+/* ---- kill default link underlines on nav + anchor-styled controls ---- */
+.nav-item,
+.brand,
+a.btn,
+a.icon-btn,
+a.pager-btn,
+.user-chip a,
+.agent-mini { text-decoration: none; }
+.nav-item:hover,
+a.btn:hover { text-decoration: none; }
+
+/* Bootstrap (still loaded during the transition) ALSO defines .nav and .nav-item.
+   Its `.nav{display:flex;flex-wrap:wrap}` hijacks the sidebar <nav class="nav">,
+   collapsing each item to its content width so the count badge can't right-align.
+   Re-assert the phosphor vertical layout, scoped to .sidebar for specificity. */
+.sidebar .nav { display: block; padding-right: 0; }
+.sidebar .nav-item { display: flex; width: auto; }
+.sidebar .nav .nav-item .nav-badge { margin-left: auto; margin-right: 2px; }
+/* active highlight + badge run flush to the sidebar's right edge */
+.sidebar .nav .nav-item.active {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ---- flash messages (Flask get_flashed_messages) ----
+   Maps Flask categories (success/danger/warning/info) to the
+   phosphor palette. Rendered inline at the top of the page. */
+.flash {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid var(--border-bright);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 11px 15px;
+  margin-bottom: 14px;
+}
+.flash + .flash { margin-top: -4px; }
+.flash-success { color: var(--green); border-color: var(--green-dim); background: rgba(94, 240, 138, 0.07); }
+.flash-danger  { color: var(--red);   border-color: var(--red-dim);   background: rgba(255, 95, 86, 0.07); }
+.flash-error   { color: var(--red);   border-color: var(--red-dim);   background: rgba(255, 95, 86, 0.07); }
+.flash-warning { color: var(--amber); border-color: var(--amber-dim); background: rgba(255, 181, 61, 0.07); }
+.flash-info    { color: var(--cyan);  border-color: #1f3d40;          background: rgba(79, 214, 224, 0.07); }
+
+/* ---- WTForms validation errors ----
+   Preserves the existing is-invalid / invalid-feedback contract,
+   restyled for the phosphor .input/.select/.textarea controls. */
+.input.is-invalid,
+.select.is-invalid,
+.textarea.is-invalid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(255, 95, 86, 0.12);
+}
+.invalid-feedback {
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  margin-top: 6px;
+}
+.invalid-feedback span { display: block; }
+
+/* ---- auth pages (login / password reset) — sidebar-less, centered ---- */
+.auth-body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(1000px 520px at 50% -12%, rgba(var(--primary-rgb), 0.05), transparent 60%),
+    var(--bg);
+}
+.auth-wrap { width: 100%; max-width: 420px; }
+.brand-lg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 24px;
+  letter-spacing: 0.5px;
+  color: var(--text);
+}
+.brand-lg b { color: var(--primary); text-shadow: var(--glow-text); font-weight: 600; }
+.brand-lg .brand-mark {
+  width: 38px; height: 38px;
+  flex: none;
+  display: grid; place-items: center;
+  border: 1px solid var(--primary-deep);
+  border-radius: 8px;
+  background: rgba(var(--primary-rgb), 0.07);
+  color: var(--primary);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 21px;
+  box-shadow: var(--glow-sm), inset 0 0 12px rgba(var(--primary-rgb), 0.08);
+  text-shadow: var(--glow-text);
+}
+.auth-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.auth-foot {
+  margin-top: 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-mute);
+  text-align: center;
+}
+.auth-link { color: var(--primary); text-decoration: none; }
+.auth-link:hover { text-decoration: underline; }
+
+/* inline checkbox row (e.g. "remember me") */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+  cursor: pointer;
+  user-select: none;
+}
+.check-row input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.btn-block { width: 100%; justify-content: center; }
+
+/* ---- collapsible job cards via native <details> (no JS) ---- */
+details.job-card { margin-bottom: 14px; }
+details.job-card > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details.job-card > summary::-webkit-details-marker { display: none; }
+details.job-card > summary::marker { content: ""; }
+details.job-card .chev { transition: transform 0.15s ease; flex: none; }
+details.job-card[open] > summary .chev { transform: rotate(90deg); }
+
+/* ---- dashboard chart wrapper (Chart.js maintainAspectRatio:false) ---- */
+.chart-wrap { position: relative; height: 240px; width: 100%; }
+
+/* ---- spinner keyframe (ui.jsx injected this via JS; we ship it in CSS) ---- */
+@keyframes hvspin { to { transform: rotate(360deg); } }
+.ico.spin { animation: hvspin 1.4s linear infinite; }
+
+/* ---- KPI delta arrows colour helpers (used in dashboard kpi-foot) ---- */
+.kpi-foot .down { color: var(--red); }
+
+/* ---- toggle/filter button active state (e.g. "Only mine") ---- */
+.btn.active { color: var(--primary); border-color: var(--primary-deep); background: rgba(var(--primary-rgb), 0.1); }
+
+/* ---- native <dialog> modal, phosphor-styled (no framework) ---- */
+.hv-dialog {
+  width: 100%;
+  max-width: 480px;
+  padding: 0;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7), var(--glow-sm);
+}
+.hv-dialog::backdrop { background: rgba(3, 5, 4, 0.66); backdrop-filter: blur(2px); }
+.hv-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.hv-dialog-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--text);
+}
+.hv-dialog-head .icon-btn { margin-left: auto; }
+.hv-dialog-body { padding: 16px; font-size: 13px; color: var(--text-dim); }
+.hv-dialog-body .kv { display: grid; grid-template-columns: 120px 1fr; gap: 7px 14px; }
+.hv-dialog-body .kv dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-mute); }
+.hv-dialog-body .kv dd { margin: 0; color: var(--text); font-family: var(--mono); font-size: 12.5px; word-break: break-word; }
+.hv-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ---- pagination ---- */
+.pager { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+.pager-btn {
+  min-width: 34px;
+  text-align: center;
+  padding: 6px 11px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-bright);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.pager-btn:hover { background: var(--surface-3); color: var(--text); }
+.pager-btn.active {
+  color: var(--primary);
+  border-color: var(--primary-deep);
+  background: rgba(var(--primary-rgb), 0.12);
+  text-shadow: var(--glow-text);
+}
+.pager-btn.disabled { opacity: 0.4; pointer-events: none; }
+
+/* ---- job-creation wizard stepper (ported from wizard.jsx) ---- */
+.wizard-steps { display: flex; align-items: flex-start; margin-bottom: 28px; counter-reset: wstep; }
+.wstep { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; width: 110px; counter-increment: wstep; }
+/* CSS-counter numbering so a hidden step is skipped and the rest auto-renumber */
+.wstep-num::before { content: counter(wstep, decimal-leading-zero) " "; }
+/* conditional "Alert Hashes" step: hidden unless the stepper has .show-alert */
+.wizard-steps .wstep-cond { display: none; }
+.wizard-steps.show-alert .wstep.wstep-cond { display: flex; }
+.wizard-steps.show-alert .wstep-line.wstep-cond { display: block; }
+.wstep-mark {
+  width: 42px; height: 42px;
+  border-radius: 9px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border-bright);
+  background: var(--surface-2);
+  color: var(--text-mute);
+  transition: all 0.2s;
+}
+.wstep-label { font-family: var(--mono); font-size: 11px; margin-top: 8px; text-align: center; color: var(--text-mute); }
+.wstep.active .wstep-mark { border-color: var(--primary-deep); background: rgba(var(--primary-rgb), 0.14); color: var(--primary); box-shadow: var(--glow-sm); }
+.wstep.active .wstep-label { color: var(--primary); text-shadow: var(--glow-text); }
+.wstep.done .wstep-mark { border-color: var(--primary-deep); background: rgba(var(--primary-rgb), 0.07); color: var(--primary); box-shadow: var(--glow-sm); }
+.wstep.done .wstep-label { color: var(--text-dim); }
+.wstep-line { flex: 1; height: 2px; background: var(--border); margin-top: 21px; }
+.wstep-line.done { background: var(--primary-deep); box-shadow: var(--glow-sm); }
+
+/* notification toggle rows (ported from wizard.jsx StepNotify) */
+.notif-row { display: flex; align-items: center; gap: 14px; padding: 15px 16px; border-bottom: 1px solid var(--border-soft); cursor: pointer; color: var(--text-mute); }
+.notif-row:hover { background: var(--surface-2); }
+.notif-row .ico { flex: none; }
+.notif-row .notif-txt { flex: 1; min-width: 0; }
+.notif-row .notif-title { display: block; font-size: 13.5px; color: var(--text); }
+.notif-row:has(input:checked) .ico { color: var(--primary); }
+
+/* wizard footer nav row + dashed upload dropzone + selectable row checkbox */
+.wizard-nav { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.wizard-nav .spacer { margin-left: auto; }
+.dropzone {
+  border: 1.5px dashed var(--border-bright);
+  border-radius: var(--radius-lg);
+  padding: 44px 24px;
+  text-align: center;
+  background: var(--inset);
+  max-width: 680px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover { border-color: var(--border-bright); background: var(--surface-2); }
+.dropzone.drag { border-color: var(--primary); background: rgba(var(--primary-rgb), 0.07); box-shadow: inset 0 0 18px rgba(var(--primary-rgb), 0.08); }
+.dropzone .ico { color: var(--text-mute); }
+.dropzone.drag .ico { color: var(--primary); }
+.sel-box {
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border-bright);
+  display: inline-grid; place-items: center;
+  vertical-align: middle;
+}
+tr.selected .sel-box, .sel-box.on { background: var(--primary); border-color: var(--primary); color: var(--bg); }
+.tbl tbody tr.selected { background: rgba(var(--primary-rgb), 0.07); }
+
+/* dark custom checkbox (Alert Hashes step): dark inner box, phosphor fill when checked */
+input[type="checkbox"].hv-check {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; margin: 0;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  background: var(--inset);
+  cursor: pointer;
+  vertical-align: middle;
+  display: inline-block;
+  transition: background .12s, border-color .12s;
+}
+input[type="checkbox"].hv-check:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23060807' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 11px;
+  box-shadow: var(--glow-sm);
+}
+/* highlight the whole row in phosphor when its checkbox is checked */
+.tbl tbody tr:has(input.hv-check:checked) { background: rgba(var(--primary-rgb), 0.07); }
+/* hashfile/wizard tabs — taller/thicker than a default button */
+.tab-btn { padding: 10px 16px; background: transparent; border-color: var(--border); color: var(--text-dim); }
+.tab-btn:hover { color: var(--text); border-color: var(--border-bright); }
+.tab-btn.active { background: rgba(var(--primary-rgb), 0.1); border-color: var(--primary-deep); color: var(--primary); }
+
+/* required-field asterisk (amber), usable anywhere not just inside .field-label */
+.req { color: var(--amber); }
+
+/* ---- table action button colour hints ---- */
+.icon-btn.act-go { color: var(--green); border-color: var(--green-dim); }
+.icon-btn.act-stop { color: var(--amber); border-color: var(--amber-dim); }
+.icon-btn.act-del:hover { color: var(--red); border-color: var(--red); }
+
+/* ---- transition allowance: legacy Bootstrap content rendered inside the
+   new shell's .page wrapper. The wrapper provides padding so Bootstrap's
+   negative-margin .row doesn't bleed. Give legacy content room to breathe. */
+.page > .row:first-child,
+.page > .container,
+.page > .container-fluid { margin-top: 4px; }

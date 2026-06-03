@@ -6,8 +6,47 @@ import hashview
 from hashview.agents.forms import AgentsForm
 from hashview.models import Agents, JobTasks
 from hashview.models import db
+from sqlalchemy import text
 
 agents = Blueprint('agents', __name__)
+
+
+def _fmt_age(seconds):
+    """Relative 'last heartbeat' label: now, 5s ago, 14m ago, 1h 14m ago, 1d 1h ago."""
+    s = max(0, int(seconds))
+    if s < 1:
+        return 'now'
+    if s < 60:
+        return '%ds ago' % s
+    m = s // 60
+    if m < 60:
+        return '%dm ago' % m
+    h, rm = m // 60, m % 60
+    if h < 24:
+        return ('%dh %dm ago' % (h, rm)) if rm else ('%dh ago' % h)
+    dy, rh = h // 24, h % 24
+    return ('%dd %dh ago' % (dy, rh)) if rh else ('%dd ago' % dy)
+
+
+def _agent_ages(agents):
+    """Static relative 'last heartbeat' string per agent, measured against the DATABASE
+    clock (last_checkin is stamped with func.now()), so it's independent of this process's
+    timezone. The agents page isn't realtime, so this is computed once at render and shown
+    as a static value — it does not tick."""
+    try:
+        db_now = db.session.execute(text("SELECT NOW()")).scalar()
+    except Exception:
+        db_now = None
+    out = {}
+    for a in agents:
+        try:
+            if a.last_checkin and db_now:
+                out[a.id] = _fmt_age((db_now - a.last_checkin).total_seconds())
+            else:
+                out[a.id] = None
+        except Exception:
+            out[a.id] = None
+    return out
 
 @agents.route("/agents", methods=['GET', 'POST'])
 @login_required
@@ -28,7 +67,8 @@ def agents_list():
             return redirect(url_for('agents.agents_list'))
         else:
             agents = Agents.query.all()
-            return render_template('agents.html.j2', title='agents', agents=agents, agentsForm=agents_form)
+            return render_template('agents.html.j2', title='agents', agents=agents,
+                                   agent_age=_agent_ages(agents), agentsForm=agents_form)
     else:
         abort(403)
 

@@ -1,193 +1,406 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import status_badge %}
+{% block title %}Users · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Users 
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="These are the awesome people that use Hashview." style="margin-left:5px;"></i>
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('users.users_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">  
-                    <table class="table table-hover table-sm">
-                        <thead>
-                        <tr>
-                            <th scope="col">First</th>
-                            <th scope="col">Last</th>
-                            <th scope="col">Email</th>
-                            <th scope="col">Role</th>
-                            <th scope="col">Last Login</th>
-                            <th style="width:140px" scope="col">Control</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for user in users %}
-                                <tr>
-                                    <td style=vertical-align:middle;>
-                                        {{ user.first_name }}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        {{ user.last_name }}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        {{ user.email_address }}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        <form method="post" action="{{ url_for('users.promote_user', user_id=user.id) if not user.admin else url_for('users.demote_user', user_id=user.id) }}">
-                                            <div class="form-check form-switch">
-                                                <input class="form-check-input" type="checkbox" onchange="this.form.submit()" {% if user.admin %}checked{% endif %}{% if not current_user.admin %} disabled{% endif %}>
-                                            </div>
-                                        </form>
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        {% if user.last_login_utc %}
-                                                {{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}
-                                        {% else %}
-                                                <i>Never</i>
-                                        {% endif %}
-                                    </td>
-                                    <td style=vertical-align:middle;>
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{user.id}}" title=Info></button>
-                                        <button type="button" class="fa fa-undo btn btn-warning" data-bs-toggle="modal" data-bs-target="#resetModal{{user.id}}" title='Reset Password'></button>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{user.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+<style>.users-tbl thead th { padding-top: 14px; padding-bottom: 14px; }</style>
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Users</h1>
+        <div class="page-sub">// The awesome people that use Hashview</div>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-user-modal').showModal()">{{ icon('plus', size=15) }} Add User</button>
+</div>
+
+<div class="card">
+    {% if users %}
+    <table class="tbl users-tbl">
+        <thead>
+            <tr>
+                <th>First</th>
+                <th>Last</th>
+                <th>Email</th>
+                <th class="center">Admin</th>
+                <th class="center">Jobs</th>
+                <th>Last Seen</th>
+                <th class="center" style="width:140px;">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td style="font-weight:500;">{{ user.first_name }}</td>
+                <td style="color:var(--text-dim);">{{ user.last_name }}</td>
+                <td style="color:var(--text-dim);">{{ user.email_address }}</td>
+                <td class="center">
+                    <form method="post" action="{{ url_for('users.promote_user', user_id=user.id) if not user.admin else url_for('users.demote_user', user_id=user.id) }}" style="display:inline;">
+                        <label class="switch" title="{{ 'Demote to operator' if user.admin else 'Promote to admin' }}">
+                            <input type="checkbox" role="switch" onchange="this.form.submit()" {% if user.admin %}checked{% endif %}{% if not current_user.admin %} disabled{% endif %}>
+                            <span class="track"></span>
+                        </label>
+                    </form>
+                </td>
+                <td class="center num">{{ jobs|selectattr('owner_id', 'equalto', user.id)|list|length }}</td>
+                <td style="color:var(--text-dim);">
+                    {% if user.last_login_utc %}
+                        <span class="rel-time mono" data-ts="{{ user.last_login_utc.strftime('%Y-%m-%dT%H:%M:%SZ') }}" title="{{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}">…</span>
+                    {% else %}
+                        <span style="color:var(--text-mute);">Never</span>
+                    {% endif %}
+                </td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ user.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <button type="button" class="icon-btn" title="Edit" onclick='hvEditUser({id:{{ user.id }}, first:{{ user.first_name|tojson }}, last:{{ user.last_name|tojson }}, email:{{ user.email_address|tojson }}, admin:{{ user.admin|tojson }}})'>{{ icon('edit', size=15) }}</button>
+                        <button type="button" class="icon-btn" title="Reset Password" onclick="document.getElementById('reset-{{ user.id }}').showModal()">{{ icon('refresh', size=15) }}</button>
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ user.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No users found.</div>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('add-user-modal').showModal()">{{ icon('plus', size=15) }} Add a User</button>
+    </div>
+    {% endif %}
+</div>
+
+{# ---- per-user modals (native <dialog>, no framework) ---- #}
+{% for user in users %}
+<dialog class="hv-dialog" id="info-{{ user.id }}" style="max-width:760px; width:96vw;">
+    {% set u_jobs = jobs|selectattr('owner_id','equalto',user.id)|list %}
+    {% set u_hashfiles = hashfiles|selectattr('owner_id','equalto',user.id)|list if hashfiles is defined else [] %}
+    {% set u_tasks = tasks|selectattr('owner_id','equalto',user.id)|list %}
+    {% set u_groups = task_groups|selectattr('owner_id','equalto',user.id)|list %}
+    {% set u_wordlists = wordlists|selectattr('owner_id','equalto',user.id)|list %}
+    {% set u_rules = rules|selectattr('owner_id','equalto',user.id)|list %}
+    <div class="hv-dialog-head">
+        <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ user.first_name[:1]|upper }}{{ user.last_name[:1]|upper }}</span>
+        <div style="line-height:1.3; min-width:0;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <h3 style="margin:0;">{{ user.email_address.split('@')[0] }}</h3>
+                {% if user.admin %}<span class="badge red">{{ icon('shield', size=12) }} ADMINISTRATOR</span>{% else %}<span class="badge green">{{ icon('play', size=12) }} OPERATOR</span>{% endif %}
+            </div>
+            <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:3px;">{{ user.email_address }}</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+    </div>
+    <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+        {# KPI stat cards — counts of resources owned by this user #}
+        <div class="grid" style="grid-template-columns: repeat(6, 1fr); gap:10px;">
+            {% for stat in [
+                {'n': u_jobs|length,      'ico': 'jobs',  'lbl': 'JOBS'},
+                {'n': u_hashfiles|length, 'ico': 'file',  'lbl': 'HASHFILES'},
+                {'n': u_tasks|length,     'ico': 'task',  'lbl': 'TASKS'},
+                {'n': u_groups|length,    'ico': 'group', 'lbl': 'GROUPS'},
+                {'n': u_wordlists|length, 'ico': 'book',  'lbl': 'WORDLISTS'},
+                {'n': u_rules|length,     'ico': 'rule',  'lbl': 'RULES'}
+            ] %}
+            <div style="text-align:center; padding:14px 6px; border:1px solid var(--border-soft); border-radius:10px; background:var(--surface-2); min-width:0;">
+                <div style="color:var(--text-mute); display:flex; justify-content:center;">{{ icon(stat.ico, size=16) }}</div>
+                <div class="mono" style="font-size:22px; color:var(--text); margin-top:6px;">{{ stat.n }}</div>
+                <div class="mono" style="font-size:8.5px; letter-spacing:1px; color:var(--text-mute); margin-top:2px;">{{ stat.lbl }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {# Jobs #}
+        {% if u_jobs %}
+        <div style="margin-top:22px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('jobs', size=14) }} Jobs · {{ u_jobs|length }}</div>
+            {% for job in u_jobs %}
+            <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
+                <span class="mono" style="color:var(--text-mute); font-size:11px; flex:none;">#{{ job.id }}</span>
+                <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ job.name }}">{{ job.name }}</span>
+                <span style="margin-left:auto; display:inline-flex; align-items:center; gap:12px; flex:none;">
+                    <span class="mono" style="color:var(--text-mute); font-size:11px;">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %}</span>
+                    {{ status_badge(job.status) }}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {# Hashfiles #}
+        {% if u_hashfiles %}
+        <div style="margin-top:18px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('file', size=14) }} Hashfiles · {{ u_hashfiles|length }}</div>
+            {% for hf in u_hashfiles %}
+            <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
+                <span style="color:var(--text-mute); display:inline-flex;">{{ icon('file', size=15) }}</span>
+                <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ hf.name }}">{{ hf.name }}</span>
+                <span class="mono" style="margin-left:auto; flex:none; color:var(--text-mute); font-size:11px;">{% for c in customers %}{% if c.id == hf.customer_id %}{{ c.name }}{% endif %}{% endfor %}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {# Tasks / Groups / Wordlists / Rules — compact name lists #}
+        {% for sec in [
+            {'rows': u_tasks,     'ico': 'task',  'lbl': 'Tasks'},
+            {'rows': u_groups,    'ico': 'group', 'lbl': 'Groups'},
+            {'rows': u_wordlists, 'ico': 'book',  'lbl': 'Wordlists'},
+            {'rows': u_rules,     'ico': 'rule',  'lbl': 'Rules'}
+        ] %}
+        {% if sec.rows %}
+        <div style="margin-top:18px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon(sec.ico, size=14) }} {{ sec.lbl }} · {{ sec.rows|length }}</div>
+            {% for it in sec.rows %}
+            <div class="card" style="margin-bottom:8px; padding:10px 14px; display:flex; align-items:center; gap:10px;">
+                <span style="color:var(--text-mute); display:inline-flex;">{{ icon(sec.ico, size=15) }}</span>
+                <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ it.name }}">{{ it.name }}</span>
+                {% if sec.lbl == 'Wordlists' %}<span class="mono" style="margin-left:auto; flex:none; color:var(--text-mute); font-size:11px;">{{ "{:,}".format(it.size|int) }} words</span>{% elif sec.lbl == 'Rules' %}<span class="mono" style="margin-left:auto; flex:none; color:var(--text-mute); font-size:11px;">{{ "{:,}".format(it.size|int) }} rules</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <div class="hv-dialog-foot">
+        <span class="mono" style="margin-right:auto; color:var(--text-mute); font-size:11.5px;">last seen {% if user.last_login_utc %}<span class="rel-time" data-ts="{{ user.last_login_utc.strftime('%Y-%m-%dT%H:%M:%SZ') }}">…</span>{% else %}never{% endif %}</span>
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+    </div>
+</dialog>
+
+<dialog class="hv-dialog" id="reset-{{ user.id }}">
+    <div class="hv-dialog-head"><h3>Password Reset: {{ user.email_address }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">Reset this user's password?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">No</button>
+        <form action="{{ url_for('users.admin_reset', user_id=user.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-primary" type="submit">Yes</button>
+        </form>
+    </div>
+</dialog>
+
+<dialog class="hv-dialog" id="del-{{ user.id }}">
+    <div class="hv-dialog-head"><h3>Delete: {{ user.email_address }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the account. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('users.users_delete', user_id=user.id) }}" method="POST" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
+{# ---- add-user modal (opened from the "Add User" button) ---- #}
+<style>
+.nu-role {
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+    width:180px; padding:16px 10px; border-radius:10px;
+    background:var(--surface-2); border:1px solid var(--border-soft); color:var(--text-dim);
+    cursor:pointer; font-family:var(--mono); font-size:11px; letter-spacing:.3px;
+}
+.nu-role:hover { border-color:var(--border-bright); color:var(--text); }
+.nu-role.sel-op    { border-color:var(--primary); color:var(--primary); background:rgba(var(--primary-rgb),0.08); box-shadow:var(--glow-sm); }
+.nu-role.sel-admin { border-color:var(--red); color:var(--red); background:rgba(220,80,80,0.08); }
+</style>
+<dialog class="hv-dialog" id="add-user-modal" style="max-width:660px; width:95vw;">
+    <div class="hv-dialog-head">
+        <span id="nu-avatar" style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">?</span>
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">new account</h3>
+            <div class="mono" id="nu-sub" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">—</div>
+        </div>
+        <span id="nu-role-badge" class="badge green" style="margin-left:auto;">OPERATOR</span>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:0;">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('users.users_add') }}" id="nu-form">
+        {{ usersForm.hidden_tag() }}
+        <input type="checkbox" name="is_admin" id="nu-is-admin" style="display:none;">
+        <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="nu-first">First name <span class="req">*</span></label>
+                    <input class="input" type="text" name="first_name" id="nu-first" placeholder="e.g. Alice" autocomplete="off" required oninput="hvUserMeta('nu')">
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="nu-last">Last name <span class="req">*</span></label>
+                    <input class="input" type="text" name="last_name" id="nu-last" placeholder="e.g. Smith" autocomplete="off" required oninput="hvUserMeta('nu')">
+                </div>
+            </div>
+            <div class="field" style="margin-top:16px;">
+                <label class="field-label" for="nu-email">Email <span class="req">*</span></label>
+                <input class="input" type="email" name="email" id="nu-email" placeholder="name@redteam.io" autocomplete="off" required oninput="hvUserMeta('nu')">
+            </div>
+
+            {# Role — Administrator / Operator, centered #}
+            <div class="field">
+                <label class="field-label">Role</label>
+                <div style="display:flex; gap:12px; justify-content:center;">
+                    <button type="button" class="nu-role" id="nu-role-admin" onclick="hvUserRole('nu', true)">
+                        {{ icon('shield', size=18) }}<span>Administrator</span>
+                    </button>
+                    <button type="button" class="nu-role sel-op" id="nu-role-op" onclick="hvUserRole('nu', false)">
+                        {{ icon('play', size=18) }}<span>Operator</span>
+                    </button>
+                </div>
+                <span class="field-hint" id="nu-role-hint" style="margin-top:8px;">↳ Create and run jobs, manage resources</span>
+            </div>
+
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="nu-pw">Password <span class="req">*</span></label>
+                    <div style="position:relative;">
+                        <input class="input" type="password" name="password" id="nu-pw" placeholder="min 14 characters" autocomplete="new-password" required style="padding-right:38px;">
+                        <button type="button" class="icon-btn" onclick="hvUserPw('nu')" title="Show / hide" style="position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:none;">{{ icon('eye', size=15) }}</button>
+                    </div>
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="nu-pw2">Confirm <span class="req">*</span></label>
+                    <input class="input" type="password" name="confirm_password" id="nu-pw2" placeholder="repeat password" autocomplete="new-password" required>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:12px; margin-top:20px;">
+                <div style="flex:1; min-width:0;">
+                    <div style="color:var(--text);">Send invite email</div>
+                    <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:2px;">Email the user a first-login link</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" name="send_invite" id="nu-invite" checked>
+                    <span class="track"></span>
+                </label>
+            </div>
+        </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('plus', size=15) }} Create user</button>
+        </div>
+    </form>
+</dialog>
+
+{# ---- edit-user modal (opened from a user's edit button; mirrors the add-user modal) ---- #}
+<dialog class="hv-dialog" id="edit-user-modal" style="max-width:660px; width:95vw;">
+    <div class="hv-dialog-head">
+        <span id="eu-avatar" style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">?</span>
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">edit account</h3>
+            <div class="mono" id="eu-sub" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">—</div>
+        </div>
+        <span id="eu-role-badge" class="badge green" style="margin-left:auto;">OPERATOR</span>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:0;">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('users.users_list') }}" id="eu-form">
+        {{ usersForm.hidden_tag() }}
+        <input type="checkbox" name="is_admin" id="eu-is-admin" style="display:none;">
+        <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="eu-first">First name <span class="req">*</span></label>
+                    <input class="input" type="text" name="first_name" id="eu-first" placeholder="e.g. Alice" autocomplete="off" required oninput="hvUserMeta('eu')">
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="eu-last">Last name <span class="req">*</span></label>
+                    <input class="input" type="text" name="last_name" id="eu-last" placeholder="e.g. Smith" autocomplete="off" required oninput="hvUserMeta('eu')">
+                </div>
+            </div>
+            <div class="field" style="margin-top:16px;">
+                <label class="field-label" for="eu-email">Email <span class="req">*</span></label>
+                <input class="input" type="email" name="email" id="eu-email" placeholder="name@redteam.io" autocomplete="off" required oninput="hvUserMeta('eu')">
+            </div>
+
+            {# Role — Administrator / Operator, centered #}
+            <div class="field">
+                <label class="field-label">Role</label>
+                <div style="display:flex; gap:12px; justify-content:center;">
+                    <button type="button" class="nu-role" id="eu-role-admin" onclick="hvUserRole('eu', true)">
+                        {{ icon('shield', size=18) }}<span>Administrator</span>
+                    </button>
+                    <button type="button" class="nu-role sel-op" id="eu-role-op" onclick="hvUserRole('eu', false)">
+                        {{ icon('play', size=18) }}<span>Operator</span>
+                    </button>
+                </div>
+                <span class="field-hint" id="eu-role-hint" style="margin-top:8px;">↳ Create and run jobs, manage resources</span>
+            </div>
+
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="eu-pw">New password</label>
+                    <div style="position:relative;">
+                        <input class="input" type="password" name="password" id="eu-pw" placeholder="leave blank to keep current" autocomplete="new-password" style="padding-right:38px;">
+                        <button type="button" class="icon-btn" onclick="hvUserPw('eu')" title="Show / hide" style="position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:none;">{{ icon('eye', size=15) }}</button>
+                    </div>
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="eu-pw2">Confirm</label>
+                    <input class="input" type="password" name="confirm_password" id="eu-pw2" placeholder="repeat new password" autocomplete="new-password">
                 </div>
             </div>
         </div>
-    </article>
-    {% for user in users %}
-    <!-- Info Modal -->
-        <div class="modal fade" id="infoModal{{user.id}}" tabindex="-1" aria-labelledby="infoModal{{user.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{user.id}}Label">Info: {{user.email_address}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                    <table class="table">
-                        <thead>
-                            <tbody>
-                                <tr>
-                                    <th scope="row">Associated Jobs</th>
-                                    <td>
-                                        {% for job in jobs %}
-                                            {% if job.owner_id == user.id %}
-                                                {{ job.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Associated Wordlists</th>
-                                    <td>
-                                        {% for wordlist in wordlists %}
-                                            {% if wordlist.owner_id == user.id %}
-                                                {{ wordlist.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                <tr>                              
-                                    <th scope="row">Associated Rules</th>
-                                    <td>
-                                        {% for rule in rules %}
-                                            {% if rule.owner_id == user.id %}
-                                                {{ rule.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                <tr>  
-                                    <th scope="row">Associated Tasks</th>
-                                    <td>
-                                        {% for task in tasks %}
-                                            {% if task.owner_id == user.id %}
-                                                {{ task.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>
-                                </tr>
-                                <tr>   
-                                    <th scope="row">Associated Task Groups</th>
-                                    <td>
-                                        {% for task_group in task_groups %}
-                                            {% if task_group.owner_id == user.id %}
-                                                {{ task_group.name }} <br>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                </tr>                                
-                            </tbody>
-                      </table>
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-            </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Save changes</button>
         </div>
-    {% endfor %}
-    {% for user in users %}
-    <!-- Reset Modal -->
-        <div class="modal fade" id="resetModal{{user.id}}" tabindex="-1" aria-labelledby="resetModal{{user.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="resetModal{{user.id}}Label">Password Reset: {{user.email_address}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                Reset this users password?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No</button>
-                <form action="{{ url_for('users.admin_reset', user_id=user.id) }}" method="POST">
-                    <input class="btn btn-primary" type="submit" value="Yes">
-                </form>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
-    {% for user in users %}
-        <!-- DeleteModal -->
-        <div class="modal fade" id="deleteModal{{user.id}}" tabindex="-1" aria-labelledby="deleteModal{{user.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="deleteModal{{user.id}}Label">Delete: {{user.email_address}} ?</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                This will permanantly delete the account. Are you sure you want to continue?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Back</button>
-                <form action="{{ url_for('users.users_delete', user_id=user.id) }}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-                </div>
-            </div>
-            </div>
-        </div>
-    {% endfor %}
+    </form>
+</dialog>
+
+<script>
+(function () {
+    var ADMIN_HINT = '↳ Full control · manage users, settings, agents';
+    var OP_HINT = '↳ Create and run jobs, manage resources';
+    function el(p, s) { return document.getElementById(p + '-' + s); }
+    window.hvUserRole = function (p, isAdmin) {
+        var chk = el(p, 'is-admin'); if (chk) chk.checked = !!isAdmin;
+        var a = el(p, 'role-admin'); if (a) a.classList.toggle('sel-admin', isAdmin);
+        var o = el(p, 'role-op'); if (o) o.classList.toggle('sel-op', !isAdmin);
+        var hint = el(p, 'role-hint'); if (hint) hint.textContent = isAdmin ? ADMIN_HINT : OP_HINT;
+        var badge = el(p, 'role-badge');
+        if (badge) { badge.textContent = isAdmin ? 'ADMINISTRATOR' : 'OPERATOR'; badge.className = 'badge ' + (isAdmin ? 'red' : 'green'); }
+    };
+    window.hvUserMeta = function (p) {
+        var f = (el(p, 'first').value || '').trim(), l = (el(p, 'last').value || '').trim(), e = (el(p, 'email').value || '').trim();
+        var av = el(p, 'avatar'), sub = el(p, 'sub');
+        if (av) av.textContent = ((f[0] || '') + (l[0] || '')).toUpperCase() || '?';
+        if (sub) sub.textContent = (f || l) ? (f + ' ' + l).trim() : (e || '—');
+    };
+    window.hvUserPw = function (p) {
+        var i = el(p, 'pw'); if (i) i.type = (i.type === 'password') ? 'text' : 'password';
+    };
+    window.hvEditUser = function (d) {
+        var f = document.getElementById('eu-form'); if (f) f.action = '/users/edit/' + d.id;
+        el('eu', 'first').value = d.first || '';
+        el('eu', 'last').value = d.last || '';
+        el('eu', 'email').value = d.email || '';
+        el('eu', 'pw').value = ''; el('eu', 'pw2').value = '';
+        hvUserRole('eu', !!d.admin);
+        hvUserMeta('eu');
+        document.getElementById('edit-user-modal').showModal();
+    };
+})();
+</script>
+
+<script>
+(function () {
+    // Render UTC timestamps as live relative times: "now", "12m ago", "1h 40m ago", "3d ago".
+    function hvRel(ts) {
+        var d = new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        var s = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (s < 0) s = 0;
+        if (s < 45) return 'now';
+        var m = Math.floor(s / 60);
+        if (m < 60) return m + 'm ago';
+        var h = Math.floor(m / 60), rm = m % 60;
+        if (h < 24) return rm ? (h + 'h ' + rm + 'm ago') : (h + 'h ago');
+        var dy = Math.floor(h / 24), rh = h % 24;
+        if (dy < 30) return rh ? (dy + 'd ' + rh + 'h ago') : (dy + 'd ago');
+        return Math.floor(dy / 30) + 'mo ago';
+    }
+    function tick() {
+        document.querySelectorAll('.rel-time').forEach(function (el) {
+            el.textContent = hvRel(el.getAttribute('data-ts'));
+        });
+    }
+    tick();
+    setInterval(tick, 60000);
+})();
+</script>
+
 {% endblock content %}

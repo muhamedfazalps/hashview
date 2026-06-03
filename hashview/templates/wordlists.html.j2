@@ -1,137 +1,270 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Wordlists · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Static Wordlists
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="These are plaintext, newline delimited files that you can upload to hashview and then assign to a task." style="margin-left:5px;"></i>
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('wordlists.wordlists_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">              
-                    <table class="table">
-                        <thead>
-                        <tr>
-                            <th scope="col">Name</th>
-                            <th scope="col">Size</th>
-                            <th scope="col">Owner</th>
-                            <th scope="col">Last Updated</th>
-                            <th style="width:110px" scope="col">Control</th> 
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for wordlist in static_wordlists %}
-                                <tr>
-                                    <td style="vertical-align:middle;">{{ wordlist.name }}</td>
-                                    <td style="vertical-align:middle;">{{ wordlist.size }}</td>
-                                    <td style="vertical-align:middle;">
-                                        {% for user in users %}
-                                            {% if user.id == wordlist.owner_id %}
-                                                {{ user.first_name }} {{ user.last_name }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td style="vertical-align:middle;">{{ wordlist.last_updated }}</td>
-                                    <td style="vertical-align:middle;">
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{wordlist.id}}" title=Info></button>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{wordlist.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <br>
-            <div class="card">
-                <h4 class="card-header">
-                    Dynamic Wordlists 
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="The Dynamic Wordlist are automatically generated for you. They will update anytime new data is added to the system." style="margin-left:5px;"></i>
-                </h4>
-                <div class="card-body "> 
-                    <table class="table">
-                        <thead>
-                        <tr>
-                            <th scope="col">Name</th>
-                            <th scope="col">Size</th>
-                            <th scope="col">Last Updated</th>
-                            <th style="width:110px" scope="col">Control</th> 
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for wordlist in dynamic_wordlists %}
-                                <tr>
-                                    <td style="vertical-align:middle;">{{ wordlist.name }}</td>
-                                    <td style="vertical-align:middle;">{{ wordlist.size }}</td>
-                                    <td style="vertical-align:middle;">{{ wordlist.last_updated }}</td>
-                                    <td style="vertical-align:middle;">
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{wordlist.id}}" title=Info></button>
-                                        <a class="fa fa-undo btn btn-warning" href="/wordlists/update/{{wordlist.id}}" role="button" title=Update></a>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+{% macro wcount(n) -%}
+{%- if n and n >= 1000000 -%}{{ (n / 1000000)|round(1) }}M{%- elif n and n >= 1000 -%}{{ (n / 1000)|round(1) }}K{%- else -%}{{ n or 0 }}{%- endif -%}
+{%- endmacro %}
+{% macro kv_label(t) -%}<div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:6px;">{{ t }}</div>{%- endmacro %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Wordlists</h1>
+        <div class="page-sub">// plaintext &amp; auto-generated wordlists</div>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-wordlist-modal').showModal()">{{ icon('upload', size=15) }} Upload Wordlist</button>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h3>Static Wordlists</h3>
+        <span class="field-hint" style="margin-top:0;">Plaintext, newline-delimited files you upload and assign to a task.</span>
+        <span style="margin-left:auto; display:inline-flex; align-items:center; gap:9px; color:var(--text-mute);">{{ icon('search', size=16) }}<input type="text" id="wl-filter" class="input" style="width:240px; flex:none;" placeholder="filter wordlists…" autocomplete="off" oninput="hvFilterWordlists(this.value)"></span>
+    </div>
+    {% if static_wordlists %}
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:32%;"><col style="width:14%;"><col style="width:18%;"><col style="width:20%;"><col style="width:16%;"></colgroup>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Owner</th>
+                <th>Last Updated</th>
+                <th class="center">Control</th>
+            </tr>
+        </thead>
+        <tbody id="wl-static-tbody">
+            {% for wordlist in static_wordlists %}
+            <tr data-name="{{ wordlist.name|lower }}">
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('book', size=16) }}</span>
+                        {{ wordlist.name }}
+                    </span>
+                </td>
+                <td class="mono num" style="color:var(--primary);">{{ "{:,}".format(wordlist.size) }}</td>
+                <td style="color:var(--text-dim);">
+                    {% for user in users %}
+                        {% if user.id == wordlist.owner_id %}
+                            {{ user.first_name }} {{ user.last_name }}
+                        {% endif %}
+                    {% endfor %}
+                </td>
+                <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ wordlist.last_updated }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ wordlist.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ wordlist.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            <tr class="wl-no-match" style="display:none;"><td colspan="5" style="text-align:center; padding:24px 16px; color:var(--text-mute);" class="mono">No wordlists match that filter.</td></tr>
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No static wordlists found.</div>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-wordlist-modal').showModal()">{{ icon('upload', size=15) }} Upload Wordlist</button>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card" style="margin-top:var(--gap);">
+    <div class="card-head">
+        <h3>Dynamic Wordlists</h3>
+        <span class="field-hint" style="margin-top:0;">Auto-generated and updated whenever new data is added to the system.</span>
+    </div>
+    {% if dynamic_wordlists %}
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:32%;"><col style="width:14%;"><col style="width:18%;"><col style="width:20%;"><col style="width:16%;"></colgroup>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th></th>
+                <th>Last Updated</th>
+                <th class="center">Control</th>
+            </tr>
+        </thead>
+        <tbody id="wl-dynamic-tbody">
+            {% for wordlist in dynamic_wordlists %}
+            <tr data-name="{{ wordlist.name|lower }}">
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('book', size=16) }}</span>
+                        {{ wordlist.name }}
+                    </span>
+                </td>
+                <td class="mono num" style="color:var(--primary);">{{ "{:,}".format(wordlist.size) }}</td>
+                <td></td>
+                <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ wordlist.last_updated }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ wordlist.id }}').showModal()">{{ icon('info', size=15) }}</button>
+                        <a class="icon-btn" href="/wordlists/update/{{ wordlist.id }}" role="button" title="Update">{{ icon('refresh', size=15) }}</a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            <tr class="wl-no-match" style="display:none;"><td colspan="5" style="text-align:center; padding:24px 16px; color:var(--text-mute);" class="mono">No wordlists match that filter.</td></tr>
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim);">No dynamic wordlists found.</div>
+    </div>
+    {% endif %}
+</div>
+
+{# ---- upload-wordlist modal (opened from the "Upload Wordlist" button) ---- #}
+<dialog class="hv-dialog" id="upload-wordlist-modal" style="max-width:560px; width:92vw;">
+    <div class="hv-dialog-head">
+        {{ icon('book', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Upload Wordlist</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">plaintext, newline-delimited file</div>
         </div>
-    </article>
-    {% for wordlist in wordlists %}
-    <!-- Info Modal -->
-    <div class="modal fade" id="infoModal{{wordlist.id}}" tabindex="-1" aria-labelledby="infoModal{{wordlist.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="infoModal{{wordlist.id}}Label">Info: {{wordlist.name}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('wordlists.wordlists_add') }}" enctype="multipart/form-data">
+        {{ wordlistsForm.hidden_tag() }}
+        {{ wordlistsForm.name(id="wl-up-name", style="display:none;") }}
+        <div class="hv-dialog-body">
+            <div class="dropzone" id="wl-dropzone" onclick="document.getElementById('wl-up-file').click()"
+                 ondragover="event.preventDefault(); this.classList.add('drag');"
+                 ondragleave="this.classList.remove('drag');"
+                 ondrop="hvWlDrop(event)">
+                {{ icon('upload', size=34) }}
+                <div style="margin-top:12px; color:var(--text);">Drop a wordlist file here or <span style="color:var(--primary); text-decoration:underline;">browse</span></div>
+                <div class="field-hint mono" id="wl-dropzone-name" style="margin-top:8px;">rockyou.txt, weakpass.txt, … one password per line</div>
+                {{ wordlistsForm.wordlist(id="wl-up-file", style="display:none;", onchange="hvWlChosen(this)") }}
             </div>
-            <div class="modal-body">
-            The following tasks are using this wordlist.<br>
-            <br>
-                {% for task in tasks %}
-                    {% if task.wl_id == wordlist.id %}
-                        {{task.name}} <br>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
+            {% if wordlistsForm.wordlist.errors %}<div class="invalid-feedback">{% for e in wordlistsForm.wordlist.errors %}<span>{{ e }}</span>{% endfor %}</div>{% endif %}
         </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('upload', size=15) }} Upload Wordlist</button>
+        </div>
+    </form>
+</dialog>
+<script>
+    function hvWlChosen(input){
+        var n = (input.files && input.files.length) ? input.files[0].name : '';
+        var hint = document.getElementById('wl-dropzone-name');
+        if (hint) hint.textContent = n ? ('Selected: ' + n) : 'rockyou.txt, weakpass.txt, … one password per line';
+        var nameEl = document.getElementById('wl-up-name');
+        if (nameEl && n) nameEl.value = n;
+    }
+    function hvWlDrop(e){
+        e.preventDefault();
+        var dz = document.getElementById('wl-dropzone');
+        if (dz) dz.classList.remove('drag');
+        var input = document.getElementById('wl-up-file');
+        if (input && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+            input.files = e.dataTransfer.files;
+            hvWlChosen(input);
+        }
+    }
+</script>
+
+{# ---- per-wordlist modals (native <dialog>, no framework) ---- #}
+{% for wordlist in wordlists %}
+<dialog class="hv-dialog" id="info-{{ wordlist.id }}" style="max-width:720px; width:95vw;">
+    {% set used = wl_used_tasks.get(wordlist.id, []) if wl_used_tasks is defined else [] %}
+    {% set hits = wl_hits.get(wordlist.id, 0) if wl_hits is defined else 0 %}
+    {% set tcount = wl_task_count.get(wordlist.id, 0) if wl_task_count is defined else 0 %}
+    {% set jcount = wl_job_count.get(wordlist.id, 0) if wl_job_count is defined else 0 %}
+    {# size on disk is not tracked yet — placeholder until it's wired up #}
+    {% set size_on_disk = '—' %}
+    <div class="hv-dialog-head">
+        {{ icon('info', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">{{ wordlist.name }}</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">wordlist details</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+        {# summary strip #}
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">
+            <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ icon('book', size=20) }}</span>
+            <div style="line-height:1.4;">
+                <span class="mono" style="font-size:22px; color:var(--text);">{{ wcount(wordlist.size) }}<span style="font-size:12px; color:var(--text-mute);"> words</span></span>
+                <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:3px;">{{ size_on_disk }} on disk · uploaded {{ wordlist.last_updated.strftime('%Y-%m-%d') if wordlist.last_updated else '—' }}</div>
+            </div>
+            <span style="margin-left:auto; text-align:right; line-height:1;">
+                <span class="mono" style="font-size:22px; color:var(--primary); text-shadow:var(--glow-text);">{{ "{:,}".format(hits|int) }}</span>
+                <span class="mono" style="display:block; font-size:9px; letter-spacing:1px; color:var(--text-mute); margin-top:3px;">HITS</span>
+            </span>
+        </div>
+
+        {# detail grid #}
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px 24px;">
+            <div>{{ kv_label('Owner') }}<div><span class="badge dim">{{ wl_owner.get(wordlist.id, '—') if wl_owner is defined else '—' }}</span></div></div>
+            <div>{{ kv_label('Uploaded') }}<div class="mono" style="color:var(--text);">{{ wordlist.last_updated.strftime('%Y-%m-%d') if wordlist.last_updated else '—' }}</div></div>
+            <div>{{ kv_label('Words') }}<div class="mono" style="color:var(--text);">{{ "{:,}".format(wordlist.size|int) }}</div></div>
+            <div>{{ kv_label('Size on disk') }}<div class="mono" style="color:var(--text);">{{ size_on_disk }}</div></div>
+            <div>{{ kv_label('Historical hits') }}<div><span class="mono" style="color:{{ 'var(--primary)' if hits else 'var(--text-mute)' }};{% if hits %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(hits|int) }}</span> <span style="color:var(--text-dim);">passwords recovered</span></div></div>
+            <div>{{ kv_label('Used by') }}<div style="color:var(--text);">{{ tcount }} task{{ '' if tcount == 1 else 's' }} · {{ jcount }} job{{ '' if jcount == 1 else 's' }}</div></div>
+        </div>
+
+        {# used-by tasks #}
+        <div style="margin-top:24px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('task', size=14) }} Used by {{ used|length }} task{{ '' if used|length == 1 else 's' }}</div>
+            {% if used %}
+            {% for u in used %}
+            <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
+                <span style="color:var(--text-mute); display:inline-flex;">{{ icon('task', size=15) }}</span>
+                <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ u.name }}">{{ u.name }}</span>
+                <span style="margin-left:auto; display:inline-flex; align-items:center; gap:10px; flex:none;">
+                    {% if u.rule %}<span class="mono" style="color:var(--cyan); font-size:11px;">{{ u.rule }}</span>{% endif %}
+                    <span class="badge dim" style="font-size:8.5px;">{{ u.type }}</span>
+                    <span class="mono" style="color:{{ 'var(--primary)' if u.hits else 'var(--text-mute)' }}; white-space:nowrap;">{{ "{:,}".format(u.hits|int) }} hits</span>
+                </span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="mono" style="color:var(--text-mute);">Not used by any tasks yet.</div>
+            {% endif %}
         </div>
     </div>
-    {% endfor %}
-    {% for wordlist in wordlists %}
-    <!-- DeleteModal -->
-    <div class="modal fade" id="deleteModal{{wordlist.id}}" tabindex="-1" aria-labelledby="deleteModal{{wordlist.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="deleteModal{{wordlist.id}}Label">Delete: {{wordlist.name}} ?</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                This will permanantly delete the account. Are you sure you want to continue?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <form action="{{ url_for('wordlists.wordlists_delete', wordlist_id=wordlist.id) }}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-            </div>
-        </div>
-        </div>
+    <div class="hv-dialog-foot">
+        <span class="mono" style="margin-right:auto; font-size:11.5px; color:var(--text-mute);">{{ "{:,}".format(wordlist.size|int) }} words · {{ size_on_disk }}</span>
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
     </div>
-    {% endfor %}
+</dialog>
+{% endfor %}
+
+{% for wordlist in wordlists %}
+<dialog class="hv-dialog" id="del-{{ wordlist.id }}">
+    <div class="hv-dialog-head"><h3>Delete {{ wordlist.name }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the wordlist. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('wordlists.wordlists_delete', wordlist_id=wordlist.id) }}" method="POST" style="display:inline;">
+            <input class="btn btn-danger" type="submit" value="Delete">
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
+<script>
+function hvFilterWordlists(q){
+    q = (q || '').trim().toLowerCase();
+    ['wl-static-tbody', 'wl-dynamic-tbody'].forEach(function(tid){
+        var tb = document.getElementById(tid);
+        if (!tb) return;
+        var shown = 0;
+        tb.querySelectorAll('tr[data-name]').forEach(function(tr){
+            var hit = !q || (tr.getAttribute('data-name') || '').indexOf(q) !== -1;
+            tr.style.display = hit ? '' : 'none';
+            if (hit) shown++;
+        });
+        var none = tb.querySelector('.wl-no-match');
+        if (none) none.style.display = shown === 0 ? '' : 'none';
+    });
+}
+</script>
+
 {% endblock content %}

@@ -1,149 +1,263 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Task Groups · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">
-                    Task Groups 
-                    <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Task Groups are a set of tasks that can be assigned to job." style="margin-left:5px;"></i>
-                    <a class="btn btn-success btn-sm mt-1 mb-1 pull-right" href="{{ url_for('task_groups.task_groups_add') }}">Add</a>
-                </h4>
-                <div class="card-body ">               
-                    <table class="table table-hover table-sm">
-                        <thead>
-                        <tr>
-                            <th scope="col">Task Group Name</th>
-                            <th scope="col">Owner</th>
-                            <th style="width:140px" scope="col">Control</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for task_group in task_groups %}
-                                <tr>
-                                    <td style="vertical-align:middle;">{{ task_group.name }}</td>
-                                    <td style="vertical-align:middle;">
-                                        {% for user in users %}
-                                            {% if user.id == task_group.owner_id %}
-                                                {{user.first_name}} {{user.last_name}}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td style="text-align:right; vertical-align:middle;">
-                                        <button type="button" class="fa fa-info btn btn-info" data-bs-toggle="modal" data-bs-target="#infoModal{{task_group.id}}" title=Info></button>
-                                        <a class="fa fa-edit btn btn-warning" href="/task_groups/assigned_tasks/{{task_group.id}}" role="button" title=Edit></a>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteModal{{task_group.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+{% macro ttype(t) -%}
+{%- if t.hc_attackmode == 0 and t.rule_id -%}DICT + RULE
+{%- elif t.hc_attackmode == 0 -%}DICTIONARY
+{%- elif t.hc_attackmode == 1 -%}COMBINATOR
+{%- elif t.hc_attackmode == 3 -%}MASK
+{%- elif t.hc_attackmode == 6 or t.hc_attackmode == 7 -%}HYBRID
+{%- else -%}?{%- endif -%}
+{%- endmacro %}
+
+{# Shared body for both the New-group and Edit-group modals. `p` is the element-id
+   prefix ('ng' or 'eg') so the two modals stay independent; `tasks` is the full task
+   list. The name field starts empty — the edit modal fills it client-side on open. #}
+{% macro gm_inner(p, submit_label, tasks) %}
+    <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+        <div class="field">
+            <label class="field-label" for="{{ p }}-name">Group name <span class="req">*</span></label>
+            <input class="input" type="text" name="name" id="{{ p }}-name" placeholder="e.g. Fast NTLM First Pass" autocomplete="off" required>
+        </div>
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 4px;">
+            {# LEFT: ADD TASKS #}
+            <div style="min-width:0;">
+                <div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:8px;">Add tasks</div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                    <span style="color:var(--text-mute); display:inline-flex;">{{ icon('search', size=16) }}</span>
+                    <input type="text" class="input" id="{{ p }}-filter" placeholder="filter…" autocomplete="off" oninput="hvGmFilter('{{ p }}', this.value)" style="flex:1;">
+                </div>
+                <div id="{{ p }}-available" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto;">
+                    {% for t in tasks %}
+                    <div class="gm-avail-row" data-tid="{{ t.id }}" data-tname="{{ t.name|lower }}" data-tfull="{{ t.name }}" data-ttype="{{ ttype(t) }}">
+                        <button type="button" class="icon-btn gm-mini" title="Add to group" onclick="hvGmAdd('{{ p }}', {{ t.id }})">{{ icon('plus', size=14) }}</button>
+                        <span class="nm" title="{{ t.name }}">{{ t.name }}</span>
+                        <span class="badge dim">{{ ttype(t) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if not tasks %}<div class="mono" style="color:var(--text-mute); padding:8px 2px;">No tasks available — create some first.</div>{% endif %}
+                    <div id="{{ p }}-no-match" class="mono" style="display:none; color:var(--text-mute); padding:8px 2px;">No tasks match that filter.</div>
                 </div>
             </div>
+            {# RIGHT: GROUP ORDER #}
+            <div style="min-width:0;">
+                <div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:8px;">Group order · <span id="{{ p }}-count2">0</span></div>
+                <div id="{{ p }}-selected-empty" style="border:1px dashed var(--border); border-radius:10px; padding:40px 16px; text-align:center; color:var(--text-mute);">
+                    <span style="display:inline-flex;">{{ icon('group', size=22) }}</span>
+                    <div class="mono" style="margin-top:10px; font-size:11px;">← add tasks from the left</div>
+                </div>
+                <div id="{{ p }}-selected" style="display:none; flex-direction:column; gap:8px; max-height:380px; overflow-y:auto;"></div>
+            </div>
         </div>
-    </article>
+    </div>
+    <div class="hv-dialog-foot">
+        <span class="mono" style="margin-right:auto; color:var(--text-mute);"><span id="{{ p }}-count">0</span> tasks</span>
+        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} {{ submit_label }}</button>
+    </div>
+{% endmacro %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Task Groups</h1>
+        <div class="page-sub">// {{ task_groups|length }} preset bundle{{ '' if task_groups|length == 1 else 's' }} · queue many tasks in one click</div>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('new-group-modal').showModal()">{{ icon('plus', size=15) }} New group</button>
+</div>
+
+{% if task_groups %}
+<div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(max(280px, calc((100% - 2 * var(--gap)) / 3)), 1fr)); gap: var(--gap); align-items: stretch;">
     {% for task_group in task_groups %}
-    <!-- Info Modal -->
-    <div class="modal fade" id="infoModal{{task_group.id}}" tabindex="-1" aria-labelledby="infoModal{{task_group.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex align-items-center">
-            <h5 class="modal-title" id="infoModal{{task_group.id}}Label">Info: {{task_group.name}}</h5>
-            <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+    {% set gtasks = group_tasks.get(task_group.id, []) if group_tasks is defined else [] %}
+    <div class="card" style="display:flex; flex-direction:column;">
+        {# header: name + owner + task count #}
+        <div class="card-head" style="justify-content:space-between; align-items:flex-start;">
+            <div style="min-width:0;">
+                <span style="display:inline-flex; align-items:center; gap:9px; font-weight:600; color:var(--text);">
+                    <span style="color:var(--text-mute); display:inline-flex;">{{ icon('group', size=16) }}</span>
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ task_group.name }}</span>
+                </span>
+                <div class="mono" style="font-size:10.5px; color:var(--text-mute); margin-top:6px; display:inline-flex; align-items:center; gap:6px;">
+                    {{ icon('users', size=12) }} {{ group_owner.get(task_group.id, '—') if group_owner is defined else '—' }}
+                </div>
             </div>
-            <div class="modal-body">
-                <table class="table">
-                    <thead>
-                      <tbody>
-                          <tr>                              
-                            <th scope="row">Associated Tasks</th>
-                            <td>
-                                {% for task_group_task_entry in task_group.tasks.split(',') %}
-                                    <!-- So hacky -->
-                                    <!-- Now you may ask your self, why does the first comparison use strings, but the others use ints.... i dont know but it works -->
-                                    {% for task in tasks %}
-                                        {% if '[' in task_group_task_entry %}
-                                            {% if task.id|string() == task_group_task_entry.split('[')[1] %}
-                                                {{ task.name }} <br>
-                                            {% endif %}
-                                        {% endif %}
-                                        {% if ']' in task_group_task_entry %}
-                                            {% if task.id|int() == task_group_task_entry.split(']')[0]|int() %}
-                                                {{ task.name }} <br>
-                                            {% endif %}
-                                        {% endif %}
-                                        {% if task.id|int() == task_group_task_entry|int() %}
-                                            {{ task.name }} <br>
-                                        {% endif %}
-                                    {% endfor %}
-                                {% endfor %}
-                            </td>
-                          </tr>
-                      </tbody>
-                  </table>
-            </div>
-            <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
+            <span class="badge dim" style="flex:none;">{{ gtasks|length }} task{{ '' if gtasks|length == 1 else 's' }}</span>
         </div>
+
+        {# numbered task list — shows ~7 rows, scrolls within the card beyond that #}
+        <div style="padding: 6px 16px 4px; flex:1; max-height: 288px; overflow-y:auto;">
+            {% if gtasks %}
+            {% for t in gtasks %}
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 0;{% if not loop.last %} border-bottom:1px solid var(--border-soft);{% endif %}">
+                <span class="mono" style="color:var(--text-mute); font-size:11px; width:18px; flex:none;">{{ '%02d'|format(loop.index) }}</span>
+                <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim);" title="{{ t.name }}">{{ t.name }}</span>
+                <span class="badge dim" style="flex:none; font-size:8.5px; letter-spacing:0.5px;">{{ ttype(t) }}</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="mono" style="color:var(--text-mute); padding:14px 0;">No tasks assigned yet.</div>
+            {% endif %}
+        </div>
+
+        {# footer: historical hits on the left, edit + delete on the right #}
+        <div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-top:1px solid var(--border-soft);">
+            {% set hits = group_hits.get(task_group.id, 0) if group_hits is defined else 0 %}
+            <span class="mono" style="white-space:nowrap;">
+                <span style="color:{{ 'var(--primary)' if hits else 'var(--text-mute)' }};{% if hits %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(hits|int) }}</span>
+                <span style="color:var(--text-mute); font-size:11px;"> hist. hits</span>
+            </span>
+            <button type="button" class="icon-btn" style="margin-left:auto;" title="Edit group" onclick='hvEditGroup({{ task_group.id }}, {{ task_group.name|tojson }}, {{ gtasks|map(attribute="id")|list|tojson }})'>{{ icon('edit', size=15) }}</button>
+            <button type="button" class="icon-btn act-del" title="Delete group" onclick="document.getElementById('del-{{ task_group.id }}').showModal()">{{ icon('trash', size=15) }}</button>
         </div>
     </div>
     {% endfor %}
-    {% for task_group in task_groups %}
-    <!-- Edit Modal -->
-        <div class="modal fade" id="resetModal{{task_group.id}}" tabindex="-1" aria-labelledby="editModal{{task_group.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="resetModal{{task_group.id}}Label">Edit task_group: {{task_group.name}}</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                ...
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary">Understood</button>
-                </div>
-            </div>
-            </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No task groups found.</div>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('new-group-modal').showModal()">{{ icon('plus', size=15) }} Create a New Task Group</button>
+    </div>
+</div>
+{% endif %}
+
+{# ---- New / Edit Task Group modals (build name + ordered tasks in one shot) ---- #}
+<style>
+.group-modal .gm-avail-row,
+.group-modal .gm-sel-row { display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid var(--border-soft); border-radius:8px; }
+.group-modal .gm-avail-row.added { opacity:.4; }
+.group-modal .gm-avail-row .nm,
+.group-modal .gm-sel-row .gm-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.group-modal .gm-sel-row .gm-idx { color:var(--text-mute); font-size:11px; width:18px; flex:none; }
+.group-modal .badge.dim { flex:none; font-size:8.5px; letter-spacing:0.5px; }
+.group-modal .icon-btn.gm-mini { width:26px; height:26px; flex:none; }
+.group-modal .icon-btn.gm-mini .ico { width:13px; height:13px; }
+</style>
+
+<dialog class="hv-dialog group-modal" id="new-group-modal" style="max-width:780px; width:96vw;">
+    <div class="hv-dialog-head">
+        {{ icon('group', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">New Task Group</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">bundle tasks to queue them in one click</div>
         </div>
-    {% endfor %}
-    {% for task_group in task_groups %}
-        <!-- DeleteModal -->
-        <div class="modal fade" id="deleteModal{{task_group.id}}" tabindex="-1" aria-labelledby="deleteModal{{task_group.id}}Label" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header d-flex align-items-center">
-                <h5 class="modal-title" id="deleteModal{{task_group.id}}Label">Delete: {{task_group.name}} ?</h5>
-                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                </div>
-                <div class="modal-body">
-                This will permanantly delete the task_group. Note, the associtated tasks will not be removed, only the group. Are you sure you want to continue?
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
-                <!-- Replace with url_for()
-                <form action="#" method="POST">
-                -->
-                <form action="/task_groups/delete/{{task_group.id}}" method="POST">
-                    <input class="btn btn-danger" type="submit" value="Delete">
-                </form>
-                </div>
-            </div>
-            </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('task_groups.task_groups_add') }}">
+        {{ task_group_form.hidden_tag() }}
+        <input type="hidden" name="task_ids" id="ng-task-ids" value="">
+        {{ gm_inner('ng', 'Create group', tasks) }}
+    </form>
+</dialog>
+
+<dialog class="hv-dialog group-modal" id="edit-group-modal" style="max-width:780px; width:96vw;">
+    <div class="hv-dialog-head">
+        {{ icon('group', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Edit Task Group</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">rename the group and change its assigned tasks</div>
         </div>
-    {% endfor %}
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('task_groups.task_groups_edit') }}">
+        {{ task_group_form.hidden_tag() }}
+        <input type="hidden" name="group_id" id="eg-group-id" value="">
+        <input type="hidden" name="task_ids" id="eg-task-ids" value="">
+        {{ gm_inner('eg', 'Save changes', tasks) }}
+    </form>
+</dialog>
+
+<script>
+(function () {
+    var ICON = {
+        up:   {{ icon('arrowUp', size=13)|string|tojson }},
+        down: {{ icon('arrowDown', size=13)|string|tojson }},
+        rm:   {{ icon('x', size=13)|string|tojson }}
+    };
+    var registry = {};
+    function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+    function make(p) {
+        var meta = {};
+        document.querySelectorAll('#' + p + '-available .gm-avail-row').forEach(function (row) {
+            meta[row.getAttribute('data-tid')] = { name: row.getAttribute('data-tfull'), type: row.getAttribute('data-ttype') };
+        });
+        var selected = [];
+        function render() {
+            var box = document.getElementById(p + '-selected');
+            var empty = document.getElementById(p + '-selected-empty');
+            box.innerHTML = '';
+            selected.forEach(function (id, i) {
+                var m = meta[id] || { name: id, type: '' };
+                var row = document.createElement('div');
+                row.className = 'gm-sel-row';
+                row.innerHTML =
+                    '<span class="mono gm-idx">' + String(i + 1).padStart(2, '0') + '</span>'
+                    + '<span class="gm-name">' + esc(m.name) + '</span>'
+                    + '<span class="badge dim">' + esc(m.type) + '</span>'
+                    + '<button type="button" class="icon-btn gm-mini" title="Move up" onclick="hvGmMove(\'' + p + '\',\'' + id + '\',-1)">' + ICON.up + '</button>'
+                    + '<button type="button" class="icon-btn gm-mini" title="Move down" onclick="hvGmMove(\'' + p + '\',\'' + id + '\',1)">' + ICON.down + '</button>'
+                    + '<button type="button" class="icon-btn gm-mini act-del" title="Remove" onclick="hvGmRemove(\'' + p + '\',\'' + id + '\')">' + ICON.rm + '</button>';
+                box.appendChild(row);
+            });
+            var has = selected.length > 0;
+            empty.style.display = has ? 'none' : '';
+            box.style.display = has ? 'flex' : 'none';
+            document.getElementById(p + '-task-ids').value = selected.join(',');
+            document.getElementById(p + '-count').textContent = selected.length;
+            document.getElementById(p + '-count2').textContent = selected.length;
+            document.querySelectorAll('#' + p + '-available .gm-avail-row').forEach(function (r) {
+                var added = selected.indexOf(r.getAttribute('data-tid')) !== -1;
+                r.classList.toggle('added', added);
+                var b = r.querySelector('button'); if (b) b.disabled = added;
+            });
+        }
+        return {
+            add: function (id) { id = String(id); if (selected.indexOf(id) === -1) { selected.push(id); render(); } },
+            remove: function (id) { id = String(id); var i = selected.indexOf(id); if (i !== -1) { selected.splice(i, 1); render(); } },
+            move: function (id, dir) { id = String(id); var i = selected.indexOf(id); if (i === -1) return; var j = i + dir; if (j < 0 || j >= selected.length) return; var t = selected[i]; selected[i] = selected[j]; selected[j] = t; render(); },
+            filter: function (q) {
+                q = (q || '').trim().toLowerCase(); var shown = 0;
+                document.querySelectorAll('#' + p + '-available .gm-avail-row').forEach(function (r) {
+                    var hit = !q || (r.getAttribute('data-tname') || '').indexOf(q) !== -1;
+                    r.style.display = hit ? '' : 'none'; if (hit) shown++;
+                });
+                var nm = document.getElementById(p + '-no-match'); if (nm) nm.style.display = shown === 0 ? '' : 'none';
+            },
+            reset: function (ids) {
+                selected = (ids || []).map(String);
+                var f = document.getElementById(p + '-filter'); if (f) f.value = '';
+                this.filter('');
+                render();
+            }
+        };
+    }
+    ['ng', 'eg'].forEach(function (p) { if (document.getElementById(p + '-available')) registry[p] = make(p); });
+    window.hvGmAdd    = function (p, id) { if (registry[p]) registry[p].add(id); };
+    window.hvGmRemove = function (p, id) { if (registry[p]) registry[p].remove(id); };
+    window.hvGmMove   = function (p, id, d) { if (registry[p]) registry[p].move(id, d); };
+    window.hvGmFilter = function (p, q) { if (registry[p]) registry[p].filter(q); };
+    window.hvEditGroup = function (id, name, ids) {
+        var gid = document.getElementById('eg-group-id'); if (gid) gid.value = id;
+        var nm = document.getElementById('eg-name'); if (nm) nm.value = name;
+        if (registry['eg']) registry['eg'].reset(ids);
+        document.getElementById('edit-group-modal').showModal();
+    };
+})();
+</script>
+
+{# ---- per-task-group delete modals (native <dialog>, no framework) ---- #}
+{% for task_group in task_groups %}
+<dialog class="hv-dialog" id="del-{{ task_group.id }}">
+    <div class="hv-dialog-head"><h3>Delete {{ task_group.name }}?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">This will permanently delete the task group. Note, the associated tasks will not be removed, only the group. Are you sure you want to continue?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="/task_groups/delete/{{ task_group.id }}" method="POST" style="display:inline;">
+            <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
 {% endblock content %}

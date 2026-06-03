@@ -26,7 +26,7 @@ def _add_static_wordlist(page, live_server, name: str) -> None:
     expect(page.get_by_role("heading", name=re.compile(r"Add Wordlist"))).to_be_visible()
     page.locator("input[name='name']").fill(name)
     page.set_input_files("input[name='wordlist']", str(EXAMPLE_WORDLIST))
-    page.get_by_role("button", name=re.compile(r"upload", re.I)).click()
+    page.get_by_role("button", name="upload", exact=True).click()
     expect(page).to_have_url(re.compile(r".*/wordlists/?$"))
 
 
@@ -35,11 +35,10 @@ def _delete_wordlist(page, live_server, name: str) -> None:
     row = _row_with_text(page, name)
     if row.count() == 0:
         return
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/wordlists/delete/'] input[type='submit'], "
-                  "form[action*='/wordlists/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/wordlists/delete/'] [type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/wordlists/?$"))
 
 
@@ -48,11 +47,10 @@ def _delete_task(page, live_server, name: str) -> None:
     row = _row_with_text(page, name)
     if row.count() == 0:
         return
-    row.locator("button[data-bs-target^='#deleteModal']").click()
-    modal = page.locator(".modal.show")
+    row.locator("button.act-del").click()
+    modal = page.locator("dialog.hv-dialog[open]")
     expect(modal).to_be_visible()
-    modal.locator("form[action*='/tasks/delete/'] input[type='submit'], "
-                  "form[action*='/tasks/delete/'] button[type='submit']").first.click()
+    modal.locator("form[action*='/tasks/delete/'] button[type='submit']").first.click()
     expect(page).to_have_url(re.compile(r".*/tasks/?$"))
 
 

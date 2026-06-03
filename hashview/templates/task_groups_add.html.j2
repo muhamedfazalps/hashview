@@ -1,47 +1,33 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "macros.html.j2" import icon, phos_field %}
+{% block title %}Create Task Group · Hashview{% endblock %}
 {% block content %}
-<article class="media content-section">
-    <div class="media-body">
-        <div class="card">
-            <h4 class="card-header">
-                Create a new Task Group
-                <i class="fa fa-question-circle fa-sm" data-toggle="tooltip" title="Enter the name of the task group." style="margin-left:5px;"></i>
-            </h4>
-            <div class="card-body "> 
-                <div class="content-section">
-                    <form method="POST" action="" enctype="multipart/form-data">
-                        {{ taskGroupsForm.hidden_tag() }}
-                        <fieldset class="form-group">
-                        <div class="form-group">
-                                {{ taskGroupsForm.name.label(class="form-control-label") }}
 
-                                {% if taskGroupsForm.name.errors %}
-                                    {{ taskGroupsForm.name(class="form-control form-control-lg is-invalid") }}
-                                    <div class="invalid-feedback">
-                                        {% for error in taskGroupsForm.name.errors %}
-                                            <span>{{ error }}</span>
-                                        {% endfor %}
-                                    </div>
-                                {% else %}
-                                    {{ taskGroupsForm.name(class="form-control form-control-lg") }}
-                                {% endif %}
-                        </div> 
-                        </fieldset>
-                        <br>
-                        <div class="form-group">
-                            {{ taskGroupsForm.submit(class="btn btn-outline-info pull-right")}}
-                        </div>
-                    </form>
-                </div>
-            </div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Create Task Group</h1>
+        <div class="page-sub">// enter the name of the task group</div>
+    </div>
+</div>
+
+<form method="POST" action="" enctype="multipart/form-data">
+    {{ task_group_form.hidden_tag() }}
+
+    <div class="card">
+        <div class="card-head">
+            <h3>New Task Group</h3>
+            <span class="field-hint" style="margin-top:0;">Enter the name of the task group.</span>
+        </div>
+        <div class="card-body">
+            {{ phos_field(task_group_form.name) }}
         </div>
     </div>
-</article>
+
+    <div class="wizard-nav">
+        <a class="btn" href="{{ url_for('task_groups.task_groups_list') }}" role="button">{{ icon('arrowLeft', size=15) }} Cancel</a>
+        <span class="spacer"></span>
+        {{ task_group_form.submit(class="btn btn-primary") }}
+    </div>
+</form>
+
 {% endblock content %}

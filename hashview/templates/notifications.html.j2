@@ -1,118 +1,141 @@
 {% extends "layout.html.j2" %}
-{% block header %}
-<br>
-<br>
-<br>
-<br>
-<br>
-{% endblock header %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Notifications · Hashview{% endblock %}
 {% block content %}
-    <article class="media content-section">
-        <div class="media-body">
-            <div class="card">
-                <h4 class="card-header">Job Notifications</h4>
-                <div class="card-body">
-                    <table class="table">
-                        <thead>
-                        <tr>
-                            <th scope="col">Job Name</th>
-                            <th scope="col">Hash File</th>
-                            <th scope="col">Method</th>
-                            <th scope="col">Control</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                            {% for job_notification in job_notifications %}
-                                <tr>
-                                    <td>
-                                        {% for job in jobs %}
-                                            {% if job.id == job_notification.job_id %}
-                                                {{job.name}}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td>
-                                        {% for job in jobs %}
-                                            {% if job.id == job_notification.job_id %}
-                                                {% for hashfile in hashfiles %}
-                                                    {% if hashfile.id == job.hashfile_id %}
-                                                        {{hashfile.name}}
-                                                    {% endif %}
-                                                {% endfor %}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </td>
-                                    <td>{{ job_notification.method }}</td>
-                                    <td>
-                                        <button type="button" class="fa fa-trash btn btn-danger" data-toggle="modal" data-target="#deleteJobNotificationModal{{job_notification.id}}" title=Delete></button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <br>
-            <div class="card">
-                <h4 class="card-header">Hash Notifications</h4>
-            <div class="card-body">
-                <table class="table">
-                    <thead>
-                    <tr>
-                        <th scope="col">Hash</th>
-                        <th scope="col">Hashtype</th>
-                        <th scope="col">Method</th>
-                        <th scope="col">Control</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for hash_notification in hash_notifications %}
-                            <tr>
-                                <td>
-                                    {% for hash in hashes %}
-                                        {% if hash_notification.hash_id == hash.id %}
-                                            {{ hash.ciphertext }} 
-                                            </td>
-                                            <td>
-                                            {{ hash.hash_type }}
-                                        {% endif %}
-                                    {% endfor %}
-                                </td>
-                                <td>
-                                    {{hash_notification.method}}
-                                </td>
-                                <td>
-                                    <a class="fa fa-trash btn btn-danger" href="/notifications/delete/hash/{{hash_notification.id}}" role="button", title=Delete></a>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </article>
-    {% for job_notification in job_notifications %}
-    <!-- DeleteJobNotificationModal -->
-    <div class="modal fade" id="deleteJobNotificationModal{{job_notification.id}}" tabindex="-1" aria-labelledby="deleteJobNotificationModal{{job_notification.id}}Label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteJobNotificationModal{{job_notification.id}}Label">Delete: {{job_notification.name}} ?</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>   
-            <div class="modal-body">
-                Are you sure you want to delete the notification for this job?
-            </div>
-            <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Back</button>
-            <form action="{{ url_for('notifications.notifications_job_delete', notification_id=job_notification.id) }}" method="GET">
-                <input class="btn btn-danger" type="submit" value="Delete">
-            </form>
-            </div>
-        </div>
-        </div>
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Notifications</h1>
+        <div class="page-sub">// job &amp; recovered-hash alert subscriptions</div>
     </div>
-    {% endfor %}
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h3>Job Notifications</h3>
+        <span class="field-hint" style="margin-top:0;">Alerts triggered when a subscribed job changes state.</span>
+    </div>
+    {% if job_notifications %}
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:28%;"><col style="width:24%;"><col style="width:14%;"><col style="width:18%;"><col style="width:16%;"></colgroup>
+        <thead>
+            <tr>
+                <th>Job Name</th>
+                <th>Hash File</th>
+                <th></th>
+                <th>Method</th>
+                <th class="center">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job_notification in job_notifications %}
+            <tr>
+                <td style="font-weight:500;">
+                    {% for job in jobs %}
+                        {% if job.id == job_notification.job_id %}
+                            {{job.name}}
+                        {% endif %}
+                    {% endfor %}
+                </td>
+                <td style="color:var(--text-dim);">
+                    {% for job in jobs %}
+                        {% if job.id == job_notification.job_id %}
+                            {% for hashfile in hashfiles %}
+                                {% if hashfile.id == job.hashfile_id %}
+                                    {{hashfile.name}}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    {% endfor %}
+                </td>
+                <td></td>
+                <td style="color:var(--text-dim);">{{ job_notification.method }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-job-{{ job_notification.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim);">No job notifications found.</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card" style="margin-top:var(--gap);">
+    <div class="card-head">
+        <h3>Hash Notifications</h3>
+        <span class="field-hint" style="margin-top:0;">Alerts triggered when a subscribed hash is recovered.</span>
+    </div>
+    {% if hash_notifications %}
+    <table class="tbl" style="table-layout:fixed;">
+        <colgroup><col style="width:28%;"><col style="width:24%;"><col style="width:14%;"><col style="width:18%;"><col style="width:16%;"></colgroup>
+        <thead>
+            <tr>
+                <th>Hash</th>
+                <th></th>
+                <th>Hashtype</th>
+                <th>Method</th>
+                <th class="center">Control</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for hash_notification in hash_notifications %}
+            <tr>
+                {% for hash in hashes %}
+                    {% if hash_notification.hash_id == hash.id %}
+                        <td class="mono" style="color:var(--text-dim); word-break:break-all;">{{ hash.ciphertext }}</td>
+                        <td></td>
+                        <td class="num">{{ hash.hash_type }}</td>
+                    {% endif %}
+                {% endfor %}
+                <td style="color:var(--text-dim);">{{ hash_notification.method }}</td>
+                <td class="center">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-hash-{{ hash_notification.id }}').showModal()">{{ icon('trash', size=15) }}</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim);">No hash notifications found.</div>
+    </div>
+    {% endif %}
+</div>
+
+{# ---- per-job-notification delete modals (native <dialog>, no framework) ---- #}
+{% for job_notification in job_notifications %}
+<dialog class="hv-dialog" id="del-job-{{ job_notification.id }}">
+    <div class="hv-dialog-head"><h3>Delete: {{ job_notification.name }} ?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">Are you sure you want to delete the notification for this job?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('notifications.notifications_job_delete', notification_id=job_notification.id) }}" method="GET" style="display:inline;">
+            <input class="btn btn-danger" type="submit" value="Delete">
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
+{# ---- per-hash-notification delete modals (native <dialog>, no framework) ---- #}
+{% for hash_notification in hash_notifications %}
+<dialog class="hv-dialog" id="del-hash-{{ hash_notification.id }}">
+    <div class="hv-dialog-head"><h3>Delete notification ?</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
+    <div class="hv-dialog-body">Are you sure you want to delete the notification for this recovered hash?</div>
+    <div class="hv-dialog-foot">
+        <button class="btn" onclick="this.closest('dialog').close()">Back</button>
+        <form action="{{ url_for('notifications.notifications_hash_delete', notification_id=hash_notification.id) }}" method="GET" style="display:inline;">
+            <input class="btn btn-danger" type="submit" value="Delete">
+        </form>
+    </div>
+</dialog>
+{% endfor %}
+
 {% endblock content %}
