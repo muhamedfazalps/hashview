@@ -1,11 +1,17 @@
 """Flask routes to handle Settings"""
 import os
-from flask import Blueprint, render_template, abort, url_for, flash, request, redirect
+import re
+from datetime import datetime
+from flask import Blueprint, render_template, abort, url_for, flash, request, redirect, jsonify, send_from_directory, current_app
 from flask_login import login_required, current_user
 import hashview
-from hashview.settings.forms import HashviewSettingsForm
+from hashview.settings.forms import HashviewSettingsForm, DatabaseBackupForm
 from hashview.models import Settings
 from hashview.models import db
+from hashview.utils.backup import create_encrypted_db_backup, purge_stale_backups, BackupError
+
+# control/tmp filename of a generated backup, e.g. '1a2b3c4d5e6f7a8b.sql.gz.enc'
+_BACKUP_TOKEN_RE = re.compile(r'^[0-9a-f]{16}\.sql\.gz\.enc$')
 
 
 settings = Blueprint('settings', __name__)
@@ -73,12 +79,81 @@ def settings_list():
             title               = 'settings',
             settings            = settings,
             HashviewForm        = hashview_form,
+            backupForm          = DatabaseBackupForm(),
             tmp_folder_size     = tmp_folder_size,
             application_version = hashview.__version__,
             database_version    = database_version,
         )
 
     abort(403)
+
+
+@settings.route("/settings/backup", methods=['POST'])
+@login_required
+def settings_backup():
+    """Generate an encrypted, gzip-compressed mysqldump of the whole database.
+
+    Returns JSON with the one-time decryption password, a one-time download
+    URL, the ciphertext sha256, and decrypt instructions. The password is only
+    ever placed in this response body — never logged.
+    """
+    if not current_user.admin:
+        abort(403)
+    form = DatabaseBackupForm()
+    if not form.validate_on_submit():
+        return jsonify({'status': 'error', 'msg': 'Invalid or expired session token. Reload the page and try again.'}), 400
+
+    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
+    purge_stale_backups(tmp_dir)        # reap any previous undownloaded backups
+    try:
+        enc_path, password, sha256 = create_encrypted_db_backup(
+            current_app.config['SQLALCHEMY_DATABASE_URI'], tmp_dir)
+    except BackupError as exc:
+        return jsonify({'status': 'error', 'msg': str(exc)}), 500
+    except Exception:
+        current_app.logger.exception('Database backup failed.')   # never logs the password
+        return jsonify({'status': 'error', 'msg': 'Backup failed — check the server logs.'}), 500
+
+    token = os.path.basename(enc_path)
+    download_name = 'hashview-backup-' + datetime.utcnow().strftime('%Y%m%d-%H%M%S') + '.sql.gz.enc'
+    instructions = [
+        "Decrypt (you'll be prompted for the one-time password above):",
+        "    openssl enc -d -aes-256-cbc -pbkdf2 -in " + download_name + " -out backup.sql.gz",
+        "Decompress:",
+        "    gunzip backup.sql.gz",
+        "Restore (optional):",
+        "    mysql -u <user> -p hashview < backup.sql",
+        "Requires OpenSSL 1.1.1+ (the -pbkdf2 flag is mandatory on decrypt).",
+    ]
+    return jsonify({
+        'status': 'ok',
+        'password': password,
+        'download_url': url_for('settings.settings_backup_download', token=token),
+        'download_name': download_name,
+        'sha256': sha256,
+        'instructions': instructions,
+    })
+
+
+@settings.route("/settings/backup/download/<token>", methods=['GET'])
+@login_required
+def settings_backup_download(token):
+    """Stream a previously generated encrypted backup as an attachment."""
+    if not current_user.admin:
+        abort(403)
+    if not _BACKUP_TOKEN_RE.match(token):
+        abort(404)
+    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
+    if not os.path.exists(os.path.join(tmp_dir, token)):
+        abort(404)
+    # Friendly, dated name derived from the file's own mtime (the token is opaque).
+    try:
+        stamp = datetime.utcfromtimestamp(os.path.getmtime(os.path.join(tmp_dir, token)))
+        download_name = 'hashview-backup-' + stamp.strftime('%Y%m%d-%H%M%S') + '.sql.gz.enc'
+    except OSError:
+        download_name = 'hashview-backup.sql.gz.enc'
+    return send_from_directory(tmp_dir, token, as_attachment=True,
+                               download_name=download_name, mimetype='application/octet-stream')
 
 @settings.route('/settings/clear_temp')
 @login_required

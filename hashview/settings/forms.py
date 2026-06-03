@@ -30,3 +30,9 @@ class HashviewSettingsForm(FlaskForm):
             raise ValidationError('Range must be between 0 and 65535.')
         if max_runtime_tasks < 0 or max_runtime_tasks > 65535:
             raise ValidationError('Range must be between 0 and 65535.')
+
+
+class DatabaseBackupForm(FlaskForm):
+    """CSRF-only form backing the (fetch-driven) database backup action."""
+
+    submit = SubmitField('Back up database')

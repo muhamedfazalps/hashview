@@ -46,6 +46,7 @@
                 <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ rule.last_updated }}</td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
+                        <a class="icon-btn" href="{{ url_for('rules.rules_download', rule_id=rule.id) }}" title="Download">{{ icon('download', size=15) }}</a>
                         <a class="icon-btn" href="{{ url_for('rules.rules_view', rule_id=rule.id) }}" title="View/Edit">{{ icon('edit', size=15) }}</a>
                         <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ rule.id }}').showModal()">{{ icon('info', size=15) }}</button>
                         <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ rule.id }}').showModal()">{{ icon('trash', size=15) }}</button>
