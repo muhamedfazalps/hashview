@@ -119,6 +119,17 @@ def setup_defaults_if_needed():
         logger.exception('Adding Default Static Wordlist failed.')
 
     try:
+        # Compress any pre-existing uncompressed static wordlists (including the
+        # default Rockyou.txt seeded just above) and backfill byte_size. Runs
+        # after defaults exist; idempotent and per-row resilient.
+        from hashview.setup import compress_existing_wordlists_if_needed
+        logger.info('Compressing existing wordlists if needed.')
+        compress_existing_wordlists_if_needed(db)
+        logger.info('Compressing existing wordlists is complete.')
+    except Exception:
+        logger.exception('Compressing existing wordlists failed.')
+
+    try:
         from hashview.setup import add_default_rules
         from hashview.setup import default_rules_need_added
         if default_rules_need_added(db):

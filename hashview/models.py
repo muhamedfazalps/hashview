@@ -199,7 +199,8 @@ class Wordlists(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     type = db.Column(db.String(7))                          # Dynamic or Static
     path = db.Column(db.String(245), nullable=False)
-    size = db.Column(db.BigInteger, nullable=False)
+    size = db.Column(db.BigInteger, nullable=False)         # line count
+    byte_size = db.Column(db.BigInteger, nullable=True)     # on-disk bytes of the file at `path` (compressed for static)
     checksum = db.Column(db.String(64), nullable=False)
 
 class Tasks(db.Model):

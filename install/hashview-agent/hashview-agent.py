@@ -229,11 +229,54 @@ def sync_rules():
     else:
         print('Rules manifest unchanged.')
 
+def _gz_name(basename):
+    """Mirror of the server's utils.ensure_gz: ensure a trailing '.gz'.
+
+    Wordlists are stored compressed on the server; the file the server serves
+    is gzip. We keep it compressed locally (hashcat reads gzip directly), so a
+    static '<hex>' path becomes '<hex>.gz' and a dynamic '<hex>.txt' path
+    becomes '<hex>.txt.gz' — matching the path build_hashcat_command emits.
+    """
+    return basename if basename.endswith('.gz') else basename + '.gz'
+
+
+def _sha256_file(path):
+    sha256 = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(4096), b''):
+            sha256.update(block)
+    return sha256.hexdigest()
+
+
 def sync_wordlists():
     """
     Synchronise local wordlist files with the server using JSON manifests.
+
+    Wordlists are stored compressed (gzip) on the server and kept compressed
+    here — hashcat reads gzip wordlists directly, so we DO NOT decompress them.
+
+      - static  wordlists: the downloaded .gz is verified against the server
+        checksum (which is the sha256 of the compressed file) and dropped on
+        mismatch.
+      - dynamic wordlists: regenerated server-side and compressed per request,
+        so the .gz bytes are non-deterministic and can't be verified against
+        the server's plaintext checksum; we trust the server checksum purely as
+        a version marker (it only changes when the dynamic list is regenerated
+        via /v1/updateWordlist), which keeps this loop-free.
     """
     print('Syncing local wordlists with server.')
+
+    # Transition guard: older agents stored decompressed wordlists under their
+    # plain (non-.gz) filename. If any manifest entry is from that era, reset
+    # the manifest so everything is re-downloaded once as .gz. The orphaned
+    # plaintext files are harmless (build_hashcat_command now references .gz).
+    if any(not e.get('filename', '').endswith('.gz') for e in wordlists_manifest.data.values()):
+        print('Detected pre-gzip wordlist manifest; resetting for one-time re-download.')
+        wordlists_manifest.data = {}
+
+    os.makedirs('control/wordlists', exist_ok=True)
+    os.makedirs('control/tmp', exist_ok=True)
+
     response = api.getWordlists()
     server_entries = json.loads(response)
     new_manifest = {}
@@ -241,70 +284,45 @@ def sync_wordlists():
     for entry in server_entries:
         wl_id = str(entry['id'])
         remote_checksum = entry['checksum']
-        filename = entry['path'].split('/')[-1]
+        wl_type = entry.get('type')
+        dest_filename = _gz_name(entry['path'].split('/')[-1])
 
         local_entry = wordlists_manifest.data.get(wl_id)
+        if local_entry and local_entry.get('checksum') == remote_checksum:
+            # Up to date; keep as-is.
+            new_manifest[wl_id] = local_entry
+            continue
 
-        if local_entry:
-            print(f"Found existing wordlist {wl_id} in local manifest.")
-            # Existing entry – verify checksum
-            if local_entry['checksum'] != remote_checksum:
-                print('Checksum mismatch for wordlist', wl_id)
-                old_path = os.path.join('control/wordlists', local_entry['filename'])
-                if os.path.exists(old_path):
-                    os.remove(old_path)
+        print('Downloading wordlist', wl_id)
+        compressed = api.get_wordlists_file(entry['id'])
+        if not compressed:
+            print('No data received for wordlist', wl_id, '- skipping.')
+            continue
 
-                # Download and verify new file
-                random_hex = secrets.token_hex(8)
-                compressed = api.get_wordlists_file(entry['id'])
-                tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
-                with open(tmp_gz, 'wb') as f:
-                    f.write(compressed)
+        tmp_gz = os.path.join('control/tmp', secrets.token_hex(8) + '.gz')
+        with open(tmp_gz, 'wb') as f:
+            f.write(compressed)
 
-                run_command(f'gunzip {tmp_gz}')
-                tmp_file = os.path.join('control/tmp', random_hex)
+        # Static wordlists are served verbatim (stable bytes) so we can verify
+        # the compressed file against the server checksum. Dynamic ones are
+        # compressed on the fly server-side, so skip verification.
+        if wl_type == 'static':
+            local_checksum = _sha256_file(tmp_gz)
+            if local_checksum != remote_checksum:
+                print('Checksum verification failed for wordlist', wl_id,
+                      '(local:', local_checksum, 'remote:', remote_checksum, ')')
+                os.remove(tmp_gz)
+                continue
 
-                sha256 = hashlib.sha256()
-                with open(tmp_file, 'rb') as f:
-                    for block in iter(lambda: f.read(4096), b''):
-                        sha256.update(block)
-                local_checksum = sha256.hexdigest()
-                print('Local:', local_checksum, 'Remote:', remote_checksum)
+        # Remove any previous file for this entry, then move the new .gz in.
+        if local_entry and local_entry.get('filename'):
+            old_path = os.path.join('control/wordlists', local_entry['filename'])
+            if os.path.exists(old_path):
+                os.remove(old_path)
 
-                if local_checksum == remote_checksum:
-                    dest = os.path.join('control/wordlists', filename)
-                    run_command(f'mv {tmp_file} {dest}')
-                    new_manifest[wl_id] = {'checksum': local_checksum, 'filename': filename}
-                else:
-                    print('Checksum verification failed for wordlist', wl_id)
-                    os.remove(tmp_file)
-            else:
-                new_manifest[wl_id] = local_entry
-        else:
-            # New wordlist – download
-            print('Downloading new wordlist', wl_id)
-            random_hex = secrets.token_hex(8)
-            compressed = api.get_wordlists_file(entry['id'])
-            tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
-            with open(tmp_gz, 'wb') as f:
-                f.write(compressed)
-
-            run_command(f'gunzip {tmp_gz}')
-            tmp_file = os.path.join('control/tmp', random_hex)
-
-            sha256 = hashlib.sha256()
-            with open(tmp_file, 'rb') as f:
-                for block in iter(lambda: f.read(4096), b''):
-                    sha256.update(block)
-            local_checksum = sha256.hexdigest()
-
-            if local_checksum == remote_checksum:
-                dest = os.path.join('control/wordlists', filename)
-                run_command(f'mv {tmp_file} {dest}')
-                new_manifest[wl_id] = {'checksum': local_checksum, 'filename': filename}
-            else:
-                print('Checksum verification failed for new wordlist', wl_id)
-                os.remove(tmp_file)
+        dest = os.path.join('control/wordlists', dest_filename)
+        os.replace(tmp_gz, dest)
+        new_manifest[wl_id] = {'checksum': remote_checksum, 'filename': dest_filename}
 
     if new_manifest != wordlists_manifest.data:
         wordlists_manifest.data = new_manifest

@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from pathlib import Path
 
@@ -12,6 +13,9 @@ from hashview.models import Settings
 from hashview.models import Wordlists
 from hashview.utils.utils import get_filehash
 from hashview.utils.utils import get_linecount
+from hashview.utils.utils import get_filesize
+from hashview.utils.utils import is_gzip
+from hashview.utils.utils import compress_to_gz
 
 
 DEFAULT_PASSWORD = 'hashview'
@@ -91,6 +95,75 @@ def add_default_static_wordlist(db :SQLAlchemy):
     )
     db.session.add(wordlist)
     db.session.commit()
+
+
+def compress_existing_wordlists_if_needed(db :SQLAlchemy):
+    """One-time-per-row migration to compressed-at-rest wordlist storage.
+
+    Wordlists are now stored gzip-compressed (gzip -9). Installs that predate
+    this change have uncompressed static wordlists on disk; this brings them
+    in line on startup:
+
+      - static + not gzip  -> compress to '<hex>.gz', set checksum = sha256 of
+        the COMPRESSED file (the contract the agent verifies), recompute the
+        line count with the SAME semantics as before (no drift), record
+        byte_size, commit, THEN delete the old plaintext (write->commit->delete
+        is crash-safe). The default Rockyou.txt seeded just before this runs is
+        compressed by this same pass.
+      - static + already gzip -> idempotent skip; only backfill byte_size if NULL.
+      - dynamic -> never compressed (kept uncompressed on the server); only
+        backfill byte_size if NULL.
+
+    Idempotent (the gzip magic-byte check makes re-runs no-ops) and resilient:
+    each row is handled in its own try/except with a per-row commit, a missing
+    file is logged and skipped (never deletes the DB row), and any failure is
+    contained so it can never abort startup.
+    """
+    from flask import current_app
+    logger = current_app.logger
+
+    for wordlist in db.session.query(Wordlists).all():
+        try:
+            path = wordlist.path
+            if not path or not os.path.exists(path):
+                logger.warning('Wordlist %s file missing (%s); skipping compression.', wordlist.id, path)
+                continue
+
+            if wordlist.type == 'dynamic':
+                # Dynamic wordlists stay uncompressed; just backfill byte_size.
+                if wordlist.byte_size is None:
+                    wordlist.byte_size = get_filesize(path)
+                    db.session.commit()
+                continue
+
+            # static
+            if is_gzip(path):
+                # Already compressed (new uploads, or a prior run). No-op aside
+                # from backfilling byte_size if it was never recorded.
+                if wordlist.byte_size is None:
+                    wordlist.byte_size = get_filesize(path)
+                    db.session.commit()
+                continue
+
+            # static + uncompressed: compress in place (new file in same dir).
+            line_count = get_linecount(path)
+            new_gz = os.path.join(os.path.dirname(path), secrets.token_hex(8) + '.gz')
+            compress_to_gz(path, new_gz, 9)
+
+            # write -> commit -> delete: only remove the old plaintext after the
+            # new path/checksum are durably committed.
+            wordlist.path = new_gz
+            wordlist.size = line_count
+            wordlist.checksum = get_filehash(new_gz)     # sha256 of the .gz
+            wordlist.byte_size = get_filesize(new_gz)
+            db.session.commit()
+
+            if os.path.exists(path):
+                os.remove(path)
+            logger.info('Compressed static wordlist %s -> %s', wordlist.id, new_gz)
+        except Exception:
+            db.session.rollback()
+            logger.exception('Failed to compress wordlist %s; leaving it untouched.', getattr(wordlist, 'id', '?'))
 
 
 # The four canonical dynamic wordlists. Order matters only for the seed-file

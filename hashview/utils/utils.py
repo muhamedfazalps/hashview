@@ -1,5 +1,6 @@
 """Flask routes to handle utils"""
 import os
+import gzip
 import secrets
 import hashlib
 import re
@@ -45,6 +46,118 @@ def get_filehash(filepath):
         for byte_block in iter(lambda: f.read(4096),b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+# ----------------------------------------------------------------------------
+# Wordlist gzip storage helpers
+#
+# Wordlists are stored compressed (gzip -9) at rest. These helpers centralise
+# the compression / validation / line-counting so the UI upload, the API
+# upload, the download endpoint, and the launch-time migration all behave
+# identically. Everything streams in 1 MB chunks so multi-GB wordlists never
+# load fully into memory.
+# ----------------------------------------------------------------------------
+
+_GZIP_MAGIC = b'\x1f\x8b'
+_CHUNK = 1024 * 1024
+
+
+def is_gzip(filepath):
+    """Return True if the file begins with the gzip magic bytes."""
+    with open(filepath, 'rb') as f:
+        return f.read(2) == _GZIP_MAGIC
+
+
+def get_filesize(filepath):
+    """Return the on-disk size of a file in bytes."""
+    return os.path.getsize(filepath)
+
+
+def ensure_gz(basename):
+    """Return basename with a trailing '.gz' (idempotent).
+
+    Shared filename rule between the server (build_hashcat_command) and the
+    agent so the compressed-at-rest file is referenced by the same name on
+    both sides. Static paths become '<hex>.gz'; dynamic paths (stored as
+    '<hex>.txt' on the server) become '<hex>.txt.gz' for the agent.
+    """
+    return basename if basename.endswith('.gz') else basename + '.gz'
+
+
+def compress_to_gz(src_path, dst_path, level=9):
+    """Stream-compress src_path into a gzip file at dst_path (no shell)."""
+    with open(src_path, 'rb') as src, gzip.open(dst_path, 'wb', compresslevel=level) as dst:
+        for chunk in iter(lambda: src.read(_CHUNK), b''):
+            dst.write(chunk)
+
+
+def decompress_gz(src_path, dst_path):
+    """Stream-decompress a gzip file at src_path into dst_path.
+
+    Raises (gzip.BadGzipFile / OSError) on a malformed gzip stream, which
+    doubles as validation for uploaded .gz files.
+    """
+    with gzip.open(src_path, 'rb') as src, open(dst_path, 'wb') as dst:
+        for chunk in iter(lambda: src.read(_CHUNK), b''):
+            dst.write(chunk)
+
+
+def gz_linecount(filepath):
+    """Return the line count of a gzipped text file.
+
+    Streams the decompressed content (the "zcat | wc -l" equivalent) and uses
+    the SAME semantics as get_linecount (count of '\\n' + 1) so a wordlist's
+    reported line count is identical whether it arrived as plain text or gzip.
+    Raises on a malformed gzip stream (validation).
+    """
+    with gzip.open(filepath, 'rb') as f:
+        count = sum(buffer.count(b'\n') for buffer in iter(lambda: f.read(_CHUNK), b''))
+    return count + 1
+
+
+def ingest_static_wordlist_file(src_path, owner_id, name):
+    """Ingest an uploaded wordlist (plain text OR gzip) into compressed storage.
+
+    Produces a compressed-at-rest static wordlist:
+      - line count (`size`) computed with get_linecount semantics,
+      - `checksum` = sha256 of the COMPRESSED .gz that gets stored,
+      - the stored file is gzip -9 at control/wordlists/<hex>.gz,
+      - `byte_size` = on-disk bytes of that .gz.
+
+    For an already-gzipped upload we decompress it (validating the gzip),
+    count lines from the plaintext, then RE-compress with -9 to guarantee
+    maximum compression (the user may have uploaded a weakly-compressed .gz).
+
+    Returns an unsaved Wordlists row (caller does db.session.add/commit).
+    Raises on an invalid gzip upload; always cleans up its own temp files.
+    """
+    wordlists_dir = os.path.join(current_app.root_path, 'control/wordlists')
+    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
+    final_gz = os.path.join(wordlists_dir, secrets.token_hex(8) + '.gz')
+
+    if is_gzip(src_path):
+        # Decompress to a temp file so we can hash the plaintext-equivalent and
+        # re-compress at -9. gz_linecount also validates the gzip stream.
+        tmp_plain = os.path.join(tmp_dir, secrets.token_hex(8))
+        try:
+            decompress_gz(src_path, tmp_plain)      # raises on bad gzip
+            size = get_linecount(tmp_plain)
+            compress_to_gz(tmp_plain, final_gz, 9)
+        finally:
+            if os.path.exists(tmp_plain):
+                os.remove(tmp_plain)
+    else:
+        size = get_linecount(src_path)
+        compress_to_gz(src_path, final_gz, 9)
+
+    return Wordlists(
+        name=name,
+        owner_id=owner_id,
+        type='static',
+        path=final_gz,
+        checksum=get_filehash(final_gz),     # checksum of the COMPRESSED file
+        size=size,
+        byte_size=get_filesize(final_gz),
+    )
 
 def notify_admins(subject, message):
     users = Users.query.filter_by(admin=True).all()
@@ -259,8 +372,13 @@ def update_dynamic_wordlist(wordlist_id):
 
     # update line count
     wordlist.size = get_linecount(wordlist.path)
-    # update file hash
+    # update file hash (dynamic wordlists stay UNCOMPRESSED on the server, so
+    # the checksum remains the sha256 of the plaintext .txt; the agent skips
+    # verification for dynamic wordlists since it can't recompute this from
+    # the .gz it receives)
     wordlist.checksum = get_filehash(wordlist.path)
+    # update on-disk size (bytes of the uncompressed .txt)
+    wordlist.byte_size = get_filesize(wordlist.path)
     # update last update
     wordlist.last_updated = datetime.today()
     db.session.commit()
@@ -288,15 +406,19 @@ def build_hashcat_command(job_id, task_id):
 
     target_file = 'control/hashes/hashfile_' + str(job.id) + '_' + str(task.id) + '.txt'
     crack_file = 'control/outfiles/hc_cracked_' + str(job.id) + '_' + str(task.id) + '.txt'
+    # Wordlists are stored compressed at rest; the agent keeps them compressed
+    # and hashcat reads gzip directly. ensure_gz() applies the same '.gz' name
+    # rule the agent uses, so the path emitted here matches the file on disk on
+    # the agent: static -> '<hex>.gz', dynamic -> '<hex>.txt.gz'.
     if wordlist:
-        relative_wordlist_path = 'control/wordlists/' + wordlist.path.split('/')[-1]
+        relative_wordlist_path = 'control/wordlists/' + ensure_gz(wordlist.path.split('/')[-1])
     else:
         relative_wordlist_path = ''
-    
+
     if attackmode == 1:
         wordlist_2 = Wordlists.query.get(task.wl_id_2)
         if wordlist_2:
-            relative_wordlist_2_path = 'control/wordlists/' + wordlist.path.split('/')[-1]
+            relative_wordlist_2_path = 'control/wordlists/' + ensure_gz(wordlist.path.split('/')[-1])
         else:
             relative_wordlist_2_path = ''
 
