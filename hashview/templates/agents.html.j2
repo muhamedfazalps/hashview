@@ -16,15 +16,15 @@
 {# ---------- agent fleet summary cards ---------- #}
 <div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: var(--gap);">
     <div class="kpi">
-        <div class="kpi-label">{{ icon('power', size=13) }} Agents Online</div>
+        <div class="kpi-label">{{ icon('power', size=16) }} Agents Online</div>
         <div class="kpi-value"><span style="color:var(--primary); text-shadow:var(--glow-text);">{{ agent_stats.up if agent_stats is defined else 0 }}</span><span style="font-size:18px; color:var(--text-dim);">/{{ agent_stats.total if agent_stats is defined else 0 }}</span></div>
     </div>
     <div class="kpi">
-        <div class="kpi-label">{{ icon('zap', size=13) }} Aggregate Rate</div>
+        <div class="kpi-label">{{ icon('zap', size=16) }} Aggregate Rate</div>
         <div class="kpi-value">{{ agent_stats.speed if agent_stats is defined else '0 H/s' }}</div>
     </div>
     <div class="kpi">
-        <div class="kpi-label">{{ icon('cpu', size=13) }} GPUs Active</div>
+        <div class="kpi-label">{{ icon('cpu', size=16) }} GPUs Active</div>
         <div class="kpi-value">—</div>
         <div class="kpi-foot mono">telemetry pending</div>
     </div>
@@ -63,7 +63,10 @@
                 </td>
                 <td class="mono" style="color:var(--text-dim);">{{ agent.src_ip }}</td>
                 <td class="num">{{ agent.benchmark }}</td>
-                <td class="mono" style="color:var(--text-dim);">{{ agent.last_checkin }}</td>
+                <td class="mono" style="color:var(--text-dim);">
+                    {%- set hb = agent_age.get(agent.id) if agent_age is defined else none -%}
+                    {% if hb %}<span title="{{ agent.last_checkin }}">{{ hb }}</span>{% else %}<span style="color:var(--text-mute);">never</span>{% endif %}
+                </td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
                         {% if agent.status == 'Pending' %}
