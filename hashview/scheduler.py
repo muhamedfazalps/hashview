@@ -155,6 +155,10 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
     # Clean temp folder of files older than RETENTION PERIOD
     tmp_directory = Path('hashview/control/tmp').resolve()
     retention_limit = time.time() - retention_period * 86400
+    # Encrypted one-time DB backups are single-use and contain the whole
+    # database; reap them within an hour regardless of the (day-granular)
+    # retention period so an un-downloaded backup never lingers.
+    backup_limit = time.time() - 3600
     for child in tmp_directory.iterdir():
         if '.gitignore' == child.name:
             logger.debug(
@@ -163,7 +167,8 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
             )
             continue
 
-        if child.stat().st_mtime < retention_limit:
+        limit = backup_limit if child.name.endswith('.sql.gz.enc') else retention_limit
+        if child.stat().st_mtime < limit:
             child.unlink()
             logger.debug(
                 'DataRetentionCleanup.TempFile Progressing with StepResult(Removed: %s).',

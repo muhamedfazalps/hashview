@@ -2,6 +2,10 @@
 {% from "macros.html.j2" import icon, status_badge %}
 {% block title %}Hash Files · Hashview{% endblock %}
 {% block content %}
+<style>
+.hv-dl-opt { transition: border-color .15s, background .15s; }
+.hv-dl-opt:hover { border-color: var(--primary-dim); background: rgba(var(--primary-rgb), 0.06); }
+</style>
 
 <div class="page-head">
     <div>
@@ -74,7 +78,7 @@
                 <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ hashfile.uploaded_at }}</td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
-                        <a class="icon-btn" href="/analytics/download?type=found&customer_id={{hashfile.customer_id}}&hashfile_id={{hashfile.id}}" title="Download">{{ icon('download', size=15) }}</a>
+                        <button type="button" class="icon-btn" title="Download" onclick="document.getElementById('dl-{{ hashfile.id }}').showModal()">{{ icon('download', size=15) }}</button>
                         <a class="icon-btn" href="/analytics?customer_id={{hashfile.customer_id}}&hashfile_id={{hashfile.id}}" title="Analytics">{{ icon('chart', size=15) }}</a>
                         <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ hashfile.id }}').showModal()">{{ icon('info', size=15) }}</button>
                         <button type="button" class="icon-btn act-del" style="color:var(--red); border-color:var(--red-dim);" title="Delete" onclick="document.getElementById('del-{{ hashfile.id }}').showModal()">{{ icon('trash', size=15) }}</button>
@@ -159,6 +163,39 @@ function hvFilterHashfiles(q){
     <div class="hv-dialog-foot">
         {% set completed = hfjobs | selectattr('status', 'equalto', 'Completed') | list | length %}
         <span class="mono" style="font-size:11.5px; color:var(--text-mute); margin-right:auto;">{{ completed }} completed · {{ hfjobs|length }} total</span>
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+    </div>
+</dialog>
+
+<dialog class="hv-dialog" id="dl-{{ hashfile.id }}" style="max-width:540px; width:94vw;">
+    <div class="hv-dialog-head">
+        {{ icon('download', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Download {{ hashfile.name }}</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">choose an export format</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+    </div>
+    <div class="hv-dialog-body" style="display:flex; flex-direction:column; gap:10px;">
+        {% set st = hashfile_stats.get(hashfile.id) if hashfile_stats is defined else none %}
+        <a class="card hv-dl-opt" href="{{ url_for('hashfiles.hashfiles_download', hashfile_id=hashfile.id, fmt='hashes') }}" onclick="this.closest('dialog').close()" style="display:block; padding:12px 14px; text-decoration:none;">
+            <div style="color:var(--text); font-weight:500;">{{ icon('hash', size=14) }} Hashes only</div>
+            <div class="field-hint" style="margin-top:3px;">Every hash, no plaintext — feed straight back into hashcat.</div>
+        </a>
+        <a class="card hv-dl-opt" href="{{ url_for('hashfiles.hashfiles_download', hashfile_id=hashfile.id, fmt='all') }}" onclick="this.closest('dialog').close()" style="display:block; padding:12px 14px; text-decoration:none;">
+            <div style="color:var(--text); font-weight:500;">{{ icon('list', size=14) }} All hashes (uncracked + cracked&hairsp;:&hairsp;plain)</div>
+            <div class="field-hint" style="margin-top:3px;">Uncracked shown as the hash; cracked shown as <span class="mono">hash:plain</span>.</div>
+        </a>
+        <a class="card hv-dl-opt" href="{{ url_for('hashfiles.hashfiles_download', hashfile_id=hashfile.id, fmt='cracked') }}" onclick="this.closest('dialog').close()" style="display:block; padding:12px 14px; text-decoration:none;">
+            <div style="color:var(--text); font-weight:500;">{{ icon('key', size=14) }} Cracked hashes with plaintext</div>
+            <div class="field-hint" style="margin-top:3px;">Only recovered hashes, as <span class="mono">hash:plain</span>{% if st %} · {{ "{:,}".format(st.cracked) }} cracked{% endif %}.</div>
+        </a>
+        <a class="card hv-dl-opt" href="{{ url_for('hashfiles.hashfiles_download', hashfile_id=hashfile.id, fmt='plains') }}" onclick="this.closest('dialog').close()" style="display:block; padding:12px 14px; text-decoration:none;">
+            <div style="color:var(--text); font-weight:500;">{{ icon('key', size=14) }} Plaintext only</div>
+            <div class="field-hint" style="margin-top:3px;">Just the recovered passwords, one per line.</div>
+        </a>
+    </div>
+    <div class="hv-dialog-foot">
         <button class="btn" onclick="this.closest('dialog').close()">Close</button>
     </div>
 </dialog>

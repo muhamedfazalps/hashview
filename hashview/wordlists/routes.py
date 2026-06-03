@@ -1,8 +1,9 @@
 """Flask routes to handle Wordlists"""
 import os
 import secrets
-from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, jsonify, send_from_directory, abort
 from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
 from hashview.wordlists.forms import WordlistsForm
 from hashview.models import Tasks, Wordlists, Users, Rules, JobTasks, Hashes
 from hashview.models import db
@@ -168,6 +169,24 @@ def wordlists_delete(wordlist_id):
     else:
         flash('Unauthorized Action!', 'danger')
     return redirect(url_for('wordlists.wordlists_list'))
+
+
+@wordlists.route("/wordlists/download/<int:wordlist_id>", methods=['GET'])
+@login_required
+def wordlists_download(wordlist_id):
+    """Deliver a wordlist's contents. Static wordlists are stored compressed and
+    served as-is (.gz); dynamic wordlists are stored uncompressed (.txt)."""
+    wordlist = Wordlists.query.get_or_404(wordlist_id)
+    if not wordlist.path or not os.path.exists(wordlist.path):
+        flash('Wordlist file not found on disk.', 'danger')
+        return redirect(url_for('wordlists.wordlists_list'))
+
+    directory = os.path.dirname(os.path.abspath(wordlist.path))
+    filename = os.path.basename(wordlist.path)
+    ext = '.gz' if wordlist.path.endswith('.gz') else '.txt'
+    download_name = (secure_filename(wordlist.name) or 'wordlist') + ext
+    return send_from_directory(directory, filename, as_attachment=True,
+                               download_name=download_name)
 
 
 @wordlists.route("/wordlists/update/<int:wordlist_id>", methods=['GET'])

@@ -1,6 +1,7 @@
 import os
-from flask import Blueprint, render_template, flash, url_for, redirect, current_app, request
+from flask import Blueprint, render_template, flash, url_for, redirect, current_app, request, send_from_directory, abort
 from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
 from hashview.models import Rules, Tasks, Jobs, JobTasks, Users, Wordlists, Hashes
 from hashview.rules.forms import RulesForm
 from hashview.utils.utils import save_file, get_linecount, get_filehash
@@ -132,6 +133,24 @@ def rules_view(rule_id):
 
     return render_template('rules_edit.html.j2', rule=rule, content=content, can_edit=can_edit)
  
+
+@rules.route("/rules/download/<int:rule_id>", methods=['GET'])
+@login_required
+def rules_download(rule_id):
+    """Deliver a rule file's contents."""
+    rule = Rules.query.get_or_404(rule_id)
+    if not rule.path or not os.path.exists(rule.path):
+        flash('Rule file not found on disk.', 'danger')
+        return redirect(url_for('rules.rules_list'))
+
+    directory = os.path.dirname(os.path.abspath(rule.path))
+    filename = os.path.basename(rule.path)
+    download_name = secure_filename(rule.name) or 'rules'
+    if not download_name.endswith('.rule'):
+        download_name += '.rule'
+    return send_from_directory(directory, filename, as_attachment=True,
+                               download_name=download_name)
+
 
 @rules.route("/rules/delete/<int:rule_id>", methods=['GET', 'POST'])
 @login_required

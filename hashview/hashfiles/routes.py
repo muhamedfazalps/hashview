@@ -1,6 +1,8 @@
 """Flask routes to handle Hashfiles"""
-from flask import Blueprint, render_template, url_for, redirect, flash
+import io
+from flask import Blueprint, render_template, url_for, redirect, flash, send_file, abort
 from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
 from sqlalchemy.sql import exists
 from hashview.models import Hashfiles, Customers, Jobs, HashfileHashes, HashNotifications, Hashes, Users, JobTasks
 from hashview.models import db
@@ -10,6 +12,20 @@ from sqlalchemy import func, case
 from sqlalchemy.sql import exists
 
 hashfiles = Blueprint('hashfiles', __name__)
+
+
+def _decode_hex(value):
+    """Decode a hex-stored plaintext/username to its latin-1 string."""
+    if not value:
+        return ''
+    try:
+        return bytes.fromhex(value).decode('latin-1')
+    except (ValueError, TypeError):
+        return value
+
+
+# Download/export formats offered by the hashfile download modal.
+HASHFILE_EXPORT_FORMATS = ('hashes', 'all', 'cracked', 'plains')
 
 @hashfiles.route("/hashfiles", methods=['GET', 'POST'])
 @login_required
@@ -149,3 +165,41 @@ def hashfiles_delete(hashfile_id):
     else:
         flash('Error in deleting hashfile', 'danger')
         return redirect(url_for('hashfiles.hashfiles_list'))
+
+
+@hashfiles.route("/hashfiles/download/<int:hashfile_id>/<fmt>", methods=['GET'])
+@login_required
+def hashfiles_download(hashfile_id, fmt):
+    """Export a hashfile's hashes in one of four formats:
+
+      - hashes : every hash (ciphertext only)
+      - all    : uncracked -> hash, cracked -> hash:plain
+      - cracked: cracked only, as hash:plain
+      - plains : cracked only, plaintext only
+    """
+    if fmt not in HASHFILE_EXPORT_FORMATS:
+        abort(404)
+    hashfile = Hashfiles.query.get_or_404(hashfile_id)
+
+    rows = db.session.query(Hashes).join(
+        HashfileHashes, Hashes.id == HashfileHashes.hash_id
+    ).filter(HashfileHashes.hashfile_id == hashfile_id).all()
+
+    lines = []
+    for h in rows:
+        cracked = bool(h.cracked)
+        if fmt == 'hashes':
+            lines.append(h.ciphertext)
+        elif fmt == 'all':
+            lines.append(h.ciphertext + ':' + _decode_hex(h.plaintext) if cracked else h.ciphertext)
+        elif fmt == 'cracked' and cracked:
+            lines.append(h.ciphertext + ':' + _decode_hex(h.plaintext))
+        elif fmt == 'plains' and cracked:
+            lines.append(_decode_hex(h.plaintext))
+
+    body = ('\n'.join(lines) + '\n') if lines else ''
+    buf = io.BytesIO(body.encode('latin-1', errors='replace'))
+    buf.seek(0)
+    safe = secure_filename(hashfile.name) or 'hashfile'
+    return send_file(buf, mimetype='text/plain', as_attachment=True,
+                     download_name=f"{safe}_{fmt}.txt")
