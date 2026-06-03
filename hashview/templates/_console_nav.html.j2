@@ -45,7 +45,7 @@
   {% if current_user.admin %}
     <div class="nav-group">
       <div class="nav-group-label">admin</div>
-      {{ nav_item('customers.customers_list', 'users', 'Customers', none) }}
+      {{ nav_item('customers.customers_list', 'briefcase', 'Customers', 'customers') }}
       {{ nav_item('agents.agents_list', 'cpu', 'Agents', 'agents') }}
       {{ nav_item('users.users_list', 'users', 'Users', 'users') }}
       {{ nav_item('settings.settings_list', 'settings', 'Settings', none) }}

@@ -1,0 +1,86 @@
+{# Customer info modal body — rendered on demand by customers.customers_info and injected
+   into the shared #customer-info-modal dialog. #}
+{% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import status_badge %}
+<div class="hv-dialog-head">
+    {{ icon('info', size=16) }}
+    <div style="line-height:1.2;">
+        <h3 style="margin:0;">{{ customer.name }}</h3>
+        <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">customer details</div>
+    </div>
+    <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+</div>
+<div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+    {# identity strip #}
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">
+        <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ icon('briefcase', size=20) }}</span>
+        <div style="line-height:1.3; min-width:0;">
+            <div style="font-weight:600; color:var(--text); font-size:15px;">{{ customer.name }}</div>
+            <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:3px;">customer details</div>
+        </div>
+        <span style="margin-left:auto; text-align:right; line-height:1;">
+            <span class="mono" style="font-size:22px; color:var(--primary); text-shadow:var(--glow-text);">{{ pct }}<span style="font-size:12px;">%</span></span>
+            <span class="mono" style="display:block; font-size:9px; letter-spacing:1px; color:var(--text-mute); margin-top:3px;">CRACK RATE</span>
+        </span>
+    </div>
+
+    {# KPI cards — Jobs, Hashfiles, Hashes, Recovered #}
+    <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:10px;">
+        {% for stat in [
+            {'n': cust_jobs|length,      'ico': 'jobs', 'lbl': 'JOBS',      'fmt': false},
+            {'n': cust_hashfiles|length, 'ico': 'file', 'lbl': 'HASHFILES', 'fmt': false},
+            {'n': total_hashes,          'ico': 'hash', 'lbl': 'HASHES',    'fmt': true},
+            {'n': total_cracked,         'ico': 'key',  'lbl': 'RECOVERED', 'fmt': true}
+        ] %}
+        <div style="text-align:center; padding:14px 6px; border:1px solid var(--border-soft); border-radius:10px; background:var(--surface-2); min-width:0;">
+            <div style="color:var(--text-mute); display:flex; justify-content:center;">{{ icon(stat.ico, size=16) }}</div>
+            <div class="mono" style="font-size:20px; color:var(--text); margin-top:6px;">{{ "{:,}".format(stat.n) if stat.fmt else stat.n }}</div>
+            <div class="mono" style="font-size:8.5px; letter-spacing:1px; color:var(--text-mute); margin-top:2px;">{{ stat.lbl }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# Jobs #}
+    <div style="margin-top:22px;">
+        <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('jobs', size=14) }} Jobs · {{ cust_jobs|length }}</div>
+        {% if cust_jobs %}
+        {% for job in cust_jobs %}
+        {% set js = hf_stats.get(job.hashfile_id) %}
+        <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
+            <span class="mono" style="color:var(--text-mute); font-size:11px; flex:none;">#{{ job.id }}</span>
+            <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ job.name }}">{{ job.name }}</span>
+            <span style="margin-left:auto; display:inline-flex; align-items:center; gap:12px; flex:none;">
+                <span class="mono num" style="color:var(--text-mute); font-size:11px;">{% if js %}{{ "{:,}".format(js.cracked) }}/{{ "{:,}".format(js.total) }}{% else %}—{% endif %}</span>
+                {{ status_badge(job.status) }}
+            </span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="mono" style="color:var(--text-mute);">No jobs for this customer.</div>
+        {% endif %}
+    </div>
+
+    {# Hashfiles #}
+    <div style="margin-top:18px;">
+        <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('file', size=14) }} Hashfiles · {{ cust_hashfiles|length }}</div>
+        {% if cust_hashfiles %}
+        {% for hf in cust_hashfiles %}
+        {% set hs = hf_stats.get(hf.id) %}
+        <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
+            <span style="color:var(--text-mute); display:inline-flex;">{{ icon('file', size=15) }}</span>
+            <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ hf.name }}">{{ hf.name }}</span>
+            <span style="margin-left:auto; display:inline-flex; align-items:center; gap:12px; flex:none;">
+                <span class="mono num" style="color:var(--text-mute); font-size:11px;">{% if hs %}{{ "{:,}".format(hs.cracked) }}/{{ "{:,}".format(hs.total) }}{% endif %}</span>
+                {% if hs %}<span class="badge cyan">{{ hs.type }}</span>{% endif %}
+            </span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="mono" style="color:var(--text-mute);">No hashfiles for this customer.</div>
+        {% endif %}
+    </div>
+</div>
+<div class="hv-dialog-foot">
+    <a class="btn" href="/analytics?customer_id={{ customer.id }}" role="button" style="margin-right:auto;">{{ icon('chart', size=15) }} Analytics</a>
+    <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+</div>

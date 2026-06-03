@@ -7,8 +7,9 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Customers</h1>
-        <div class="page-sub">// jobs, passwords &amp; hashes are scoped to a single customer</div>
+        <div class="page-sub">// {{ customers|length }} customer{{ '' if customers|length == 1 else 's' }} · jobs, passwords &amp; hashes are scoped to a customer</div>
     </div>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('add-customer-modal').showModal()">{{ icon('plus', size=15) }} Add customer</button>
 </div>
 
 <div class="card">
@@ -16,18 +17,41 @@
     <table class="tbl customers-tbl">
         <thead>
             <tr>
-                <th>Name</th>
-                <th class="center" style="width:160px;">Control</th>
+                <th>Customer</th>
+                <th class="center">Jobs</th>
+                <th class="center">Hashfiles</th>
+                <th class="center">Recovered</th>
+                <th class="center" style="width:140px;">Controls</th>
             </tr>
         </thead>
         <tbody>
             {% for customer in customers %}
+            {% set st = customer_stats.get(customer.id) if customer_stats is defined else none %}
             <tr>
-                <td style="font-weight:500;">{{ customer.name }}</td>
+                <td style="font-weight:500;">
+                    <span style="display:inline-flex; align-items:center; gap:9px;">
+                        <span style="color:var(--text-mute); display:inline-flex;">{{ icon('briefcase', size=16) }}</span>
+                        {{ customer.name }}
+                    </span>
+                </td>
+                <td class="center num">{{ st.jobs if st else 0 }}</td>
+                <td class="center num">{{ st.hashfiles if st else 0 }}</td>
+                <td class="center">
+                    {% if st and st.total %}
+                    <div class="mono num" style="font-size:12.5px;">
+                        <span style="color:{{ 'var(--primary)' if st.cracked else 'var(--text-mute)' }};{% if st.cracked %}text-shadow:var(--glow-text);{% endif %}">{{ st.pct }}%</span>
+                    </div>
+                    <div style="height:3px; width:72px; margin:5px auto 0; border-radius:2px; background:var(--surface-3); overflow:hidden;">
+                        <div style="height:100%; width:{{ st.pct }}%; background:linear-gradient(90deg,var(--primary-deep),var(--primary)); box-shadow:var(--glow-sm);"></div>
+                    </div>
+                    {% else %}
+                    <span style="color:var(--text-mute);">—</span>
+                    {% endif %}
+                </td>
                 <td class="center">
                     <div style="display:flex; gap:4px; justify-content:center;">
-                        <button type="button" class="icon-btn" title="Info" onclick="document.getElementById('info-{{ customer.id }}').showModal()">{{ icon('info', size=15) }}</button>
-                        <a class="icon-btn" href="/analytics?customer_id={{ customer.id }}" role="button" title="Analytics">{{ icon('chart', size=15) }}</a>
+                        <button type="button" class="icon-btn" title="Info" onclick="hvCustomerInfo({{ customer.id }})">{{ icon('info', size=15) }}</button>
+                        <button type="button" class="icon-btn" title="Edit" onclick='hvEditCustomer({{ customer.id }}, {{ customer.name|tojson }})'>{{ icon('edit', size=15) }}</button>
                         <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ customer.id }}').showModal()">{{ icon('trash', size=15) }}</button>
                     </div>
                 </td>
@@ -37,38 +61,85 @@
     </table>
     {% else %}
     <div class="card-body" style="text-align:center; padding:48px 24px;">
-        <div class="mono" style="color:var(--text-dim);">No customers found.</div>
+        <div class="mono" style="color:var(--text-dim); margin-bottom:14px;">No customers found.</div>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('add-customer-modal').showModal()">{{ icon('plus', size=15) }} Add a Customer</button>
     </div>
     {% endif %}
 </div>
 
-{# ---- per-customer info modals (native <dialog>, no framework) ---- #}
-{% for customer in customers %}
-<dialog class="hv-dialog" id="info-{{ customer.id }}">
-    <div class="hv-dialog-head"><h3>Info: {{ customer.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
-    <div class="hv-dialog-body">
-        <dl class="kv">
-            <dt>Associated Jobs</dt>
-            <dd>
-                {% for job in jobs %}
-                    {% if job.customer_id == customer.id %}
-                        {{ job.name }}<br>
-                    {% endif %}
-                {% endfor %}
-            </dd>
-            <dt>Associated Hashfiles</dt>
-            <dd>
-                {% for hashfile in hashfiles %}
-                    {% if hashfile.customer_id == customer.id %}
-                        {{ hashfile.name }}<br>
-                    {% endif %}
-                {% endfor %}
-            </dd>
-        </dl>
-    </div>
-    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+{# ---- customer info modal (one shared dialog; body loaded on demand) ---- #}
+<dialog class="hv-dialog" id="customer-info-modal" style="max-width:760px; width:96vw;">
+    <div id="ci-content"></div>
 </dialog>
-{% endfor %}
+<script>
+function hvCustomerInfo(id) {
+    var modal = document.getElementById('customer-info-modal');
+    var content = document.getElementById('ci-content');
+    content.innerHTML = '<div class="hv-dialog-body mono" style="padding:40px; text-align:center; color:var(--text-mute);">Loading…</div>';
+    if (typeof modal.showModal === 'function') { modal.showModal(); } else { modal.setAttribute('open', ''); }
+    fetch('/customers/' + id + '/info', { headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.text(); })
+        .then(function (html) { content.innerHTML = html; })
+        .catch(function () { content.innerHTML = '<div class="hv-dialog-body mono" style="padding:24px; color:var(--red);">Failed to load customer details.</div><div class="hv-dialog-foot"><button class="btn" onclick="this.closest(\'dialog\').close()">Close</button></div>'; });
+}
+</script>
+
+{# ---- add / edit customer modals ---- #}
+<dialog class="hv-dialog" id="add-customer-modal" style="max-width:480px; width:92vw;">
+    <div class="hv-dialog-head">
+        {{ icon('briefcase', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Add Customer</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">new engagement client</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('customers.customers_add') }}">
+        {{ customersForm.hidden_tag() }}
+        <div class="hv-dialog-body">
+            <div class="field" style="margin-bottom:0;">
+                <label class="field-label" for="cu-name">Customer name <span class="req">*</span></label>
+                <input class="input" type="text" name="name" id="cu-name" placeholder="e.g. Acme Corp" autocomplete="off" required>
+            </div>
+        </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('plus', size=15) }} Add customer</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="hv-dialog" id="edit-customer-modal" style="max-width:480px; width:92vw;">
+    <div class="hv-dialog-head">
+        {{ icon('briefcase', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Edit Customer</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">rename this customer</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+    </div>
+    <form method="POST" action="{{ url_for('customers.customers_edit') }}" id="ec-form">
+        {{ customersForm.hidden_tag() }}
+        <input type="hidden" name="customer_id" id="ec-id" value="">
+        <div class="hv-dialog-body">
+            <div class="field" style="margin-bottom:0;">
+                <label class="field-label" for="ec-name">Customer name <span class="req">*</span></label>
+                <input class="input" type="text" name="name" id="ec-name" autocomplete="off" required>
+            </div>
+        </div>
+        <div class="hv-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Save changes</button>
+        </div>
+    </form>
+</dialog>
+<script>
+function hvEditCustomer(id, name) {
+    document.getElementById('ec-id').value = id;
+    document.getElementById('ec-name').value = name || '';
+    document.getElementById('edit-customer-modal').showModal();
+}
+</script>
 
 {# ---- per-customer delete modals ---- #}
 {% for customer in customers %}

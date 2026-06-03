@@ -1,9 +1,27 @@
 """Flask routes to handle Customers"""
-from flask import Blueprint, render_template, redirect, url_for, flash
+from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
+from sqlalchemy import func, case
 from hashview.models import Customers, Jobs, Hashfiles, HashfileHashes, Hashes, HashNotifications
 from hashview.customers.forms import CustomersForm
+from hashview.jobs.forms import JobsNewHashFileForm
 from hashview.models import db
+
+
+def _hash_type_names():
+    """Reverse-map hashcat modes -> friendly names from the new-hashfile form choices."""
+    names = {}
+    try:
+        f = JobsNewHashFileForm()
+        for sel in (f.hash_type, f.pwdump_hash_type, f.netntlm_hash_type,
+                    f.kerberos_hash_type, f.shadow_hash_type):
+            for v, lab in sel.choices:
+                if v is not None and str(v) and str(v) not in names:
+                    nm = lab.split(') ', 1)[1] if ') ' in lab else lab
+                    names[str(v)] = nm.split(' / ')[0].split(',')[0].strip()
+    except Exception:  # pragma: no cover - defensive
+        names = {}
+    return names
 
 customers = Blueprint('customers', __name__)
 
@@ -18,7 +36,109 @@ def customers_list():
     customers = Customers.query.order_by(Customers.name).all()
     jobs = Jobs.query.all()
     hashfiles = Hashfiles.query.all()
-    return render_template('customers.html.j2', title='Customers', customers=customers, jobs=jobs, hashfiles=hashfiles)
+
+    # Per-customer counts + recovered % (cracked/total across the customer's hashfiles).
+    job_count = {}
+    for j in jobs:
+        job_count[j.customer_id] = job_count.get(j.customer_id, 0) + 1
+    hf_by_customer = {}
+    for hf in hashfiles:
+        hf_by_customer.setdefault(hf.customer_id, []).append(hf.id)
+
+    customer_stats = {}
+    for customer in customers:
+        hf_ids = hf_by_customer.get(customer.id, [])
+        total = cracked = 0
+        if hf_ids:
+            agg = db.session.query(
+                func.count(Hashes.id),
+                func.coalesce(func.sum(case((Hashes.cracked == True, 1), else_=0)), 0)
+            ).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+             .filter(HashfileHashes.hashfile_id.in_(hf_ids)).first()
+            total = agg[0] or 0
+            cracked = int(agg[1] or 0)
+        customer_stats[customer.id] = {
+            'jobs': job_count.get(customer.id, 0),
+            'hashfiles': len(hf_ids),
+            'total': total,
+            'cracked': cracked,
+            'pct': round(cracked / total * 100) if total else 0,
+        }
+
+    return render_template('customers.html.j2', title='Customers', customers=customers, jobs=jobs,
+                           hashfiles=hashfiles, customer_stats=customer_stats,
+                           customersForm=CustomersForm())
+
+@customers.route("/customers/add", methods=['POST'])
+@login_required
+def customers_add():
+    """Create a new customer (from the Add customer modal)."""
+    form = CustomersForm()
+    if form.validate_on_submit():
+        db.session.add(Customers(name=form.name.data))
+        db.session.commit()
+        flash(f'Customer {form.name.data} added!', 'success')
+    else:
+        msg = 'Could not add customer.'
+        for errs in form.errors.values():
+            if errs:
+                msg = errs[0]
+                break
+        flash(msg, 'danger')
+    return redirect(url_for('customers.customers_list'))
+
+@customers.route("/customers/edit", methods=['POST'])
+@login_required
+def customers_edit():
+    """Rename an existing customer (from the Edit customer modal)."""
+    customer = Customers.query.get_or_404(request.form.get('customer_id', type=int))
+    name = (request.form.get('name') or '').strip()
+    if not name:
+        flash('Customer name is required.', 'danger')
+        return redirect(url_for('customers.customers_list'))
+    clash = Customers.query.filter_by(name=name).first()
+    if clash and clash.id != customer.id:
+        flash('That customer already exists. Please choose a different one.', 'danger')
+        return redirect(url_for('customers.customers_list'))
+    customer.name = name
+    db.session.commit()
+    flash('Customer updated!', 'success')
+    return redirect(url_for('customers.customers_list'))
+
+@customers.route("/customers/<int:customer_id>/info", methods=['GET'])
+@login_required
+def customers_info(customer_id):
+    """Render the customer info modal body on demand (computed for one customer only, so
+    the customers list page doesn't pay the per-hashfile aggregation cost for everyone)."""
+    customer = Customers.query.get_or_404(customer_id)
+    cust_jobs = Jobs.query.filter_by(customer_id=customer_id).all()
+    cust_hashfiles = Hashfiles.query.filter_by(customer_id=customer_id).all()
+    hash_type_names = _hash_type_names()
+
+    hf_stats = {}
+    for hf in cust_hashfiles:
+        agg = db.session.query(
+            func.count(Hashes.id),
+            func.coalesce(func.sum(case((Hashes.cracked == True, 1), else_=0)), 0),
+            func.min(Hashes.hash_type)
+        ).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+         .filter(HashfileHashes.hashfile_id == hf.id).first()
+        total = agg[0] or 0
+        cracked = int(agg[1] or 0)
+        mode = agg[2]
+        hf_stats[hf.id] = {
+            'total': total,
+            'cracked': cracked,
+            'pct': round(cracked / total * 100) if total else 0,
+            'type': hash_type_names.get(str(mode), str(mode)) if mode is not None else '—',
+        }
+
+    total_hashes = sum(s['total'] for s in hf_stats.values())
+    total_cracked = sum(s['cracked'] for s in hf_stats.values())
+    pct = round(total_cracked / total_hashes * 100) if total_hashes else 0
+    return render_template('customers_info_modal.html.j2', customer=customer, cust_jobs=cust_jobs,
+                           cust_hashfiles=cust_hashfiles, hf_stats=hf_stats,
+                           total_hashes=total_hashes, total_cracked=total_cracked, pct=pct)
 
 @customers.route("/customers/delete/<int:customer_id>", methods=['POST'])
 @login_required

@@ -272,7 +272,7 @@ def create_app(testing=False, config_overrides=None):
             from datetime import datetime, timedelta
             from sqlalchemy import text
             from hashview.models import (db, Jobs, Agents, Tasks, TaskGroups,
-                                         Hashfiles, Wordlists, Rules, Users)
+                                         Hashfiles, Wordlists, Rules, Users, Customers)
 
             agents = Agents.query.all()
             # last_checkin is stamped with the database clock (api.update_heartbeat uses
@@ -334,6 +334,7 @@ def create_app(testing=False, config_overrides=None):
                     "wordlists": Wordlists.query.count(),
                     "rules": Rules.query.count(),
                     "users": Users.query.count(),
+                    "customers": Customers.query.count(),
                 },
                 "agent_stats": {
                     "up": up,
