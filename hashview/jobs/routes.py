@@ -272,7 +272,7 @@ def jobs_assigned_hashfile(job_id):
                 has_problem = validate_pwdump_hashfile(hashfile_path, jobs_new_hashfile_form.pwdump_hash_type.data)
                 hash_type = jobs_new_hashfile_form.pwdump_hash_type.data
             elif jobs_new_hashfile_form.file_type.data == 'NetNTLM':
-                has_problem = validate_netntlm_hashfile(hashfile_path)
+                has_problem = validate_netntlm_hashfile(hashfile_path, jobs_new_hashfile_form.netntlm_hash_type.data)
                 hash_type = jobs_new_hashfile_form.netntlm_hash_type.data
             elif jobs_new_hashfile_form.file_type.data == 'kerberos':
                 has_problem = validate_kerberos_hashfile(hashfile_path, jobs_new_hashfile_form.kerberos_hash_type.data)

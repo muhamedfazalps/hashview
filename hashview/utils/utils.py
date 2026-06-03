@@ -10,6 +10,7 @@ from datetime import datetime
 from flask import current_app, url_for
 from hashview.models import db
 from hashview.models import Rules, Wordlists, Hashfiles, HashfileHashes, Hashes, Tasks, Jobs, JobTasks, JobNotifications, Users, Agents, Customers, Settings
+from hashview.utils.hashcat_modes import HASH_ONLY_AUTO_RULES
 from flask_mail import Message
 
 
@@ -583,290 +584,360 @@ def update_job_task_status(jobtask_id, status):
 
     return True
 
+# ---------------------------------------------------------------------------
+# Hashfile validation
+#
+# Each validator returns an ERROR STRING when a line looks malformed, and
+# False when the whole file passes (callers treat any truthy return as "has a
+# problem"). Fixed formats/lengths come from hashcat --example-hashes for the
+# modes the upload form offers. Variable components (usernames, realms, salts,
+# client blobs) are intentionally left lenient — only the fixed-shape parts
+# (hex lengths, field separators, magic prefixes) are enforced, so legitimate
+# hashes are never rejected while typos/truncation/wrong-format are caught.
+# ---------------------------------------------------------------------------
+
+# Per-line length guard (garbage/DoS protection, not a correctness check). Big
+# enough for the longest legitimate single-line hash hashcat emits — LUKS v1
+# keyslot hashes ($luks$) reach ~513 KB.
+_MAX_LINE_LEN = 1_048_576
+_HEX_ONLY_RE = re.compile(r'^[0-9a-fA-F]+$')
+
+
+def _is_hex(value, length=None):
+    """True if value is non-empty hex (optionally of an exact length)."""
+    if not value:
+        return False
+    if length is not None and len(value) != length:
+        return False
+    return _HEX_ONLY_RE.match(value) is not None
+
+
+def _validate_hashfile(hashfile_path, line_validator):
+    """Stream a hashfile and run line_validator(line, line_no) on each non-blank
+    line; return the first error string, or False if every line passes.
+
+    Centralises shared robustness: safe decoding (latin-1 never raises on
+    binary/garbage uploads), streaming (no whole-file load into memory),
+    blank/whitespace-only line skipping, the per-line length cap, and an
+    empty-file check.
+    """
+    count = 0
+    try:
+        # utf-8-sig transparently drops a leading BOM (common from Windows
+        # editors) so the first hash isn't rejected; errors='replace' keeps the
+        # "never raises on binary/garbage" guarantee.
+        with open(hashfile_path, 'r', encoding='utf-8-sig', errors='replace') as handle:
+            for line_no, raw in enumerate(handle, start=1):
+                if len(raw) > _MAX_LINE_LEN:
+                    return ('Error line ' + str(line_no) + ' is too long ('
+                            + str(len(raw)) + ' chars). Max length is '
+                            + str(_MAX_LINE_LEN) + ' chars.')
+                line = raw.strip()
+                if not line:
+                    continue                          # skip blank / whitespace-only lines
+                count += 1
+                problem = line_validator(line, line_no)
+                if problem:
+                    return problem
+    except OSError as exc:
+        return 'Error: unable to read the hashfile (' + str(exc) + ').'
+    if count == 0:
+        return 'Error: the hashfile contains no hashes.'
+    return False
+
+
 def validate_pwdump_hashfile(hashfile_path, hash_type):
-    """Function to validate if hashfile submitted is a pwdump format"""
+    """Validate a pwdump-format hashfile (username:rid:LM:NT:::, NTLM only)."""
+    if str(hash_type) != '1000':
+        return 'Sorry. The only Hash Type we support for PWDump files is NTLM (1000).'
 
-    file = open(hashfile_path, 'r')
-    lines = file.readlines()
-    line_number = 0
+    def check(line, line_no):
+        fields = line.split(':')
+        if len(fields) < 7:
+            return ('Error line ' + str(line_no) + ' does not appear to be in pwdump '
+                    'format (expected username:rid:LM:NT:::).')
+        if not fields[0]:
+            return 'Error line ' + str(line_no) + ' has an empty username.'
+        lm_hash, nt_hash = fields[2], fields[3]
+        if not _is_hex(nt_hash, 32):
+            return ('Error line ' + str(line_no) + ': the NTLM hash (4th field) must be '
+                    '32 hex characters.')
+        if lm_hash and not _is_hex(lm_hash, 32):
+            return ('Error line ' + str(line_no) + ': the LM hash (3rd field) must be '
+                    'empty or 32 hex characters.')
+        return None
 
-    for line in lines:
-        line_number += 1
+    return _validate_hashfile(hashfile_path, check)
 
-        # Skip entries that are just newlines
-        if len(line) > 50000:
-            return 'Error line ' + str(line_number) + ' is too long. Line length: ' + str(len(line)) + '. Max length is 50,000 chars.'
-        if len(line) > 0:
-            if ':' not in line:
-                return 'Error line ' + str(line_number) + ' is missing a : character. Pwdump file should include usernames.'
-            # This is slow af :(
-            colon_cnt = 0
-            for char in line:
-                if char == ':':
-                    colon_cnt += 1
-            if colon_cnt < 6:
-                return 'Error line ' + str(line_number) + '. File does not appear to be be in a pwdump format.'
-            if hash_type == '1000':
-                if len(line.split(':')[3]) != 32:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 32'
-            else:
-                return 'Sorry. The only Hash Type we support for PWDump files is NTLM'
-    return False
+_NETNTLM_V1_TYPES = {'5500', '27000'}
+_NETNTLM_V2_TYPES = {'5600', '27100'}
 
-def validate_netntlm_hashfile(hashfile_path):
-    """Function to validate if hashfile submitted is a netntlm format"""
 
-    file = open(hashfile_path, 'r')
-    lines = file.readlines()
-    line_number = 0
+def _is_netntlmv1(fields):
+    # user::domain:LMresp(48 hex):NTresp(48 hex):challenge(16 hex)
+    return _is_hex(fields[3], 48) and _is_hex(fields[4], 48) and _is_hex(fields[5], 16)
 
-    # Do a whole file check if file_type is NetNTLM
-    # If duplicate usernames exists return error
-    # we could probably wrap this into the for loop below
 
-    list_of_username_and_computers = []
-    for line in lines:
-        username_computer = (line.split(':')[0] + ':' + line.split(':')[2]).lower()
-        if username_computer in list_of_username_and_computers:
-            return 'Error: Duplicate usernames / computer found in hashfiles (' + str(username_computer) + '). Please only submit unique usernames / computer.'
-        list_of_username_and_computers.append(username_computer)
+def _is_netntlmv2(fields):
+    # user::domain:srvchallenge(16 hex):HMAC-MD5(32 hex):blob(variable even-length hex)
+    return (_is_hex(fields[3], 16) and _is_hex(fields[4], 32)
+            and _is_hex(fields[5]) and len(fields[5]) % 2 == 0)
 
-    for line in lines:
-        line_number += 1
 
-        # Skip entries that are just newlines
-        if len(line) > 50000:
-            return 'Error line ' + str(line_number) + ' is too long. Line length: ' + str(len(line)) + '. Max length is 50,000 chars.'
-        if len(line) > 0:
-            if ':' not in line:
-                return 'Error line ' + str(line_number) + ' is missing a : character. NetNTLM file should include usernames.'
-            # This is slow af :(
-            colon_cnt = 0
-            for char in line:
-                if char == ':':
-                    colon_cnt += 1
-            if colon_cnt < 5:
-                return 'Error line ' + str(line_number) + '. File does not appear to be be in a NetNTLM format.'
-    return False
+def validate_netntlm_hashfile(hashfile_path, hash_type=None):
+    """Validate a NetNTLMv1/v2 hashfile (user::domain:...:...:...).
+
+    ``hash_type`` (5500/27000 = v1, 5600/27100 = v2) is optional: when omitted
+    the line is accepted if it matches EITHER the v1 or v2 structure.
+    """
+    hash_type = str(hash_type) if hash_type is not None else None
+    seen = set()
+
+    def check(line, line_no):
+        fields = line.split(':')
+        if len(fields) != 6:
+            return ('Error line ' + str(line_no) + ' does not appear to be in NetNTLM '
+                    'format (expected user::domain:...:...:... — 6 fields / 5 colons).')
+
+        # Whole-file duplicate user/computer guard.
+        key = (fields[0] + ':' + fields[2]).lower()
+        if key in seen:
+            return ('Error: duplicate username/computer found (' + key + '). '
+                    'Please submit only unique username/computer entries.')
+        seen.add(key)
+
+        if hash_type in _NETNTLM_V1_TYPES:
+            if not _is_netntlmv1(fields):
+                return ('Error line ' + str(line_no) + ' is not a valid NetNTLMv1 hash '
+                        '(fields 4 & 5 must be 48 hex chars, field 6 16 hex chars).')
+        elif hash_type in _NETNTLM_V2_TYPES:
+            if not _is_netntlmv2(fields):
+                return ('Error line ' + str(line_no) + ' is not a valid NetNTLMv2 hash '
+                        '(field 4 = 16 hex, field 5 = 32 hex, field 6 = hex blob).')
+        else:
+            if not (_is_netntlmv1(fields) or _is_netntlmv2(fields)):
+                return ('Error line ' + str(line_no) + ' does not match a NetNTLMv1 or '
+                        'NetNTLMv2 hash structure.')
+        return None
+
+    return _validate_hashfile(hashfile_path, check)
+
+# Per-mode Kerberos structure (prefix + etype + fixed-length hex parts).
+# Variable principal/realm/SPN/salt strings are matched leniently.
+_KERBEROS_RE = {
+    '7500':  re.compile(r'^\$krb5pa\$23\$[^$]+\$[^$]*\$[^$]*\$[0-9a-fA-F]+$'),
+    '13100': re.compile(r'^\$krb5tgs\$23\$\*.+\*\$[0-9a-fA-F]{32}\$[0-9a-fA-F]+$'),
+    '18200': re.compile(r'^\$krb5asrep\$23\$[^:]+:[0-9a-fA-F]{32}\$[0-9a-fA-F]+$'),
+    '19600': re.compile(r'^\$krb5tgs\$17\$[^$]+\$[^$]+\$[0-9a-fA-F]{24}\$[0-9a-fA-F]+$'),
+    '19700': re.compile(r'^\$krb5tgs\$18\$[^$]+\$[^$]+\$[0-9a-fA-F]{24}\$[0-9a-fA-F]+$'),
+    '19800': re.compile(r'^\$krb5pa\$17\$[^$]+\$[^$]+\$[0-9a-fA-F]{112}$'),
+    '19900': re.compile(r'^\$krb5pa\$18\$[^$]+\$[^$]+\$[0-9a-fA-F]{112}$'),
+    '28800': re.compile(r'^\$krb5db\$17\$[^$]+\$[^$]+\$[0-9a-fA-F]+$'),
+    '28900': re.compile(r'^\$krb5db\$18\$[^$]+\$[^$]+\$[0-9a-fA-F]+$'),
+}
+# 35300/35400 are the NT-optimised variants of 13100/18200 with an identical
+# on-the-wire hash format, so they reuse those patterns.
+_KERBEROS_ALIAS = {'35300': '13100', '35400': '18200'}
+
 
 def validate_kerberos_hashfile(hashfile_path, hash_type):
-    """Function to validate if hashfile submitted is a kerberos format"""
+    """Validate a Kerberos hashfile ($krb5pa/$krb5tgs/$krb5asrep)."""
+    hash_type = _KERBEROS_ALIAS.get(str(hash_type), str(hash_type))
+    pattern = _KERBEROS_RE.get(hash_type)
+    if pattern is None:
+        return ('Sorry. The only supported Kerberos Hash Types are: 7500, 13100, '
+                '18200, 19600, 19700, 19800, 19900, 28800, 28900, 35300 and 35400.')
 
-    file = open(hashfile_path, 'r')
-    lines = file.readlines()
-    line_number = 0
+    def check(line, line_no):
+        if not pattern.match(line):
+            return ('Error line ' + str(line_no) + ' does not match the expected '
+                    'Kerberos format for hash type ' + hash_type + '.')
+        return None
 
-    for line in lines:
-        line_number += 1
+    return _validate_hashfile(hashfile_path, check)
 
-        # Skip entries that are just newlines
-        if len(line) > 50000:
-            return 'Error line ' + str(line_number) + ' is too long. Line length: ' + str(len(line)) + '. Max length is 50,000 chars.'
-        if len(line) > 0:
-            if '$' not in line:
-                return 'Error line ' + str(line_number) + ' is missing a $ character. kerberos file should include these.'
-            dollar_cnt = 0
-            # This is slow af :(
-            for char in line:
-                if char == '$':
-                    dollar_cnt += 1
+# crypt(3) hash structure per shadow hash type (the hash itself, as found in
+# the 2nd colon field of /etc/shadow or as a bare hash).
+_SHADOW_RE = {
+    '500':   re.compile(r'^\$1\$[./0-9A-Za-z]{0,8}\$[./0-9A-Za-z]{22}$'),       # md5crypt
+    '1500':  re.compile(r'^[./0-9A-Za-z]{13}$'),                                # descrypt
+    '1800':  re.compile(r'^\$6\$(rounds=[0-9]+\$)?[./0-9A-Za-z]{0,16}\$[./0-9A-Za-z]{86}$'),  # sha512crypt
+    '3200':  re.compile(r'^\$2[abxy]\$[0-9]{2}\$[./0-9A-Za-z]{53}$'),           # bcrypt
+    '7400':  re.compile(r'^\$5\$(rounds=[0-9]+\$)?[./0-9A-Za-z]{0,16}\$[./0-9A-Za-z]{43}$'),  # sha256crypt
+    '12400': re.compile(r'^_[./0-9A-Za-z]{19}$'),                               # bsdicrypt (extended DES)
+    '15100': re.compile(r'^\$sha1\$[0-9]+\$[./0-9A-Za-z]{0,64}\$[./0-9A-Za-z]{28}$'),  # sha1crypt
+}
+# Sentinels for locked / passwordless accounts — present in real shadow files
+# but not crackable hashes.
+_SHADOW_LOCKED = {'', '*', '!', '!!', 'x', '*LK*', '!*'}
 
-            if hash_type == '7500':
-                if dollar_cnt != 6:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REQ Pre-Auth (1)'
-                if line.split('$')[1] != 'krb5pa':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REQ Pre-Auth (2)'
-                if line.split('$')[2] != '23':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REQ Pre-Auth (3)'
-            elif hash_type == '13100' or hash_type == '35300':
-                if dollar_cnt < 3 or dollar_cnt > 8:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, TGS-REP (1)'
-                if line.split('$')[1] != 'krb5tgs':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, TGS-REP (2)'
-                if line.split('$')[2] != '23':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, TGS-REP (3)'
-            elif hash_type == '18200' or hash_type == '35400':
-                if dollar_cnt != 4 and dollar_cnt != 5:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REP (1)'
-                if line.split('$')[1] != 'krb5asrep':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REP (2)'
-                if line.split('$')[2] != '23':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 23, AS-REP (3)'
-            elif hash_type == '19600':
-                if dollar_cnt != 6 and dollar_cnt != 7:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 17, TGS-REP (AES128-CTS-HMAC-SHA1-96) (1)'
-                if line.split('$')[1] != 'krb5tgs':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 17, TGS-REP (AES128-CTS-HMAC-SHA1-96) (2)'
-                if line.split('$')[2] != '17':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 17, TGS-REP (AES128-CTS-HMAC-SHA1-96) (3)'
-            elif hash_type == '19700':
-                if dollar_cnt != 6 and dollar_cnt != 7:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 18, TGS-REP (AES256-CTS-HMAC-SHA1-96) (1)'
-                if line.split('$')[1] != 'krb5tgs':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 18, TGS-REP (AES256-CTS-HMAC-SHA1-96) (2)'
-                if line.split('$')[2] != '18':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 18, TGS-REP (AES256-CTS-HMAC-SHA1-96) (3)'
-            elif hash_type == '19800':
-                if dollar_cnt != 5 and dollar_cnt != 6:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 17, Pre-Auth (1)'
-                if line.split('$')[1] != 'krb5pa':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 17, Pre-Auth (2)'
-                if line.split('$')[2] != '17':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 17, Pre-Auth (3)'
-            elif hash_type == '19900':
-                if dollar_cnt != 5 and dollar_cnt != 6:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 18, Pre-Auth (1)'
-                if line.split('$')[1] != 'krb5pa':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 18, Pre-Auth (2)'
-                if line.split('$')[2] != '18':
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Kerberos 5, etype 18, Pre-Auth (3)'
-            else:
-                return 'Sorry. The only suppported Hash Types are: 7500, 13100, 18200, 19600, 19700, 19800 and 19900.'
-    return False
 
 def validate_shadow_hashfile(hashfile_path, hash_type):
-    """Function to validate if hashfile submitted is a shadow format"""
+    """Validate a Unix shadow hashfile (user:hash:... or a bare crypt hash)."""
+    hash_type = str(hash_type)
+    pattern = _SHADOW_RE.get(hash_type)
+    if pattern is None:
+        return ('Sorry. The only supported shadow Hash Types are: 500 ($1$ md5crypt), '
+                '1500 (descrypt), 1800 ($6$ sha512crypt), 3200 ($2*$ bcrypt), '
+                '7400 ($5$ sha256crypt), 12400 (bsdicrypt) and 15100 ($sha1$ sha1crypt).')
 
-    file = open(hashfile_path, 'r')
-    lines = file.readlines()
-    line_number = 0
+    def check(line, line_no):
+        # A shadow line is user:hash:... ; a bare hash (no colon) is also accepted.
+        token = line.split(':')[1] if ':' in line else line
+        if token in _SHADOW_LOCKED:
+            return ('Error line ' + str(line_no) + ' is a locked/passwordless account ('
+                    + (token or 'empty') + '), not a crackable hash.')
+        if not pattern.match(token):
+            return ('Error line ' + str(line_no) + ' does not match the expected '
+                    'format for shadow hash type ' + hash_type + '.')
+        return None
 
-    for line in lines:
-        line_number += 1
+    return _validate_hashfile(hashfile_path, check)
 
-        # Skip entries that are just newlines
-        if len(line) > 50000:
-            return 'Error line ' + str(line_number) + ' is too long. Line length: ' + str(len(line)) + '. Max length is 50,000 chars.'
-        if len(line) > 0:
-            if ':' not in line:
-                return 'Error line ' + str(line_number) + ' is missing a : character. shadow file should include usernames.'
-            if hash_type == '1800':
-                dollar_cnt = 0
-                for char in line:
-                    if char == '$':
-                        dollar_cnt+=1
-                if dollar_cnt != 3:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Sha512 Crypt from a shadow file.'
-                if '$6$' not in line:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Sha512 Crypt from a shadow file.'
-    return False
+def validate_user_hash_hashfile(hashfile_path, hash_type=None):
+    """Validate a user:hash hashfile — each line must contain a ':' separator.
 
-def validate_user_hash_hashfile(hashfile_path):
-    """Function to validate if hashfile submitted is a user:hash format"""
+    Accepts an optional (unused) hash_type so the API call site that passes one
+    works; the sibling validators in that if/elif chain all take two args.
+    """
+    def check(line, line_no):
+        if ':' not in line:
+            return ('Error line ' + str(line_no) + ' is missing a : character; a '
+                    'user:hash file needs one ":" per line.')
+        return None
 
-    file = open(hashfile_path, 'r')
-    lines = file.readlines()
-    line_number = 0
+    return _validate_hashfile(hashfile_path, check)
 
-    for line in lines:
-        line_number += 1
+# Per hash-type structure for "hash only" uploads, keyed by hashcat mode and
+# derived from hashcat --example-hashes. Each entry is (compiled_regex,
+# human-readable expected-format). Raw-hex types check exact hex length; salted
+# types check the fixed hex prefix + ':<salt>' (salt left lenient); structured
+# types check the magic prefix + fixed fields. Hex is accepted in either case.
+# Modes not listed here are accepted as-is (cannot be safely constrained).
+_HASH_ONLY_RULES = {
+    # raw / unsalted hex (length-checked)
+    '0':     (re.compile(r'^[0-9a-fA-F]{32}$'),  '32 hex characters (MD5)'),
+    '900':   (re.compile(r'^[0-9a-fA-F]{32}$'),  '32 hex characters (MD4)'),
+    '1000':  (re.compile(r'^[0-9a-fA-F]{32}$'),  '32 hex characters (NTLM)'),
+    '9900':  (re.compile(r'^[0-9a-fA-F]{32}$'),  '32 hex characters (Radmin2)'),
+    '100':   (re.compile(r'^[0-9a-fA-F]{40}$'),  '40 hex characters (SHA1)'),
+    '300':   (re.compile(r'^[0-9a-fA-F]{40}$'),  '40 hex characters (MySQL4.1/5)'),
+    '6000':  (re.compile(r'^[0-9a-fA-F]{40}$'),  '40 hex characters (RIPEMD-160)'),
+    '1300':  (re.compile(r'^[0-9a-fA-F]{56}$'),  '56 hex characters (SHA-224)'),
+    '1700':  (re.compile(r'^[0-9a-fA-F]{128}$'), '128 hex characters (SHA-512)'),
+    '18000': (re.compile(r'^[0-9a-fA-F]{128}$'), '128 hex characters (Keccak-512)'),
+    '122':   (re.compile(r'^[0-9a-fA-F]{48}$'),  '48 hex characters (macOS 10.4-10.6 salted SHA1)'),
+    # salted raw: <hash_hex>:<salt> (salt lenient)
+    '10':    (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  'md5 hash:salt (32 hex, colon, salt)'),
+    '20':    (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  'md5 salt:hash (32 hex, colon, salt)'),
+    '3800':  (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt'),
+    '110':   (re.compile(r'^[0-9a-fA-F]{40}:.+$'),  'sha1 hash:salt (40 hex, colon, salt)'),
+    '120':   (re.compile(r'^[0-9a-fA-F]{40}:.+$'),  'sha1 salt:hash (40 hex, colon, salt)'),
+    '1410':  (re.compile(r'^[0-9a-fA-F]{64}:.+$'),  'sha256 hash:salt (64 hex, colon, salt)'),
+    '1420':  (re.compile(r'^[0-9a-fA-F]{64}:.+$'),  'sha256 salt:hash (64 hex, colon, salt)'),
+    '1710':  (re.compile(r'^[0-9a-fA-F]{128}:.+$'), 'sha512 hash:salt (128 hex, colon, salt)'),
+    '1720':  (re.compile(r'^[0-9a-fA-F]{128}:.+$'), 'sha512 salt:hash (128 hex, colon, salt)'),
+    # forum / cms (md5/sha1 + salt)
+    '11':    (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt (Joomla)'),
+    '21':    (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt (osCommerce)'),
+    '2611':  (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt (vBulletin <3.8.5)'),
+    '2711':  (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt (vBulletin >=3.8.5)'),
+    '2811':  (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt (IPB/MyBB)'),
+    '11000': (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, salt (PrestaShop)'),
+    '121':   (re.compile(r'^[0-9a-fA-F]{40}:.+$'),  '40 hex, colon, salt (SMF)'),
+    '4522':  (re.compile(r'^[0-9a-fA-F]{40}:.+$'),  '40 hex, colon, salt (PunBB)'),
+    '13900': (re.compile(r'^[0-9a-fA-F]{40}:.+$'),  '40 hex, colon, salt (OpenCart)'),
+    '124':   (re.compile(r'^sha1\$[^$]+\$[0-9a-fA-F]{40}$'), 'sha1$salt$40-hex (Django SHA1)'),
+    # DCC / cisco / mac / db
+    '1100':  (re.compile(r'^[0-9a-fA-F]{32}:.+$'),  '32 hex, colon, username (DCC/MS-Cache)'),
+    '2100':  (re.compile(r'^\$DCC2\$[0-9]+#[^#]+#[0-9a-fA-F]{32}$'), '$DCC2$iterations#user#32-hex'),
+    '2400':  (re.compile(r'^[./0-9A-Za-z]{16}$'),   '16 base64 characters (Cisco-PIX)'),
+    '2410':  (re.compile(r'^[./0-9A-Za-z]{16}:.+$'),'16 base64 chars, colon, salt (Cisco-ASA)'),
+    '8100':  (re.compile(r'^1[0-9a-fA-F]{48}$'),    "'1' followed by 48 hex (Citrix SHA1)"),
+    '22200': (re.compile(r'^2[0-9a-fA-F]{136}$'),   "'2' followed by 136 hex (Citrix SHA512)"),
+    '7100':  (re.compile(r'^\$ml\$[0-9]+\$[0-9a-fA-F]{64}\$[0-9a-fA-F]{128}$'),
+              '$ml$iter$64-hex-salt$128-hex (macOS 10.8+)'),
+    # unix crypt
+    '500':   (re.compile(r'^\$1\$[./0-9A-Za-z]{0,8}\$[./0-9A-Za-z]{22}$'), '$1$salt$22-char (md5crypt)'),
+    '1500':  (re.compile(r'^[./0-9A-Za-z]{13}$'),   '13 crypt-base64 characters (descrypt)'),
+    '1800':  (re.compile(r'^\$6\$(rounds=[0-9]+\$)?[./0-9A-Za-z]{0,16}\$[./0-9A-Za-z]{86}$'),
+              '$6$[rounds=N$]salt$86-char (sha512crypt)'),
+    '3200':  (re.compile(r'^\$2[abxy]\$[0-9]{2}\$[./0-9A-Za-z]{53}$'), '$2a$cost$53-char (bcrypt)'),
+    '7400':  (re.compile(r'^\$5\$(rounds=[0-9]+\$)?[./0-9A-Za-z]{0,16}\$[./0-9A-Za-z]{43}$'),
+              '$5$[rounds=N$]salt$43-char (sha256crypt)'),
+    '12400': (re.compile(r'^_[./0-9A-Za-z]{19}$'),  '_ + 19 crypt-base64 chars (bsdicrypt)'),
+    '15100': (re.compile(r'^\$sha1\$[0-9]+\$[./0-9A-Za-z]{0,64}\$[./0-9A-Za-z]{28}$'),
+              '$sha1$rounds$salt$28-char (sha1crypt)'),
+    # base64 / token formats
+    '22':    (re.compile(r'^[A-Za-z0-9+/]{30}:[0-9]+$'),    '30 base64 chars, colon, numeric salt (Juniper)'),
+    '5700':  (re.compile(r'^[A-Za-z0-9./+]{43}$'),          '43 base64 characters (Cisco-IOS type4)'),
+    '7000':  (re.compile(r'^AK1[A-Za-z0-9+/]{43}=$'),       "'AK1' + 44 base64 chars (FortiGate)"),
+    '400':   (re.compile(r'^\$[PH]\$[./0-9A-Za-z]{31}$'),   '$P$/$H$ + 31 chars (phpass)'),
+    '7900':  (re.compile(r'^\$S\$[./0-9A-Za-z]{52}$'),      '$S$ + 52 chars (Drupal7)'),
+    '3711':  (re.compile(r'^\$B\$[^$]*\$[0-9a-fA-F]{32}$'), '$B$salt$32-hex (MediaWiki)'),
+    '10000': (re.compile(r'^pbkdf2_sha256\$[0-9]+\$[^$]+\$[A-Za-z0-9+/]+={0,2}$'),
+              'pbkdf2_sha256$iter$salt$base64 (Django PBKDF2)'),
+    '10100': (re.compile(r'^[0-9a-fA-F]{16}:2:4:[0-9a-fA-F]{32}$'), '16-hex:2:4:32-hex (SipHash)'),
+    '14000': (re.compile(r'^[0-9a-fA-F]{16}:[0-9a-fA-F]{16}$'),     '16-hex:16-hex (DES)'),
+    # MS office (separator is '*'; verifier hash 40 hex for 2007, 64 for 2010/2013)
+    '9400':  (re.compile(r'^\$office\$\*(2007|2010|2013)\*[0-9]+\*(128|256)\*16\*[0-9a-fA-F]{32}\*[0-9a-fA-F]{32}\*(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$'), '$office$* … (MS Office)'),
+}
+_HASH_ONLY_RULES['9500'] = _HASH_ONLY_RULES['9400']
+_HASH_ONLY_RULES['9600'] = _HASH_ONLY_RULES['9400']
+# bcrypt-wrapped KDFs (bcrypt(md5/sha1/sha512($pass))) are bcrypt-format: the
+# version tag may be $2a$/$2b$/$2x$/$2y$ (auto-derived rule wrongly pinned $2a$).
+for _bcrypt_mode in ('25600', '25800', '28400'):
+    _HASH_ONLY_RULES[_bcrypt_mode] = (re.compile(r'^\$2[abxy]\$[0-9]{2}\$[./0-9A-Za-z]{53}$'),
+                                      '$2a$/$2b$/$2y$ cost$53-char (bcrypt)')
 
-        # Skip entries that are just newlines
-        if len(line) > 50000:
-            return 'Error line ' + str(line_number) + ' is too long. Line length: ' + str(len(line)) + '. Max length is 50,000 chars.'
-        if len(line) > 0:
-            if ':' not in line:
-                return 'Error line ' + str(line_number) + ' is missing a : character. user:hash file should have just ONE of these'
 
-    return
+def _build_auto_matcher(spec):
+    """Compile a conservative auto-derived spec (from
+    hashcat_modes.HASH_ONLY_AUTO_RULES) ONCE into (match_fn, description). Only
+    the fixed-shape part is enforced so valid hashes aren't rejected."""
+    kind = spec[0]
+    if kind == 'hex':
+        rx = re.compile(r'[0-9a-fA-F]{%d}' % spec[1])
+        return (lambda s: rx.fullmatch(s) is not None, '%d hex characters' % spec[1])
+    if kind == 'hexsalt':
+        rx = re.compile(r'[0-9a-fA-F]{%d}:.+' % spec[1])
+        return (lambda s: rx.match(s) is not None,
+                '%d hex characters, a colon, then a salt' % spec[1])
+    # 'prefix' / 'litprefix'
+    prefix = spec[1]
+    return (lambda s: s.startswith(prefix), "a hash beginning with '%s'" % prefix)
 
-# Dumb way of doing this, we return with an error message if we have an issue with the hashfile
-# and return false if hashfile is okay. :/ Should be the otherway around :shrug emoji:
+
 def validate_hash_only_hashfile(hashfile_path, hash_type):
-    """Function to validate if hashfile submitted is a hash only format"""
+    """Validate a file of bare hashes for the selected hashcat hash type.
 
-    file = open(hashfile_path, 'r')
-    lines = file.readlines()
+    Returns an error string on the first malformed line, or False when the file
+    passes. Curated rules (precise) take precedence; otherwise a conservative
+    auto-derived rule (HASH_ONLY_AUTO_RULES, from hashcat's example hashes) is
+    used; hash types with neither are accepted as-is (can't be safely
+    constrained without risking rejection of valid hashes).
+    """
+    hash_type = str(hash_type)
+    rule = _HASH_ONLY_RULES.get(hash_type)
+    auto_matcher = None
+    if rule is None:
+        spec = HASH_ONLY_AUTO_RULES.get(hash_type)
+        auto_matcher = _build_auto_matcher(spec) if spec else None
 
-    line_number = 0
-    # for line in file,
-    for line in lines:
-        line_number += 1
+    def check(line, line_no):
+        if rule is not None:
+            ok, expected = (rule[0].match(line) is not None), rule[1]
+        elif auto_matcher is not None:
+            match_fn, expected = auto_matcher
+            ok = match_fn(line)
+        else:
+            return None                       # unconstrainable type: accept
+        if not ok:
+            return ('Error line ' + str(line_no) + ' is not a valid hash for the selected '
+                    'type — expected ' + expected + '.')
+        return None
 
-        # Skip entries that are just newlines
-        if len(line) > 50000:
-            return 'Error line ' + str(line_number) + ' is too long. Line length: ' + str(len(line)) + '. Max length is 50,000 chars.'
-        if len(line) > 0:
-
-            # Check hash types
-            if hash_type in ('0', '22', '1000'):
-                if len(line.rstrip()) != 32:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 32'
-            if hash_type == '122':
-                if len(line.rstrip()) != 50:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 50'
-            if hash_type == '300':
-                if len(line.rstrip()) != 40:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 40'
-            if hash_type == '500':
-                if '$1$' not in line:
-                    return 'Error line ' + str(line_number) + ' is not a valid md5Crypt, MD5 (Unix) or Cisco-IOS $1$ (MD5) hash'
-            if hash_type == '1100':
-                if ':' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a : character. Domain Cached Credentials (DCC), MS Cache hashes should have one'
-            if hash_type == '1800':
-                dollar_cnt = 0
-                for char in line:
-                    if char == '$':
-                        dollar_cnt+=1
-                if dollar_cnt != 3:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Sha512 Crypt.'
-                if '$6$' not in line:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Sha512 Crypt.'
-            if hash_type == '2100':
-                if '$' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a $ character. DCC2 Hashes should have these'
-                dollar_cnt = 0
-                hash_cnt = 0
-                for char in line:
-                    if char == '$':
-                        dollar_cnt += 1
-                    if char == '#':
-                        hash_cnt += 1
-                if dollar_cnt != 2:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: DCC2 MS Cache'
-                if hash_cnt != 2:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: DCC2 MS Cache'
-            if hash_type == '2400':
-                if len(line.rstrip()) != 18:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 18'
-            if hash_type == '2410':
-                if ':' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a : character. Cisco-ASA Hashes should have these.'
-            if hash_type == '3200':
-                if '$' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a $ character. bcrypt Hashes should have these.'
-                dollar_cnt = 0
-                for char in line:
-                    if char == '$':
-                        dollar_cnt += 1
-                if dollar_cnt != 3:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: bcrypt'
-            if hash_type == '5700':
-                if len(line.rstrip()) != 43:
-                    return 'Error line ' + str(line_number) + ' has an invalid number of characters (' + str(len(line.rstrip())) + ') should be 43'   
-            if hash_type == '7100':
-                if '$' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a $ character. Mac OSX 10.8+ ($ml$) hashes should have these.'
-                dollar_cnt = 0
-                for char in line:
-                    if char == '$':
-                        dollar_cnt += 1
-                if dollar_cnt != 2:
-                    return 'Error line ' + str(line_number) + '. Doesnt appear to be of the type: Mac OSX 10.8+ ($ml$)'
-            if hash_type in ('9400', '9500', '9600'):
-                if '$' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a $ character. Office hashes require 2.'
-                if '*' not in line:
-                    return 'Error line ' + str(line_number) + ' is missing a * character. Office hashes require 6.'
-                star_cnt = 0
-                for char in line:
-                    if char == '*':
-                        star_cnt +=1
-                if star_cnt != 7:
-                    return 'Error line ' + str(line_number) + '. Does not appear to be of the type office.'              
-
-    return False
+    return _validate_hashfile(hashfile_path, check)
 
 def getTimeFormat(total_runtime): # Runtime in seconds
     """Function to convert seconds into, minutes, hours, days or weeks"""
