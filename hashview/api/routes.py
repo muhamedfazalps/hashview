@@ -936,19 +936,20 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
 
         # Check if hash is cracked
         hash = Hashes.query.get(hash_notification.hash_id)
-        if hash.cracked:
+        if hash:
+            if hash.cracked:
 
-            message += 'You can check the results using the following link: ' + "\n"
-            message += url_for('searches.searches_list', hash_id=hash.id, _external=True)
-            if hash_notification.method == 'email':
-                send_email(user, 'Hashview User Hash Recovered!', message)
-            elif hash_notification.method == 'push':
-                if user.pushover_user_key and user.pushover_app_id:
-                    send_pushover(user, 'Message from Hashview', message)
-            else:
-                send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
-            db.session.delete(hash_notification)
-            db.session.commit()
+                message += 'You can check the results using the following link: ' + "\n"
+                message += url_for('searches.searches_list', hash_id=hash.id, _external=True)
+                if hash_notification.method == 'email':
+                    send_email(user, 'Hashview User Hash Recovered!', message)
+                elif hash_notification.method == 'push':
+                    if user.pushover_user_key and user.pushover_app_id:
+                        send_pushover(user, 'Message from Hashview', message)
+                else:
+                    send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
+                db.session.delete(hash_notification)
+                db.session.commit()
 
     # Check if job type is one and done
     if job.limit_recovered and recovered_at_least_one_hash:
