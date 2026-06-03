@@ -230,8 +230,9 @@
 
     {% if queued_jobs %}
     <div class="term-divider" style="margin-top:18px;">queue · {{ queued_jobs|length }} pending</div>
+    <style>.queue-tbl thead th { padding-top: 14px; padding-bottom: 14px; }</style>
     <div class="card" style="margin-top:14px;">
-        <table class="tbl">
+        <table class="tbl queue-tbl">
             <thead><tr><th>#</th><th>Job</th><th>Customer</th><th class="center">Tasks</th><th class="center">Priority</th><th>Owner</th></tr></thead>
             <tbody>
                 {% for job in queued_jobs %}
