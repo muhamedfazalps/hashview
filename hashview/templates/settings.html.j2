@@ -2,105 +2,135 @@
 {% from "macros.html.j2" import icon, phos_field %}
 {% block title %}Settings · Hashview{% endblock %}
 {% block content %}
+<style>
+.set-tab { display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; margin-bottom:4px; border-radius:8px; background:none; border:1px solid transparent; color:var(--text-dim); cursor:pointer; font-family:var(--sans); font-size:13px; text-align:left; }
+.set-tab:hover { color:var(--text); background:var(--surface-2); }
+.set-tab.active { color:var(--primary); background:rgba(var(--primary-rgb),0.08); border-color:var(--primary-dim); }
+.set-tab .ico { width:16px; height:16px; flex:none; }
+</style>
 <script>
     function hvShowSettingsTab(name) {
-        var panes = document.querySelectorAll('.hv-settings-pane');
-        for (var i = 0; i < panes.length; i++) {
-            panes[i].style.display = (panes[i].getAttribute('data-pane') === name) ? 'block' : 'none';
-        }
-        var tabs = document.querySelectorAll('.hv-settings-tab');
-        for (var j = 0; j < tabs.length; j++) {
-            if (tabs[j].getAttribute('data-tab') === name) {
-                tabs[j].classList.add('active');
-            } else {
-                tabs[j].classList.remove('active');
-            }
-        }
+        document.querySelectorAll('.hv-settings-pane').forEach(function (p) { p.style.display = (p.getAttribute('data-pane') === name) ? 'block' : 'none'; });
+        document.querySelectorAll('.hv-settings-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
+    }
+    function hvSettingsPlaceholder(btn) {
+        var n = btn.nextElementSibling;
+        if (n && n.classList && n.classList.contains('hv-placeholder-note')) n.style.display = 'inline';
     }
 </script>
 
 <div class="page-head">
     <div>
         <h1 class="page-title">Settings</h1>
-        <div class="page-sub">// global configuration for the application</div>
+        <div class="page-sub">// instance configuration</div>
     </div>
+    <button type="submit" form="hv-general-form" class="btn btn-primary">{{ icon('check', size=15) }} Save changes</button>
 </div>
 
-<div style="display:flex; gap:8px; margin-bottom:16px;">
-    <button type="button" class="btn tab-btn hv-settings-tab active" data-tab="hashview" onclick="hvShowSettingsTab('hashview')">{{ icon('settings', size=15) }} Hashview</button>
-    <button type="button" class="btn tab-btn hv-settings-tab" data-tab="data" onclick="hvShowSettingsTab('data')">{{ icon('file', size=15) }} Data Management</button>
-    <button type="button" class="btn tab-btn hv-settings-tab" data-tab="info" onclick="hvShowSettingsTab('info')">{{ icon('info', size=15) }} Information</button>
-</div>
+<div style="display:flex; gap:var(--gap); align-items:flex-start;">
+    {# ---------- left tab nav ---------- #}
+    <div class="card" style="flex:none; width:210px; padding:8px;">
+        <button type="button" class="set-tab hv-settings-tab active" data-tab="general" onclick="hvShowSettingsTab('general')">{{ icon('settings', size=16) }}<span>General</span></button>
+        <button type="button" class="set-tab hv-settings-tab" data-tab="data" onclick="hvShowSettingsTab('data')">{{ icon('file', size=16) }}<span>Data management</span></button>
+        <button type="button" class="set-tab hv-settings-tab" data-tab="info" onclick="hvShowSettingsTab('info')">{{ icon('info', size=16) }}<span>Information</span></button>
+    </div>
 
-<div class="hv-settings-pane" data-pane="hashview" style="display:block;">
-    <form method="POST" action="">
-        {{ HashviewForm.hidden_tag() }}
-        <div class="card">
-            <div class="card-head">{{ icon('settings', size=15) }}<h3>Hashview</h3></div>
-            <div class="card-body">
+    {# ---------- content ---------- #}
+    <div style="flex:1; min-width:0;">
 
-                {{ phos_field(HashviewForm.retention_period) }}
-
-                {{ phos_field(HashviewForm.max_runtime_jobs) }}
-
-                {{ phos_field(HashviewForm.max_runtime_tasks) }}
-
-                <div class="field" style="margin-bottom:0;">
-                    <label class="check-row" for="enabledJobWeights" style="margin-bottom:0;">
-                        <span class="switch">{{ HashviewForm.enabled_job_weights(id="enabledJobWeights", role="switch") }}<span class="track"></span></span>
-                        <span>{{ HashviewForm.enabled_job_weights.label.text }}</span>
-                    </label>
-                    {% if HashviewForm.enabled_job_weights.errors %}
-                        <div class="invalid-feedback" style="display:block;">
-                            {% for error in HashviewForm.enabled_job_weights.errors %}
-                                <span>{{ error }}</span>
-                            {% endfor %}
+        {# ---- General (the former "Hashview" tab) ---- #}
+        <form method="POST" action="" id="hv-general-form" style="margin:0;">
+            {{ HashviewForm.hidden_tag() }}
+            <div class="hv-settings-pane" data-pane="general" style="display:block;">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="field">
+                            <label class="field-label" for="set-retention">Retention period <span class="mono" style="color:var(--text-mute); font-weight:400;">· days</span></label>
+                            {{ HashviewForm.retention_period(class="input", type="number", min="1", max="65535", id="set-retention", style="max-width:220px;") }}
+                            <span class="field-hint">Auto-purge cracked results and logs after this many days.</span>
+                            {% for e in HashviewForm.retention_period.errors %}<div class="invalid-feedback" style="display:block;">{{ e }}</div>{% endfor %}
                         </div>
-                    {% endif %}
-                </div>
 
+                        <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
+                            <div class="field" style="margin-bottom:0;">
+                                <label class="field-label" for="set-jobrt">Max runtime per job <span class="mono" style="color:var(--text-mute); font-weight:400;">· hours</span></label>
+                                {{ HashviewForm.max_runtime_jobs(class="input", type="number", min="0", max="65535", id="set-jobrt") }}
+                                <span class="field-hint">0 = unlimited.</span>
+                            </div>
+                            <div class="field" style="margin-bottom:0;">
+                                <label class="field-label" for="set-taskrt">Max runtime per task <span class="mono" style="color:var(--text-mute); font-weight:400;">· hours</span></label>
+                                {{ HashviewForm.max_runtime_tasks(class="input", type="number", min="0", max="65535", id="set-taskrt") }}
+                                <span class="field-hint">0 = unlimited.</span>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:12px; margin-top:20px;">
+                            <div style="flex:1; min-width:0;">
+                                <div style="color:var(--text);">Job priority weighting</div>
+                                <div class="field-hint" style="margin-top:2px;">Allow operators to set job priority during job creation.</div>
+                            </div>
+                            <label class="switch">{{ HashviewForm.enabled_job_weights(role="switch") }}<span class="track"></span></label>
+                        </div>
+
+                        <div style="height:1px; background:var(--border-soft); margin:20px 0 14px;"></div>
+                        <a class="btn" href="{{ url_for('users.send_test_email') }}" role="button">{{ icon('mail', size=15) }} Send test email</a>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        {# ---- Data management ---- #}
+        <div class="hv-settings-pane" data-pane="data" style="display:none;">
+            <div class="card">
+                <div class="card-body">
+                    {# Back up database (placeholder — no backend yet) #}
+                    <div style="display:flex; align-items:center; gap:14px;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="color:var(--text); font-weight:500;">Back up database</div>
+                            <div class="field-hint" style="margin-top:2px;">Export a full snapshot of the Hashview database.</div>
+                        </div>
+                        <button type="button" class="btn" onclick="hvSettingsPlaceholder(this)">{{ icon('download', size=15) }} Back up database</button>
+                        <span class="mono hv-placeholder-note" style="display:none; color:var(--text-mute); font-size:11.5px;">Not yet implemented.</span>
+                    </div>
+
+                    <div style="height:1px; background:var(--border-soft); margin:18px 0;"></div>
+
+                    {# Clear temp folder (existing, real) #}
+                    <div style="display:flex; align-items:center; gap:14px;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="color:var(--text); font-weight:500;">Clear temp folder</div>
+                            <div class="field-hint" style="margin-top:2px;">Remove temporary working files · currently {{ tmp_folder_size }}.</div>
+                        </div>
+                        <a class="btn" href="{{ url_for('settings.clear_temp_folder') }}" role="button">{{ icon('trash', size=15) }} Clear temp</a>
+                    </div>
+                </div>
+            </div>
+
+            {# Danger zone — purge all cracked passwords (placeholder — no backend yet) #}
+            <div class="card" style="margin-top:var(--gap); border-color:var(--red-dim);">
+                <div class="card-body">
+                    <div style="display:flex; align-items:center; gap:8px; color:var(--red); font-weight:600; margin-bottom:8px;">{{ icon('ban', size=15) }} Danger zone</div>
+                    <div class="field-hint" style="margin-bottom:14px;">Permanently wipe all recovered plaintext from the database. This cannot be undone.</div>
+                    <button type="button" class="btn btn-danger" onclick="hvSettingsPlaceholder(this)">{{ icon('trash', size=15) }} Purge all cracked passwords</button>
+                    <span class="mono hv-placeholder-note" style="display:none; margin-left:12px; color:var(--text-mute); font-size:11.5px;">Not yet implemented.</span>
+                </div>
             </div>
         </div>
-        <div class="wizard-nav">
-            <a class="btn" href="{{ url_for('users.send_test_email') }}" role="button">{{ icon('mail', size=15) }} Test Email</a>
-            <span class="spacer"></span>
-            {{ HashviewForm.submit(class="btn btn-primary") }}
+
+        {# ---- Information ---- #}
+        <div class="hv-settings-pane" data-pane="info" style="display:none;">
+            <div class="card">
+                <div class="card-body">
+                    <dl style="display:grid; grid-template-columns:200px 1fr; gap:12px 14px; margin:0;">
+                        <dt class="mono" style="color:var(--text-mute); text-transform:uppercase; font-size:10px; letter-spacing:1px;">Application version</dt>
+                        <dd class="mono" style="margin:0; color:var(--text);">{{ application_version }}</dd>
+                        <dt class="mono" style="color:var(--text-mute); text-transform:uppercase; font-size:10px; letter-spacing:1px;">Database version</dt>
+                        <dd class="mono" style="margin:0; color:var(--text);">{{ database_version }}</dd>
+                    </dl>
+                </div>
+            </div>
         </div>
-    </form>
-</div>
 
-<div class="hv-settings-pane" data-pane="data" style="display:none;">
-    <div class="card">
-        <div class="card-head">{{ icon('file', size=15) }}<h3>Data Management</h3></div>
-        <table class="tbl">
-            <thead><tr><th>Item</th><th class="num">Size</th><th class="center" style="width:120px;">Control</th></tr></thead>
-            <tbody>
-                <tr>
-                    <td style="font-weight:500;">Clear Temp Folder</td>
-                    <td class="num">{{ tmp_folder_size }} bytes</td>
-                    <td class="center">
-                        <div style="display:flex; gap:4px; justify-content:center;">
-                            <a class="icon-btn act-del" href="{{ url_for('settings.clear_temp_folder') }}" title="Clear Temp" role="button">{{ icon('trash', size=15) }}</a>
-                        </div>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="hv-settings-pane" data-pane="info" style="display:none;">
-    <div class="card">
-        <div class="card-head">{{ icon('info', size=15) }}<h3>Information</h3></div>
-        <div class="card-body">
-            <dl style="display:grid; grid-template-columns:180px 1fr; gap:9px 14px; margin:0;">
-                <dt class="mono" style="color:var(--text-mute); text-transform:uppercase; font-size:11px; letter-spacing:0.5px;">Application Version</dt>
-                <dd class="mono" style="margin:0; color:var(--text);">{{ application_version }}</dd>
-
-                <dt class="mono" style="color:var(--text-mute); text-transform:uppercase; font-size:11px; letter-spacing:0.5px;">Database Version</dt>
-                <dd class="mono" style="margin:0; color:var(--text);">{{ database_version }}</dd>
-            </dl>
-        </div>
     </div>
 </div>
 

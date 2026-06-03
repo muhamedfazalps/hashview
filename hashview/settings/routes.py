@@ -11,6 +11,16 @@ from hashview.models import db
 settings = Blueprint('settings', __name__)
 
 
+def _human_size(num):
+    """Human-readable byte size (e.g. 12.1 KB, 4.8 MB, 1.3 GB)."""
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if num < 1024 or unit == 'TB':
+            if unit == 'B':
+                return '%d B' % num
+            return ('%.1f %s' % (num, unit)).replace('.0 ', ' ')
+        num /= 1024.0
+
+
 #############################################
 # Settings
 #############################################
@@ -27,6 +37,7 @@ def settings_list():
         tmp_folder_size = 0
         for file in os.scandir('hashview/control/tmp/'):
             tmp_folder_size += os.stat(file).st_size
+        tmp_folder_size = _human_size(tmp_folder_size)
 
         if hashview_form.validate_on_submit():
             settings.retention_period = hashview_form.retention_period.data
