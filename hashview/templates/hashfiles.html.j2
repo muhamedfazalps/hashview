@@ -160,7 +160,6 @@ function hvFilterHashfiles(q){
         {% set completed = hfjobs | selectattr('status', 'equalto', 'Completed') | list | length %}
         <span class="mono" style="font-size:11.5px; color:var(--text-mute); margin-right:auto;">{{ completed }} completed · {{ hfjobs|length }} total</span>
         <button class="btn" onclick="this.closest('dialog').close()">Close</button>
-        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_list') }}" role="button">{{ icon('jobs', size=15) }} Open in Jobs</a>
     </div>
 </dialog>
 

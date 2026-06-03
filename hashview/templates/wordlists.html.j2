@@ -232,7 +232,6 @@
     <div class="hv-dialog-foot">
         <span class="mono" style="margin-right:auto; font-size:11.5px; color:var(--text-mute);">{{ "{:,}".format(wordlist.size|int) }} words · {{ size_on_disk }}</span>
         <button class="btn" onclick="this.closest('dialog').close()">Close</button>
-        <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}" role="button">{{ icon('play', size=15) }} Run in new job</a>
     </div>
 </dialog>
 {% endfor %}

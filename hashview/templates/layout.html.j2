@@ -40,9 +40,9 @@
                 </div>
                 {% endif %}
                 <div class="user-chip">
-                    <div class="avatar">{{ current_user.first_name[0]|upper }}{{ current_user.last_name[0]|upper }}</div>
+                    <div class="avatar" onclick="document.getElementById('account-settings-modal').showModal()" title="Account settings" style="cursor:pointer;">{{ current_user.first_name[0]|upper }}{{ current_user.last_name[0]|upper }}</div>
                     <div style="flex:1; min-width:0;">
-                        <a href="{{ url_for('users.profile') }}" class="nm" style="text-decoration:none; color:var(--text); display:block;">{{ current_user.first_name }} {{ current_user.last_name }}</a>
+                        <a href="#" class="nm" onclick="document.getElementById('account-settings-modal').showModal(); return false;" title="Account settings" style="text-decoration:none; color:var(--text); display:block; cursor:pointer;">{{ current_user.first_name }} {{ current_user.last_name }}</a>
                         <div class="rl">{{ 'admin' if current_user.admin else 'operator' }}</div>
                     </div>
                     <a href="{{ url_for('users.logout') }}" title="Log out" style="color:var(--text-mute); display:flex; align-items:center;">{{ icon('power', size=16) }}</a>
@@ -70,6 +70,109 @@
             </div>
         </div>
     </div>
+
+    {# ---- account settings modal (opened from the sidebar name / avatar) ---- #}
+    {% set as_handle = current_user.email_address.split('@')[0] %}
+    {% set as_role = 'administrator' if current_user.admin else 'operator' %}
+    {% set as_key = current_user.api_key or '' %}
+    {% set as_mask = (as_key[:8] ~ '••••••••••' ~ as_key[-4:]) if as_key else 'No key set' %}
+    <style>
+    #account-settings-modal .as-sec { font-family:var(--mono); font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin:22px 0 12px; display:flex; align-items:center; gap:10px; }
+    #account-settings-modal .as-sec::after { content:""; flex:1; height:1px; background:var(--border-soft); }
+    </style>
+    <dialog class="hv-dialog" id="account-settings-modal" style="max-width:660px; width:96vw;">
+        <div class="hv-dialog-head">
+            {{ icon('users', size=16) }}
+            <div style="line-height:1.2;">
+                <h3 style="margin:0;">Account Settings</h3>
+                <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">{{ as_handle }} · {{ as_role }}</div>
+            </div>
+            <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+        </div>
+        <form method="POST" action="{{ url_for('users.profile') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+                {# identity strip #}
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ current_user.first_name[:1]|upper }}{{ current_user.last_name[:1]|upper }}</span>
+                    <div style="line-height:1.3; min-width:0;">
+                        <div style="font-weight:600; color:var(--text);">{{ current_user.first_name }} {{ current_user.last_name }}</div>
+                        <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:2px;">{{ as_handle }} · {{ as_role }}</div>
+                    </div>
+                </div>
+
+                {# IDENTITY #}
+                <div class="as-sec">Identity</div>
+                <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-first">First name <span class="req">*</span></label>
+                        <input class="input" type="text" name="first_name" id="as-first" value="{{ current_user.first_name }}" autocomplete="off" required>
+                    </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-last">Last name <span class="req">*</span></label>
+                        <input class="input" type="text" name="last_name" id="as-last" value="{{ current_user.last_name }}" autocomplete="off" required>
+                    </div>
+                </div>
+                <div class="field" style="margin-top:16px; margin-bottom:0;">
+                    <label class="field-label" for="as-email">Email address <span class="req">*</span></label>
+                    <div style="display:flex; gap:8px; align-items:stretch;">
+                        <input class="input" type="email" name="email" id="as-email" value="{{ current_user.email_address }}" autocomplete="off" required style="flex:1;">
+                        <a class="btn" href="{{ url_for('users.send_test_email', next=request.path) }}" role="button" style="flex:none;">{{ icon('mail', size=15) }} Test email</a>
+                    </div>
+                </div>
+
+                {# API ACCESS #}
+                <div class="as-sec">API access</div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label">Personal API key</label>
+                    <div style="display:flex; gap:8px; align-items:stretch;">
+                        <div style="position:relative; flex:1; min-width:0;">
+                            <input class="input mono" id="as-apikey" type="text" data-full="{{ as_key }}" data-mask="{{ as_mask }}" value="{{ as_mask }}" readonly style="padding-right:38px; width:100%;">
+                            <button type="button" class="icon-btn" onclick="hvApiReveal()" title="Show / hide" style="position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:none;">{{ icon('eye', size=15) }}</button>
+                        </div>
+                        <button type="button" class="btn" onclick="hvApiCopy()" style="flex:none;">{{ icon('copy', size=15) }} Copy</button>
+                        <a class="btn" href="{{ url_for('users.generate_api_key', next=request.path) }}" role="button" style="flex:none;">{{ icon('refresh', size=15) }} Generate</a>
+                    </div>
+                    <span class="field-hint" style="margin-top:8px; display:block;">Used to authenticate against the Hashview REST API. Regenerating immediately revokes the previous key.</span>
+                </div>
+
+                {# PUSHOVER #}
+                <div class="as-sec">Pushover notifications</div>
+                <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-pu-key">User key</label>
+                        <input class="input mono" type="text" name="pushover_user_key" id="as-pu-key" value="{{ current_user.pushover_user_key or '' }}" placeholder="u…" autocomplete="off">
+                    </div>
+                    <div class="field" style="margin-bottom:0;">
+                        <label class="field-label" for="as-pu-app">App API token</label>
+                        <input class="input mono" type="text" name="pushover_app_id" id="as-pu-app" value="{{ current_user.pushover_app_id or '' }}" placeholder="a…" autocomplete="off">
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <a class="btn" href="{{ url_for('users.send_test_pushover', next=request.path) }}" role="button">{{ icon('bell', size=15) }} Send test notification</a>
+                </div>
+                <span class="field-hint" style="margin-top:8px; display:block;">Enter both your Pushover user key and an app token to enable push alerts.</span>
+            </div>
+            <div class="hv-dialog-foot">
+                <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">{{ icon('check', size=15) }} Update profile</button>
+            </div>
+        </form>
+    </dialog>
+    <script>
+    function hvApiReveal() {
+        var i = document.getElementById('as-apikey'); if (!i) return;
+        var full = i.getAttribute('data-full'); if (!full) return;
+        i.value = (i.value === full) ? i.getAttribute('data-mask') : full;
+    }
+    function hvApiCopy() {
+        var i = document.getElementById('as-apikey'); if (!i) return;
+        var full = i.getAttribute('data-full'); if (!full) return;
+        if (navigator.clipboard) { navigator.clipboard.writeText(full); }
+        else { var was = i.value; i.value = full; i.select(); document.execCommand('copy'); i.value = was; }
+    }
+    </script>
 
     {% else %}
     {# ---------- unauthenticated: centered card (login / password reset) ---------- #}

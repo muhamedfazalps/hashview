@@ -8,13 +8,23 @@ from flask_login import LoginManager
 from flask_bcrypt import Bcrypt
 
 from hashview.models import db
-from hashview.models import Users, Jobs, Wordlists, Rules, TaskGroups, Tasks
+from hashview.models import Users, Jobs, Wordlists, Rules, TaskGroups, Tasks, Hashfiles, Customers
 from hashview.users.forms import LoginForm, UsersForm, ProfileForm, RequestResetForm, ResetPasswordForm
 from hashview.utils.utils import send_email, send_pushover
 
 import uuid
 
 bcrypt = Bcrypt()
+
+
+def _safe_next(default_endpoint='users.profile'):
+    """Return a safe same-site redirect target from ?next= / form 'next', else the
+    default endpoint. Lets the account-settings modal (in the layout) return the user
+    to the page they opened it from. Guards against open-redirects."""
+    nxt = request.values.get('next')
+    if nxt and nxt.startswith('/') and not nxt.startswith('//'):
+        return nxt
+    return url_for(default_endpoint)
 
 
 login_manager = LoginManager()
@@ -84,7 +94,9 @@ def users_list():
     rules = Rules.query.all()
     tasks = Tasks.query.all()
     task_groups = TaskGroups.query.all()
-    return render_template('users.html.j2', title='Users', users=users, jobs=jobs, wordlists=wordlists, rules=rules, tasks=tasks, task_groups=task_groups)
+    hashfiles = Hashfiles.query.all()
+    customers = Customers.query.all()
+    return render_template('users.html.j2', title='Users', users=users, jobs=jobs, wordlists=wordlists, rules=rules, tasks=tasks, task_groups=task_groups, hashfiles=hashfiles, customers=customers, usersForm=UsersForm())
 
 @users.route("/users/add", methods=['GET', 'POST'])
 @login_required
@@ -101,12 +113,65 @@ def users_add():
                 user = Users(first_name=form.first_name.data, last_name=form.last_name.data, email_address=form.email.data, admin=form.is_admin.data, password=hashed_password)
             db.session.add(user)
             db.session.commit()
+            # Optional "send invite email" toggle from the add-user modal. Best-effort:
+            # send_email already swallows errors / returns False if mail isn't configured.
+            if request.form.get('send_invite'):
+                send_email(user, 'Your Hashview account',
+                           f'An account has been created for you on Hashview. '
+                           f'Sign in with your email address ({user.email_address}).')
             flash(f'Account created for {form.email.data}!', 'success')
             return redirect(url_for('users.users_list'))
         return render_template('users_add.html.j2', title='User Add', form=form)
     else:
         flash('Unauthorized to add users account.', 'danger')
         return redirect(url_for('users.users_list'))
+
+@users.route("/users/edit/<int:user_id>", methods=['POST'])
+@login_required
+def users_edit(user_id):
+    """Update an existing user's name, email, role, and (optionally) password.
+
+    Driven by the edit-user modal, which mirrors the add-user modal. Password fields
+    are optional on edit — left blank, the current password is kept.
+    """
+    if not current_user.admin:
+        flash('Unauthorized to edit users account.', 'danger')
+        return redirect(url_for('users.users_list'))
+
+    user = Users.query.get_or_404(user_id)
+    first = (request.form.get('first_name') or '').strip()
+    last = (request.form.get('last_name') or '').strip()
+    email = (request.form.get('email') or '').strip()
+    is_admin = bool(request.form.get('is_admin'))
+    password = request.form.get('password') or ''
+    confirm = request.form.get('confirm_password') or ''
+
+    if not (first and last and email):
+        flash('First name, last name, and email are required.', 'danger')
+        return redirect(url_for('users.users_list'))
+
+    # Email must be unique, but the user keeping their own email is fine.
+    clash = Users.query.filter_by(email_address=email).first()
+    if clash and clash.id != user.id:
+        flash('That email address is taken. Please choose a different one.', 'danger')
+        return redirect(url_for('users.users_list'))
+
+    if password:
+        if len(password) < 14:
+            flash('Password must be at least 14 characters.', 'danger')
+            return redirect(url_for('users.users_list'))
+        if password != confirm:
+            flash('Passwords do not match.', 'danger')
+            return redirect(url_for('users.users_list'))
+        user.password = bcrypt.generate_password_hash(password).decode('latin-1')
+
+    user.first_name = first
+    user.last_name = last
+    user.email_address = email
+    user.admin = is_admin
+    db.session.commit()
+    flash(f'Account updated for {email}!', 'success')
+    return redirect(url_for('users.users_list'))
 
 @users.route("/users/delete/<int:user_id>", methods=['POST'])
 @login_required
@@ -139,7 +204,7 @@ def profile():
             current_user.pushover_app_id = form.pushover_app_id.data
         db.session.commit()
         flash('Profile Updated!', 'success')
-        return redirect(url_for('users.profile'))
+        return redirect(_safe_next())
     elif request.method == 'GET':
         form.first_name.data = current_user.first_name
         form.last_name.data = current_user.last_name
@@ -154,7 +219,7 @@ def send_test_pushover():
     user = Users.query.get(current_user.id)
     send_pushover(user, 'Test Message From Hashview', 'This is a test pushover message from hashview')
     flash('Pushover Sent', 'success')
-    return redirect(url_for('users.profile'))
+    return redirect(_safe_next())
 
 @users.route("/profile/send_test_email", methods=['GET'])
 @login_required
@@ -166,7 +231,7 @@ def send_test_email():
         flash('Email Sent', 'success')
     else:
         flash('Email Failure. Check SMTP settings.', 'danger')
-    return redirect(url_for('users.profile'))
+    return redirect(_safe_next())
 
 @users.route("/profile/generate_api_key", methods=['GET'])
 @login_required
@@ -177,7 +242,7 @@ def generate_api_key():
     user.api_key = str(uuid.uuid4())
     db.session.commit()
     flash('New API Key Set', 'success')
-    return redirect(url_for('users.profile'))
+    return redirect(_safe_next())
 
 @users.route("/reset_password", methods=['GET', 'POST'])
 def reset_request():

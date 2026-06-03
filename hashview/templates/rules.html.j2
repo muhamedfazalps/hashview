@@ -2,6 +2,10 @@
 {% from "icons.html.j2" import icon %}
 {% block title %}Rules · Hashview{% endblock %}
 {% block content %}
+{% macro rcount(n) -%}
+{%- if n and n >= 1000000 -%}{{ (n / 1000000)|round(1) }}M{%- elif n and n >= 1000 -%}{{ (n / 1000)|round(1) }}K{%- else -%}{{ n or 0 }}{%- endif -%}
+{%- endmacro %}
+{% macro kv_label(t) -%}<div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:6px;">{{ t }}</div>{%- endmacro %}
 
 <div class="page-head">
     <div>
@@ -113,15 +117,68 @@
 
 {# ---- per-rule modals (native <dialog>, no framework) ---- #}
 {% for rule in rules %}
-<dialog class="hv-dialog" id="info-{{ rule.id }}">
-    <div class="hv-dialog-head"><h3>Info: {{ rule.name }}</h3><button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button></div>
-    <div class="hv-dialog-body">
-        <dl class="kv">
-            <dt>Associated Tasks</dt>
-            <dd>{% for task in tasks %}{% if task.rule_id == rule.id %}{{ task.name }}<br>{% endif %}{% endfor %}</dd>
-        </dl>
+<dialog class="hv-dialog" id="info-{{ rule.id }}" style="max-width:720px; width:95vw;">
+    {% set used = rule_used_tasks.get(rule.id, []) if rule_used_tasks is defined else [] %}
+    {% set hits = rule_hits.get(rule.id, 0) if rule_hits is defined else 0 %}
+    {% set tcount = rule_task_count.get(rule.id, 0) if rule_task_count is defined else 0 %}
+    {% set jcount = rule_job_count.get(rule.id, 0) if rule_job_count is defined else 0 %}
+    {# size on disk is not tracked yet — placeholder until it's wired up #}
+    {% set size_on_disk = '—' %}
+    <div class="hv-dialog-head">
+        {{ icon('info', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">{{ rule.name }}</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">ruleset details</div>
+        </div>
+        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
-    <div class="hv-dialog-foot"><button class="btn" onclick="this.closest('dialog').close()">Close</button></div>
+    <div class="hv-dialog-body" style="max-height:74vh; overflow-y:auto;">
+        {# summary strip #}
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">
+            <span style="flex:none; width:46px; height:46px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; color:var(--primary); border:1px solid var(--primary-dim); background:rgba(var(--primary-rgb),0.08);">{{ icon('rule', size=20) }}</span>
+            <div style="line-height:1.4;">
+                <span class="mono" style="font-size:22px; color:var(--text);">{{ rcount(rule.size) }}<span style="font-size:12px; color:var(--text-mute);"> rules</span></span>
+                <div class="mono" style="font-size:11px; color:var(--text-mute); margin-top:3px;">uploaded {{ rule.last_updated.strftime('%Y-%m-%d') if rule.last_updated else '—' }}</div>
+            </div>
+            <span style="margin-left:auto; text-align:right; line-height:1;">
+                <span class="mono" style="font-size:22px; color:var(--primary); text-shadow:var(--glow-text);">{{ "{:,}".format(hits|int) }}</span>
+                <span class="mono" style="display:block; font-size:9px; letter-spacing:1px; color:var(--text-mute); margin-top:3px;">HITS</span>
+            </span>
+        </div>
+
+        {# detail grid (no note) #}
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px 24px;">
+            <div>{{ kv_label('Owner') }}<div><span class="badge dim">{{ rule_owner.get(rule.id, '—') if rule_owner is defined else '—' }}</span></div></div>
+            <div>{{ kv_label('Uploaded') }}<div class="mono" style="color:var(--text);">{{ rule.last_updated.strftime('%Y-%m-%d') if rule.last_updated else '—' }}</div></div>
+            <div>{{ kv_label('Rules') }}<div class="mono" style="color:var(--text);">{{ "{:,}".format(rule.size|int) }}</div></div>
+            <div>{{ kv_label('Historical hits') }}<div><span class="mono" style="color:{{ 'var(--primary)' if hits else 'var(--text-mute)' }};{% if hits %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(hits|int) }}</span> <span style="color:var(--text-dim);">passwords recovered</span></div></div>
+            <div>{{ kv_label('Used by') }}<div style="color:var(--text);">{{ tcount }} task{{ '' if tcount == 1 else 's' }} · {{ jcount }} job{{ '' if jcount == 1 else 's' }}</div></div>
+        </div>
+
+        {# used-by tasks #}
+        <div style="margin-top:24px;">
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('task', size=14) }} Used by {{ used|length }} task{{ '' if used|length == 1 else 's' }}</div>
+            {% if used %}
+            {% for u in used %}
+            <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
+                <span style="color:var(--text-mute); display:inline-flex;">{{ icon('task', size=15) }}</span>
+                <span style="font-weight:500; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ u.name }}">{{ u.name }}</span>
+                <span style="margin-left:auto; display:inline-flex; align-items:center; gap:10px; flex:none;">
+                    {% if u.wordlist %}<span class="mono" style="color:var(--text-mute); font-size:11px;">{{ u.wordlist }}</span>{% endif %}
+                    <span class="badge dim" style="font-size:8.5px;">{{ u.type }}</span>
+                    <span class="mono" style="color:{{ 'var(--primary)' if u.hits else 'var(--text-mute)' }}; white-space:nowrap;">{{ "{:,}".format(u.hits|int) }} hits</span>
+                </span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="mono" style="color:var(--text-mute);">Not used by any tasks yet.</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="hv-dialog-foot">
+        <span class="mono" style="margin-right:auto; font-size:11.5px; color:var(--text-mute);">{{ "{:,}".format(rule.size|int) }} rules · {{ size_on_disk }}</span>
+        <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+    </div>
 </dialog>
 
 <dialog class="hv-dialog" id="del-{{ rule.id }}">

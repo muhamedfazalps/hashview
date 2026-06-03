@@ -1,13 +1,28 @@
 import os
 from flask import Blueprint, render_template, flash, url_for, redirect, current_app, request
 from flask_login import login_required, current_user
-from hashview.models import Rules, Tasks, Jobs, JobTasks, Users
+from hashview.models import Rules, Tasks, Jobs, JobTasks, Users, Wordlists, Hashes
 from hashview.rules.forms import RulesForm
 from hashview.utils.utils import save_file, get_linecount, get_filehash
 from hashview.models import db
 
 
 rules = Blueprint('rules', __name__)
+
+
+def _rule_ttype(task):
+    """Friendly attack-type label for a task (matches the Tasks/Wordlists views)."""
+    if task.hc_attackmode == 0 and task.rule_id:
+        return 'DICT + RULE'
+    if task.hc_attackmode == 0:
+        return 'DICTIONARY'
+    if task.hc_attackmode == 1:
+        return 'COMBINATOR'
+    if task.hc_attackmode == 3:
+        return 'MASK'
+    if task.hc_attackmode in (6, 7):
+        return 'HYBRID'
+    return '?'
 
 #############################################
 # Rules
@@ -21,7 +36,49 @@ def rules_list():
     jobs = Jobs.query.all()
     jobtasks = JobTasks.query.all()
     users = Users.query.all()
-    return render_template('rules.html.j2', title='Rules', rules=rules, tasks=tasks, jobs=jobs, jobtasks=jobtasks, users=users, rulesForm=RulesForm())
+
+    # --- per-rule info-modal data ---
+    wl_names = {w.id: w.name for w in Wordlists.query.all()}
+    user_names = {u.id: (((u.first_name or '') + ' ' + (u.last_name or '')).strip() or '—')
+                  for u in users}
+    recovered_by_task = {
+        row.task_id: row.recovered_count
+        for row in Hashes.query.with_entities(
+            Hashes.task_id, db.func.count(Hashes.id).label('recovered_count')
+        ).filter(Hashes.cracked == '1').group_by(Hashes.task_id).all()
+    }
+    jobs_by_task = {}
+    for jt in jobtasks:
+        jobs_by_task.setdefault(jt.task_id, set()).add(jt.job_id)
+
+    rule_used_tasks = {}   # rule.id -> [{name, wordlist, type, hits}]
+    rule_hits = {}         # rule.id -> summed historical hits
+    rule_task_count = {}   # rule.id -> number of tasks using it
+    rule_job_count = {}    # rule.id -> number of distinct jobs using those tasks
+    rule_owner = {}        # rule.id -> owner display name
+    for rule in rules:
+        used = [t for t in tasks if t.rule_id == rule.id]
+        rows, job_ids, total = [], set(), 0
+        for t in used:
+            hits = recovered_by_task.get(t.id, 0)
+            total += hits
+            job_ids |= jobs_by_task.get(t.id, set())
+            rows.append({
+                'name': t.name,
+                'wordlist': wl_names.get(t.wl_id),
+                'type': _rule_ttype(t),
+                'hits': hits,
+            })
+        rule_used_tasks[rule.id] = rows
+        rule_hits[rule.id] = total
+        rule_task_count[rule.id] = len(used)
+        rule_job_count[rule.id] = len(job_ids)
+        rule_owner[rule.id] = user_names.get(rule.owner_id, '—')
+
+    return render_template('rules.html.j2', title='Rules', rules=rules, tasks=tasks, jobs=jobs,
+                           jobtasks=jobtasks, users=users, rule_used_tasks=rule_used_tasks,
+                           rule_hits=rule_hits, rule_task_count=rule_task_count,
+                           rule_job_count=rule_job_count, rule_owner=rule_owner, rulesForm=RulesForm())
 
 @rules.route("/rules/add", methods=['GET', 'POST'])
 @login_required

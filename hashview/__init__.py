@@ -254,6 +254,10 @@ def create_app(testing=False, config_overrides=None):
 
     app.add_template_filter(jinja_hex_decode)
     app.add_template_global(get_application_version, get_application_version.__name__)
+    # Expose a csrf_token() template global (no global CSRFProtect is installed) so the
+    # account-settings modal in the layout can post to the CSRF-protected profile route.
+    from flask_wtf.csrf import generate_csrf
+    app.jinja_env.globals['csrf_token'] = generate_csrf
 
     @app.context_processor
     def inject_nav_counts():
