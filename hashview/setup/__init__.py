@@ -166,14 +166,15 @@ def compress_existing_wordlists_if_needed(db :SQLAlchemy):
             logger.exception('Failed to compress wordlist %s; leaving it untouched.', getattr(wordlist, 'id', '?'))
 
 
-# The four canonical dynamic wordlists. Order matters only for the seed-file
+# The canonical dynamic wordlists. Order matters only for the seed-file
 # layout; the dispatcher in hashview/utils/utils.py:update_dynamic_wordlist
-# routes by substring (Passwords/Usernames/Customers/NTLM).
+# routes by substring (Passwords/Usernames/Customers/NTLM/Website).
 _DYNAMIC_WORDLISTS = (
     ('(DYNAMIC) All Recovered Passwords', 'hashview/control/wordlists/dynamic-all.txt'),
     ('(DYNAMIC) All Usernames',           'hashview/control/wordlists/dynamic-usernames.txt'),
     ('(DYNAMIC) All Customers',           'hashview/control/wordlists/dynamic-customers.txt'),
     ('(DYNAMIC) All NTLM Hashes',         'hashview/control/wordlists/dynamic-ntlm.txt'),
+    ('(DYNAMIC) Website Keywords',        'hashview/control/wordlists/dynamic-website-keywords.txt'),
 )
 
 

@@ -150,6 +150,7 @@ def ensure_dynamic_wordlist(db):
         ('(DYNAMIC) All Usernames',           'hashview/control/wordlists/dynamic-usernames.txt'),
         ('(DYNAMIC) All Customers',           'hashview/control/wordlists/dynamic-customers.txt'),
         ('(DYNAMIC) All NTLM Hashes',         'hashview/control/wordlists/dynamic-ntlm.txt'),
+        ('(DYNAMIC) Website Keywords',        'hashview/control/wordlists/dynamic-website-keywords.txt'),
     ]
     added = 0
     for name, path in wanted:

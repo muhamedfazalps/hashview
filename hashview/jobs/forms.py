@@ -1,7 +1,7 @@
 """Forms Page to manage Jobs"""
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, SelectField, TextAreaField, FileField, BooleanField
-from wtforms.validators import DataRequired, ValidationError
+from wtforms.validators import DataRequired, ValidationError, URL
 from hashview.models import Jobs
 
 
@@ -247,3 +247,9 @@ class JobSummaryForm(FlaskForm):
     """Class representing an Jobs Summary"""
 
     submit = SubmitField('Complete')
+
+class JobWebsiteKeywordsForm(FlaskForm):
+    """URL to crawl for the (DYNAMIC) Website Keywords wordlist."""
+
+    crawl_url = StringField('Website URL', validators=[DataRequired(), URL(message='Enter a valid URL, e.g. https://example.com')])
+    submit = SubmitField('Next')

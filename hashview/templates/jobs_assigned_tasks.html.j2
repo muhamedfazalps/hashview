@@ -8,7 +8,7 @@
         <div class="page-sub">// tasks</div>
     </div>
 </div>
-{{ wizard_stepper('tasks', alert_hashes=(alert_hashes if alert_hashes is defined else false)) }}
+{{ wizard_stepper('tasks', alert_hashes=(alert_hashes if alert_hashes is defined else false), website=(website if website is defined else false)) }}
 
 <div class="grid" style="grid-template-columns: 1fr 1fr; align-items: start;">
 
@@ -156,7 +156,7 @@
 <div class="wizard-nav" style="margin-top:20px;">
     <a class="btn" href="{{ url_for('jobs.jobs_assign_notifications', job_id = job.id) }}">{{ icon('arrowLeft', size=15) }} Back</a>
     <span class="spacer"></span>
-    <a class="btn btn-primary" href="/jobs/{{job.id}}/summary" role="button">Next {{ icon('arrowRight', size=15) }}</a>
+    <a class="btn btn-primary" href="/jobs/{{job.id}}/website" role="button">Next {{ icon('arrowRight', size=15) }}</a>
 </div>
 
 {# ---- DeleteAllTask modal (native <dialog>) ---- #}

@@ -44,6 +44,11 @@ def settings_list():
             settings.max_runtime_jobs = hashview_form.max_runtime_jobs.data
             settings.max_runtime_tasks = hashview_form.max_runtime_tasks.data
             settings.enabled_job_weights = hashview_form.enabled_job_weights.data
+            settings.crawl_min_word_length = hashview_form.crawl_min_word_length.data
+            settings.crawl_user_agent = hashview_form.crawl_user_agent.data
+            settings.crawl_force_lowercase = hashview_form.crawl_force_lowercase.data
+            settings.crawl_depth = hashview_form.crawl_depth.data
+            settings.crawl_threads = hashview_form.crawl_threads.data
             db.session.commit()
             flash('Updated Hashview settings!', 'success')
             return redirect(url_for('settings.settings_list'))
@@ -52,6 +57,11 @@ def settings_list():
             hashview_form.max_runtime_jobs.data = settings.max_runtime_jobs
             hashview_form.max_runtime_tasks.data = settings.max_runtime_tasks
             hashview_form.enabled_job_weights.data = settings.enabled_job_weights
+            hashview_form.crawl_min_word_length.data = settings.crawl_min_word_length
+            hashview_form.crawl_user_agent.data = settings.crawl_user_agent
+            hashview_form.crawl_force_lowercase.data = settings.crawl_force_lowercase
+            hashview_form.crawl_depth.data = settings.crawl_depth
+            hashview_form.crawl_threads.data = settings.crawl_threads
 
         try:
             database_version = db.session.execute('SELECT version_num FROM alembic_version LIMIT 1;').scalar()

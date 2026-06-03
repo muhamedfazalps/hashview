@@ -1,7 +1,7 @@
 """Forms Page to manage Settings"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, BooleanField, SubmitField, ValidationError
-from wtforms.validators import DataRequired
+from wtforms import StringField, BooleanField, IntegerField, SubmitField, ValidationError
+from wtforms.validators import DataRequired, NumberRange
 
 
 class HashviewSettingsForm(FlaskForm):
@@ -11,6 +11,12 @@ class HashviewSettingsForm(FlaskForm):
     max_runtime_jobs = StringField('Maximum runtime per Job in hours. (0 = infinate)', validators=[DataRequired()])
     max_runtime_tasks = StringField('Maximum runtime per Task in hours. (0 = infinate)', validators=[DataRequired()])
     enabled_job_weights = BooleanField('Allow users to set job priority during job creations.')
+    # Website-keywords crawler settings
+    crawl_min_word_length = IntegerField('Minimum word length', validators=[DataRequired(), NumberRange(min=1, max=65535)])
+    crawl_user_agent = StringField('Crawler user-agent', validators=[DataRequired()])
+    crawl_force_lowercase = BooleanField('Force crawled words to lowercase.')
+    crawl_depth = IntegerField('Crawl depth', validators=[DataRequired(), NumberRange(min=1, max=100)])
+    crawl_threads = IntegerField('Crawler threads', validators=[DataRequired(), NumberRange(min=1, max=256)])
     submit = SubmitField('Update')
 
     def validate_rention_period(self, retention_period):

@@ -9,7 +9,7 @@ import requests
 from datetime import datetime
 from flask import current_app, url_for
 from hashview.models import db
-from hashview.models import Rules, Wordlists, Hashfiles, HashfileHashes, Hashes, Tasks, Jobs, JobTasks, JobNotifications, Users, Agents, Customers
+from hashview.models import Rules, Wordlists, Hashfiles, HashfileHashes, Hashes, Tasks, Jobs, JobTasks, JobNotifications, Users, Agents, Customers, Settings
 from flask_mail import Message
 
 
@@ -322,53 +322,86 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
 
     return True
 
-def update_dynamic_wordlist(wordlist_id):
-    """Function to update dynamic wordlist"""
+def _generate_website_keywords(wordlist, job_id):
+    """Populate the (DYNAMIC) Website Keywords wordlist by crawling the job URL.
+
+    The crawl result is written to a randomly-named file under control/tmp and
+    then atomically moved onto ``wordlist.path`` — so concurrent crawls never
+    collide on a filename or leave a partially-written live file. If no job URL
+    can be resolved (e.g. a manual UI refresh with no running job), the existing
+    file is left untouched.
+    """
+    settings = Settings.query.first()
+    job = Jobs.query.get(job_id) if job_id else None
+    target = job.crawl_url if (job and job.crawl_url) else None
+    if not target:
+        current_app.logger.warning(
+            'Website Keywords update with no job URL (job_id=%s); leaving wordlist %s unchanged.',
+            job_id, wordlist.id)
+        return
+
+    from hashview.utils.crawler import crawl_website_keywords
+    words = crawl_website_keywords(target, settings)
+
+    tmp_path = os.path.join(current_app.root_path, 'control/tmp', secrets.token_hex(8) + '.txt')
+    with open(tmp_path, 'wt') as tmp:
+        for word in sorted(words):
+            tmp.write(word + '\n')
+    # Atomic on the same filesystem (control/tmp and control/wordlists are
+    # siblings); fall back to a copy+remove move across filesystems.
+    try:
+        os.replace(tmp_path, wordlist.path)
+    except OSError:
+        import shutil
+        shutil.move(tmp_path, wordlist.path)
+
+
+def update_dynamic_wordlist(wordlist_id, job_id=None):
+    """Function to update dynamic wordlist.
+
+    ``job_id`` (resolved server-side from the requesting agent's running job)
+    is used by crawl-based wordlists to read the per-job target URL.
+    """
 
     wordlist = Wordlists.query.get(wordlist_id)
-    
 
-    # Do we delete the original file, or overwrite it?
-    # if we overwrite, what happens if the new content has fewer lines than the previous file.
-    # would this even happen? In most/all cases there will be new stuff to add.
-    # is there a file lock on a wordlist when in use by hashcat? Could we just create a temp file and replace after generation?
-    # Open file
-    file = open(wordlist.path, 'wt')
-    if 'Passwords' in wordlist.name:
-        plains = Hashes.query.filter_by(cracked=True).distinct('plaintext').with_entities(Hashes.plaintext)
-        for entry in plains:
-            file.write(str(bytes.fromhex(entry.plaintext).decode('latin-1')) + '\n')
-    elif 'Usernames' in wordlist.name:
-        usernames = HashfileHashes.query.distinct('username')
-        username_set = set()
-        for entry in usernames:
-            if entry.username:
-                username_string = str(bytes.fromhex(entry.username).decode('latin-1'))
-                if '\\' in username_string:
-                    #print(username_string)
-                    #print(username_string.split('\\')[0])
-                    #print(username_string.split('\\')[1])
-                    username_set.add(username_string.split('\\')[0])
-                    username_set.add(username_string.split('\\')[1])
-                    username_set.add(username_string)
-                else:
-                    username_set.add(username_string)
-                    #print(username_string)
-        for entry in username_set:
-            file.write(entry + '\n')
-    elif 'Customers' in wordlist.name:
-        customers = Customers.query.distinct('name')
-        customer_set = set()
-        for entry in customers:
-            customer_set.add(entry.name.lower())
-        for entry in customer_set:
-            file.write(entry + '\n')
-    elif 'NTLM' in wordlist.name:
-        hashes = Hashes.query.filter_by(hash_type='1000').with_entities(Hashes.ciphertext)
-        for entry in hashes:
-            file.write(str(entry.ciphertext) + '\n')
+    if 'Website' in wordlist.name:
+        # Crawl-based: generate into a random tmp file + atomic replace.
+        _generate_website_keywords(wordlist, job_id)
+    else:
+        # DB-derived dynamic wordlists: rewrite wordlist.path in place.
+        file = open(wordlist.path, 'wt')
+        if 'Passwords' in wordlist.name:
+            plains = Hashes.query.filter_by(cracked=True).distinct('plaintext').with_entities(Hashes.plaintext)
+            for entry in plains:
+                file.write(str(bytes.fromhex(entry.plaintext).decode('latin-1')) + '\n')
+        elif 'Usernames' in wordlist.name:
+            usernames = HashfileHashes.query.distinct('username')
+            username_set = set()
+            for entry in usernames:
+                if entry.username:
+                    username_string = str(bytes.fromhex(entry.username).decode('latin-1'))
+                    if '\\' in username_string:
+                        username_set.add(username_string.split('\\')[0])
+                        username_set.add(username_string.split('\\')[1])
+                        username_set.add(username_string)
+                    else:
+                        username_set.add(username_string)
+            for entry in username_set:
+                file.write(entry + '\n')
+        elif 'Customers' in wordlist.name:
+            customers = Customers.query.distinct('name')
+            customer_set = set()
+            for entry in customers:
+                customer_set.add(entry.name.lower())
+            for entry in customer_set:
+                file.write(entry + '\n')
+        elif 'NTLM' in wordlist.name:
+            hashes = Hashes.query.filter_by(hash_type='1000').with_entities(Hashes.ciphertext)
+            for entry in hashes:
+                file.write(str(entry.ciphertext) + '\n')
 
-    file.close()
+        file.close()
 
     # update line count
     wordlist.size = get_linecount(wordlist.path)

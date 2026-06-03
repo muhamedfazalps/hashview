@@ -13,6 +13,12 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 
+# Default User-Agent the website-keywords crawler identifies itself with. Kept
+# here so the model default, the setup defaults, and the alembic backfill all
+# share one source of truth.
+DEFAULT_CRAWL_USER_AGENT = 'Mozilla/5.0 (compatible; Hashview-Crawler/1.0; +https://github.com/hashview/hashview)'
+
+
 class Users(db.Model, UserMixin):
     """Class object to represent Users"""
 
@@ -109,6 +115,12 @@ class Settings(db.Model):
     max_runtime_jobs = db.Column(db.Integer)                    # Time will be measured in hours
     max_runtime_tasks = db.Column(db.Integer)                   # Time will be measured in hours
     enabled_job_weights = db.Column(db.Boolean, nullable=False, default=False)
+    # Website-keywords crawler settings (used by the (DYNAMIC) Website Keywords wordlist)
+    crawl_min_word_length = db.Column(db.Integer, nullable=False, default=8)
+    crawl_user_agent = db.Column(db.String(255), nullable=False, default=DEFAULT_CRAWL_USER_AGENT)
+    crawl_force_lowercase = db.Column(db.Boolean, nullable=False, default=True)
+    crawl_depth = db.Column(db.Integer, nullable=False, default=2)
+    crawl_threads = db.Column(db.Integer, nullable=False, default=5)
 
 class Jobs(db.Model):
     """Class object to represent Jobs"""
@@ -129,6 +141,8 @@ class Jobs(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     # limit_recovered: one-and-done crack
     limit_recovered = db.Column(db.Boolean, nullable=False, default=False)
+    # URL to crawl for the (DYNAMIC) Website Keywords wordlist, captured during job creation
+    crawl_url = db.Column(db.String(2048), nullable=True)
 
 class JobTasks(db.Model):
     """Class object to represent JobTasks"""

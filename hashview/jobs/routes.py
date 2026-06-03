@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, flash, url_for, current_app, request
 from flask_login import login_required, current_user
 from sqlalchemy import func, case
-from hashview.jobs.forms import JobsForm, JobsNewHashFileForm, JobsNotificationsForm, JobSummaryForm
+from hashview.jobs.forms import JobsForm, JobsNewHashFileForm, JobsNotificationsForm, JobSummaryForm, JobWebsiteKeywordsForm
 from hashview.models import HashNotifications, JobNotifications, Jobs, Customers, Hashfiles, Users, HashfileHashes, Hashes, JobTasks, Tasks, TaskGroups, Settings, Wordlists
 from hashview.utils.utils import save_file, import_hashfilehashes, build_hashcat_command, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile
 from hashview.models import db
@@ -13,6 +13,31 @@ from datetime import datetime
 
 
 jobs = Blueprint('jobs', __name__)
+
+
+def _job_uses_website_keywords(job_id):
+    """True if any task assigned to this job uses the (DYNAMIC) Website Keywords
+    wordlist (as primary or combinator-secondary wordlist)."""
+    return db.session.query(JobTasks.id).join(
+        Tasks, JobTasks.task_id == Tasks.id
+    ).join(
+        Wordlists, (Wordlists.id == Tasks.wl_id) | (Wordlists.id == Tasks.wl_id_2)
+    ).filter(
+        JobTasks.job_id == job_id,
+        Wordlists.type == 'dynamic',
+        Wordlists.name.like('%Website Keywords%'),
+    ).first() is not None
+
+
+def _job_has_alert_hashes(job):
+    """True if the job's hashfile has any per-hash alert notifications (drives
+    the conditional "Alert Hashes" wizard step)."""
+    if not job or not job.hashfile_id:
+        return False
+    return db.session.query(HashNotifications).join(
+        HashfileHashes, HashNotifications.hash_id == HashfileHashes.hash_id
+    ).filter(HashfileHashes.hashfile_id == job.hashfile_id).first() is not None
+
 
 @jobs.route("/jobs", methods=['GET', 'POST'])
 @login_required
@@ -349,7 +374,7 @@ def jobs_list_tasks(job_id):
     if job.hashfile_id:
         alert_hashes = db.session.query(HashNotifications).join(HashfileHashes, HashNotifications.hash_id == HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id == job.hashfile_id).first() is not None
 
-    return render_template('jobs_assigned_tasks.html.j2', title='Jobs Assigned Tasks', job=job, tasks=tasks, job_tasks=job_tasks, task_groups=task_groups, wordlists=wordlists, alert_hashes=alert_hashes)
+    return render_template('jobs_assigned_tasks.html.j2', title='Jobs Assigned Tasks', job=job, tasks=tasks, job_tasks=job_tasks, task_groups=task_groups, wordlists=wordlists, alert_hashes=alert_hashes, website=_job_uses_website_keywords(job_id))
 
 @jobs.route("/jobs/<int:job_id>/assign_task/<int:task_id>", methods=['GET'])
 @login_required
@@ -650,6 +675,27 @@ def jobs_delete(job_id):
     flash('You do not have rights to delete this job!', 'danger')
     return redirect(url_for('jobs.jobs_list'))
 
+@jobs.route("/jobs/<int:job_id>/website", methods=['GET', 'POST'])
+@login_required
+def jobs_website_keywords(job_id):
+    """Conditional wizard step: capture the URL to crawl for the
+    (DYNAMIC) Website Keywords wordlist. Skipped (redirect to summary) when the
+    job has no task using that wordlist."""
+    job = Jobs.query.get(job_id)
+    if not _job_uses_website_keywords(job_id):
+        return redirect("/jobs/" + str(job_id) + "/summary")
+
+    form = JobWebsiteKeywordsForm()
+    if form.validate_on_submit():
+        job.crawl_url = form.crawl_url.data
+        db.session.commit()
+        return redirect("/jobs/" + str(job_id) + "/summary")
+    elif request.method == 'GET':
+        form.crawl_url.data = job.crawl_url
+
+    return render_template('jobs_website_keywords.html.j2', title='Job Website Keywords',
+                           job=job, form=form, alert_hashes=_job_has_alert_hashes(job))
+
 @jobs.route("/jobs/<int:job_id>/summary", methods=['GET', 'POST'])
 @login_required
 def jobs_summary(job_id):
@@ -689,7 +735,7 @@ def jobs_summary(job_id):
 
         return redirect(url_for('jobs.jobs_list'))
 
-    return render_template('jobs_summary.html.j2', title='Job Summary', job=job, form=form, job_notification=job_notification, cracked_rate=cracked_rate, job_tasks=job_tasks, hash_notification_cnt=hash_notification_cnt, customer=customer, hashfile=hashfile, tasks=tasks, hash_notification=hash_notification, settings=settings)
+    return render_template('jobs_summary.html.j2', title='Job Summary', job=job, form=form, job_notification=job_notification, cracked_rate=cracked_rate, job_tasks=job_tasks, hash_notification_cnt=hash_notification_cnt, customer=customer, hashfile=hashfile, tasks=tasks, hash_notification=hash_notification, settings=settings, website=_job_uses_website_keywords(job_id))
 
 @jobs.route("/jobs/start/<int:job_id>", methods=['GET'])
 @login_required

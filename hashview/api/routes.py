@@ -379,7 +379,20 @@ def v1_api_get_update_wordlist(wordlist_id):
         return redirect("/v1/not_authorized")
 
     update_heartbeat(request.cookies.get('uuid'))
-    update_dynamic_wordlist(wordlist_id)
+
+    # Resolve the job this agent is currently running so crawl-based dynamic
+    # wordlists (Website Keywords) can read the per-job target URL. The
+    # heartbeat assigns the dispatched JobTask agent_id + 'Running' before the
+    # agent calls this, so the most-recent Running task for the agent is it.
+    job_id = None
+    agent = Agents.query.filter_by(uuid=request.cookies.get('uuid')).first()
+    if agent:
+        running = JobTasks.query.filter_by(agent_id=agent.id, status='Running') \
+                                .order_by(JobTasks.id.desc()).first()
+        if running:
+            job_id = running.job_id
+
+    update_dynamic_wordlist(wordlist_id, job_id)
     message = {
         'status': 200,
         'type': 'message',
