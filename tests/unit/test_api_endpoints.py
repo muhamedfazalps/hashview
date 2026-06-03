@@ -153,13 +153,18 @@ def test_customers_add_missing_body_returns_400(client, admin_user):
 def test_wordlists_add_writes_file_and_creates_row(
     client, app, admin_user, tmp_path, monkeypatch
 ):
-    """POST /v1/wordlists/add/<name> writes the file and creates a row."""
-    # Point the route at a tmp directory and create the expected subdir.
+    """POST /v1/wordlists/add/<name> stores the wordlist gzip-compressed at rest
+    and creates a row whose checksum is the sha256 of the compressed file."""
+    import gzip
+    # Point the route at a tmp directory and create the dirs the ingest uses.
     monkeypatch.setattr(app, "root_path", str(tmp_path))
     os.makedirs(os.path.join(str(tmp_path), "control", "wordlists"), exist_ok=True)
+    os.makedirs(os.path.join(str(tmp_path), "control", "tmp"), exist_ok=True)
 
     body_text = "alpha\nbeta\n"
-    client.set_cookie("uuid", admin_user.api_key)
+    # The cookie domain must match the test SERVER_NAME (localhost.test) for
+    # Werkzeug 3.x to send it.
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(
         "/v1/wordlists/add/my-list",
         data=body_text,
@@ -174,9 +179,11 @@ def test_wordlists_add_writes_file_and_creates_row(
     assert row is not None
     assert row.type == "static"
     assert row.owner_id == admin_user.id
-    # File on disk should contain the original raw body.
-    with open(row.path, "r") as fh:
-        assert fh.read() == body_text
+    # Wordlists are stored gzip-compressed at rest; the stored .gz decompresses
+    # back to the original body.
+    assert row.path.endswith(".gz")
+    with gzip.open(row.path, "rb") as fh:
+        assert fh.read() == body_text.encode()
 
 
 @pytest.mark.security

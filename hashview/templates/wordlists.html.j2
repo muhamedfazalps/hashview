@@ -118,43 +118,103 @@
 </div>
 
 {# ---- upload-wordlist modal (opened from the "Upload Wordlist" button) ---- #}
-<dialog class="hv-dialog" id="upload-wordlist-modal" style="max-width:560px; width:92vw;">
+<style>
+/* inset the whole progress block from the modal edges so the step list (left)
+   and the percentage (right) sit centered with breathing room, while each row
+   stays left/right justified */
+#upload-wordlist-modal #wl-progress { padding: 10px 30px 4px; }
+#upload-wordlist-modal .wl-steps { display:flex; flex-direction:column; gap:13px; margin:4px 0 20px; }
+#upload-wordlist-modal .wl-step { display:flex; align-items:center; gap:11px; color:var(--text-mute); transition:color .2s; }
+#upload-wordlist-modal .wl-step-dot { width:18px; height:18px; flex:none; border-radius:50%; border:2px solid var(--border); position:relative; transition:all .2s; }
+#upload-wordlist-modal .wl-step-name { font-size:13px; }
+#upload-wordlist-modal .wl-step-meta { margin-left:auto; font-size:11.5px; color:var(--text-mute); }
+#upload-wordlist-modal .wl-step.active { color:var(--text); }
+#upload-wordlist-modal .wl-step.active .wl-step-dot { border-color:var(--primary); box-shadow:var(--glow-sm); }
+#upload-wordlist-modal .wl-step.active .wl-step-dot::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--primary); animation:wlPulse 1s ease-in-out infinite; }
+#upload-wordlist-modal .wl-step.done { color:var(--text); }
+#upload-wordlist-modal .wl-step.done .wl-step-dot { border-color:var(--primary); background:var(--primary); }
+#upload-wordlist-modal .wl-step.done .wl-step-dot::after { content:"✓"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; line-height:1; color:var(--bg); font-weight:700; }
+@keyframes wlPulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+#upload-wordlist-modal .wl-bar { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
+#upload-wordlist-modal .wl-bar-fill { height:100%; width:0%; border-radius:3px; background:linear-gradient(90deg,var(--primary-deep),var(--primary)); box-shadow:var(--glow-sm); transition:width .15s ease; }
+#upload-wordlist-modal .wl-bar.indeterminate .wl-bar-fill { width:38% !important; transition:none; animation:wlIndet 1.1s ease-in-out infinite; }
+@keyframes wlIndet { 0%{margin-left:-38%;} 100%{margin-left:100%;} }
+</style>
+<dialog class="hv-dialog" id="upload-wordlist-modal" style="max-width:560px; width:92vw;" oncancel="hvWlOnCancel(event)">
     <div class="hv-dialog-head">
         {{ icon('book', size=16) }}
         <div style="line-height:1.2;">
             <h3 style="margin:0;">Upload Wordlist</h3>
-            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">plaintext, newline-delimited file</div>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">plaintext or .gz, newline-delimited</div>
         </div>
-        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
+        <button type="button" class="icon-btn" id="wl-up-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
-    <form method="POST" action="{{ url_for('wordlists.wordlists_add') }}" enctype="multipart/form-data">
+    <form id="wl-upload-form" method="POST" action="{{ url_for('wordlists.wordlists_add') }}" enctype="multipart/form-data" onsubmit="return hvWlSubmit(event)">
         {{ wordlistsForm.hidden_tag() }}
         {{ wordlistsForm.name(id="wl-up-name", style="display:none;") }}
         <div class="hv-dialog-body">
-            <div class="dropzone" id="wl-dropzone" onclick="document.getElementById('wl-up-file').click()"
-                 ondragover="event.preventDefault(); this.classList.add('drag');"
-                 ondragleave="this.classList.remove('drag');"
-                 ondrop="hvWlDrop(event)">
-                {{ icon('upload', size=34) }}
-                <div style="margin-top:12px; color:var(--text);">Drop a wordlist file here or <span style="color:var(--primary); text-decoration:underline;">browse</span></div>
-                <div class="field-hint mono" id="wl-dropzone-name" style="margin-top:8px;">rockyou.txt, weakpass.txt, … one password per line</div>
-                {{ wordlistsForm.wordlist(id="wl-up-file", style="display:none;", onchange="hvWlChosen(this)") }}
+            {# ----- file-pick state ----- #}
+            <div id="wl-pick">
+                <div class="dropzone" id="wl-dropzone" onclick="document.getElementById('wl-up-file').click()"
+                     ondragover="event.preventDefault(); this.classList.add('drag');"
+                     ondragleave="this.classList.remove('drag');"
+                     ondrop="hvWlDrop(event)">
+                    {{ icon('upload', size=34) }}
+                    <div style="margin-top:12px; color:var(--text);">Drop a wordlist file here or <span style="color:var(--primary); text-decoration:underline;">browse</span></div>
+                    <div class="field-hint mono" id="wl-dropzone-name" style="margin-top:8px;">rockyou.txt, weakpass.txt, … plaintext or a .gz</div>
+                    {{ wordlistsForm.wordlist(id="wl-up-file", style="display:none;", onchange="hvWlChosen(this)") }}
+                </div>
+                {% if wordlistsForm.wordlist.errors %}<div class="invalid-feedback" style="display:block;">{% for e in wordlistsForm.wordlist.errors %}<span>{{ e }}</span>{% endfor %}</div>{% endif %}
+                <div class="invalid-feedback" id="wl-pick-error" style="display:none;"></div>
             </div>
-            {% if wordlistsForm.wordlist.errors %}<div class="invalid-feedback">{% for e in wordlistsForm.wordlist.errors %}<span>{{ e }}</span>{% endfor %}</div>{% endif %}
+
+            {# ----- progress state (shown while the file uploads + server compresses) ----- #}
+            <div id="wl-progress" style="display:none;">
+                <div class="wl-steps">
+                    <div class="wl-step" id="wl-step-upload">
+                        <span class="wl-step-dot"></span>
+                        <span class="wl-step-name">Uploading file</span>
+                        <span class="wl-step-meta mono" id="wl-step-upload-meta"></span>
+                    </div>
+                    <div class="wl-step" id="wl-step-receive">
+                        <span class="wl-step-dot"></span>
+                        <span class="wl-step-name">Receiving on server</span>
+                        <span class="wl-step-meta mono" id="wl-step-receive-meta"></span>
+                    </div>
+                    <div class="wl-step" id="wl-step-compress">
+                        <span class="wl-step-dot"></span>
+                        <span class="wl-step-name">Compressing &amp; indexing</span>
+                        <span class="wl-step-meta mono" id="wl-step-compress-meta"></span>
+                    </div>
+                    <div class="wl-step" id="wl-step-done">
+                        <span class="wl-step-dot"></span>
+                        <span class="wl-step-name">Done</span>
+                        <span class="wl-step-meta mono" id="wl-step-done-meta"></span>
+                    </div>
+                </div>
+                <div class="wl-bar" id="wl-bar"><div class="wl-bar-fill" id="wl-bar-fill"></div></div>
+                <div class="mono" id="wl-status-text" style="margin-top:11px; font-size:12px; color:var(--text-dim);">Preparing…</div>
+                <div class="invalid-feedback" id="wl-progress-error" style="display:none; margin-top:11px;"></div>
+            </div>
         </div>
         <div class="hv-dialog-foot">
-            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">{{ icon('upload', size=15) }} Upload Wordlist</button>
+            <button type="button" class="btn" id="wl-up-cancel" onclick="hvWlCancel()">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="wl-up-submit">{{ icon('upload', size=15) }} Upload Wordlist</button>
         </div>
     </form>
 </dialog>
 <script>
+    var hvWlXhr = null;       // in-flight upload request
+    var hvWlBusy = false;     // true while uploading/compressing
+
     function hvWlChosen(input){
         var n = (input.files && input.files.length) ? input.files[0].name : '';
         var hint = document.getElementById('wl-dropzone-name');
-        if (hint) hint.textContent = n ? ('Selected: ' + n) : 'rockyou.txt, weakpass.txt, … one password per line';
+        if (hint) hint.textContent = n ? ('Selected: ' + n) : 'rockyou.txt, weakpass.txt, … plaintext or a .gz';
         var nameEl = document.getElementById('wl-up-name');
         if (nameEl && n) nameEl.value = n;
+        var err = document.getElementById('wl-pick-error');
+        if (err) err.style.display = 'none';
     }
     function hvWlDrop(e){
         e.preventDefault();
@@ -166,6 +226,153 @@
             hvWlChosen(input);
         }
     }
+
+    // ordered phases of the status stepper; hvWlPhase marks everything before
+    // the named phase "done", the named one "active" (or "done" at the end)
+    var HVWL_PHASES = ['upload', 'receive', 'compress', 'done'];
+    function hvWlPhase(name){
+        var idx = HVWL_PHASES.indexOf(name);
+        HVWL_PHASES.forEach(function(s, i){
+            var el = document.getElementById('wl-step-' + s);
+            if (!el) return;
+            el.classList.remove('active', 'done');
+            if (name === 'done' || i < idx) el.classList.add('done');
+            else if (i === idx) el.classList.add('active');
+        });
+    }
+
+    function hvWlSubmit(e){
+        e.preventDefault();
+        var form = document.getElementById('wl-upload-form');
+        var fileInput = document.getElementById('wl-up-file');
+        if (!fileInput.files || !fileInput.files.length){
+            var pe = document.getElementById('wl-pick-error');
+            pe.textContent = 'Please choose a wordlist file first.';
+            pe.style.display = 'block';
+            return false;
+        }
+        var nameEl = document.getElementById('wl-up-name');
+        if (nameEl && !nameEl.value) nameEl.value = fileInput.files[0].name;
+
+        // switch to the progress view
+        document.getElementById('wl-pick').style.display = 'none';
+        document.getElementById('wl-progress').style.display = 'block';
+        document.getElementById('wl-up-submit').style.display = 'none';
+        document.getElementById('wl-up-close').style.display = 'none';
+        document.getElementById('wl-progress-error').style.display = 'none';
+        hvWlBusy = true;
+        var bar = document.getElementById('wl-bar');
+        var statusEl = document.getElementById('wl-status-text');
+        var phase = 'upload';   // local guard so phases only move forward
+        HVWL_PHASES.forEach(function(s){
+            var m = document.getElementById('wl-step-' + s + '-meta'); if (m) m.textContent = '';
+        });
+        hvWlPhase('upload');
+        bar.classList.remove('indeterminate');
+        document.getElementById('wl-bar-fill').style.width = '0%';
+        statusEl.textContent = 'Uploading…';
+
+        var xhr = new XMLHttpRequest();
+        hvWlXhr = xhr;
+        xhr.open('POST', form.action, true);
+        xhr.setRequestHeader('X-Requested-With', 'fetch');
+
+        xhr.upload.onprogress = function(ev){
+            if (!ev.lengthComputable) return;
+            var pct = Math.round(ev.loaded / ev.total * 100);
+            if (phase === 'upload'){
+                document.getElementById('wl-bar-fill').style.width = pct + '%';
+                document.getElementById('wl-step-upload-meta').textContent = pct + '%';
+                statusEl.textContent = 'Uploading… ' + pct + '%';
+            }
+            // The instant every byte has been sent, leave the "Uploading" step.
+            // For a large file the server then spends time reading the body off
+            // the socket before it can start compressing; without this the UI
+            // would sit at "Uploading… 100%" and look hung.
+            if (pct >= 100 && phase === 'upload'){
+                phase = 'receive';
+                document.getElementById('wl-step-upload-meta').textContent = '100%';
+                hvWlPhase('receive');
+                bar.classList.add('indeterminate');
+                statusEl.textContent = 'Transfer complete — receiving on the server…';
+            }
+        };
+        xhr.upload.onload = function(){
+            // body fully received by the server; it's now compressing/indexing
+            if (phase === 'upload' || phase === 'receive'){
+                phase = 'compress';
+                document.getElementById('wl-step-upload-meta').textContent = '100%';
+                document.getElementById('wl-bar-fill').style.width = '100%';
+                hvWlPhase('compress');
+                bar.classList.add('indeterminate');
+                statusEl.textContent = 'Compressing & indexing on the server (large files can take a while)…';
+            }
+        };
+        xhr.onload = function(){
+            hvWlXhr = null; hvWlBusy = false;
+            bar.classList.remove('indeterminate');
+            var data = {};
+            try { data = JSON.parse(xhr.responseText); } catch (err) {}
+            if (xhr.status >= 200 && xhr.status < 300 && data && data.status === 'ok'){
+                phase = 'done';
+                hvWlPhase('done');
+                document.getElementById('wl-bar-fill').style.width = '100%';
+                statusEl.textContent = data.msg || 'Done.';
+                setTimeout(function(){ window.location = data.redirect || window.location.href; }, 800);
+            } else {
+                hvWlFail((data && data.msg) ? data.msg : ('Upload failed (HTTP ' + xhr.status + ').'));
+            }
+        };
+        xhr.onerror = function(){ hvWlXhr = null; hvWlBusy = false; hvWlFail('Network error during upload.'); };
+        xhr.onabort  = function(){ hvWlXhr = null; hvWlBusy = false; };
+        xhr.send(new FormData(form));
+        return false;
+    }
+
+    function hvWlFail(msg){
+        document.getElementById('wl-bar').classList.remove('indeterminate');
+        // return to the file-pick view so the user can retry or close
+        document.getElementById('wl-progress').style.display = 'none';
+        document.getElementById('wl-pick').style.display = 'block';
+        document.getElementById('wl-up-submit').style.display = '';
+        document.getElementById('wl-up-close').style.display = '';
+        var err = document.getElementById('wl-pick-error');
+        err.textContent = msg;
+        err.style.display = 'block';
+    }
+
+    function hvWlReset(){
+        if (hvWlXhr){ try { hvWlXhr.abort(); } catch (e) {} hvWlXhr = null; }
+        hvWlBusy = false;
+        document.getElementById('wl-pick').style.display = 'block';
+        document.getElementById('wl-progress').style.display = 'none';
+        document.getElementById('wl-up-submit').style.display = '';
+        document.getElementById('wl-up-close').style.display = '';
+        document.getElementById('wl-progress-error').style.display = 'none';
+        var pe = document.getElementById('wl-pick-error'); if (pe) pe.style.display = 'none';
+        HVWL_PHASES.forEach(function(s){
+            var el = document.getElementById('wl-step-' + s);
+            if (el) el.classList.remove('active', 'done');
+            var m = document.getElementById('wl-step-' + s + '-meta'); if (m) m.textContent = '';
+        });
+        document.getElementById('wl-bar').classList.remove('indeterminate');
+        document.getElementById('wl-bar-fill').style.width = '0%';
+        var f = document.getElementById('wl-up-file'); if (f) f.value = '';
+        var n = document.getElementById('wl-up-name'); if (n) n.value = '';
+        var hint = document.getElementById('wl-dropzone-name');
+        if (hint) hint.textContent = 'rockyou.txt, weakpass.txt, … plaintext or a .gz';
+    }
+
+    function hvWlCancel(){
+        // aborts an in-flight upload (if any), resets, and closes the modal
+        hvWlReset();
+        document.getElementById('upload-wordlist-modal').close();
+    }
+
+    function hvWlOnCancel(e){
+        // block the Esc key from dismissing the dialog mid-upload
+        if (hvWlBusy) e.preventDefault();
+    }
 </script>
 
 {# ---- per-wordlist modals (native <dialog>, no framework) ---- #}
@@ -175,8 +382,8 @@
     {% set hits = wl_hits.get(wordlist.id, 0) if wl_hits is defined else 0 %}
     {% set tcount = wl_task_count.get(wordlist.id, 0) if wl_task_count is defined else 0 %}
     {% set jcount = wl_job_count.get(wordlist.id, 0) if wl_job_count is defined else 0 %}
-    {# size on disk is not tracked yet — placeholder until it's wired up #}
-    {% set size_on_disk = '—' %}
+    {# on-disk size of the stored file (compressed .gz for static wordlists) #}
+    {% set size_on_disk = (wordlist.byte_size | filesizeformat) if wordlist.byte_size else '—' %}
     <div class="hv-dialog-head">
         {{ icon('info', size=16) }}
         <div style="line-height:1.2;">

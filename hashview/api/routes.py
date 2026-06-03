@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, redirect, request, send_from_directory, current_app, url_for
 from hashview.models import Agents, JobTasks, Tasks, Wordlists, Rules, Jobs, Hashes, Hashfiles, HashfileHashes, Users, HashNotifications, Settings, JobNotifications, Customers
-from hashview.utils.utils import get_md5_hash, get_linecount, get_filehash, update_dynamic_wordlist, update_job_task_status, import_hashfilehashes, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile, send_email, send_pushover, notify_admins, build_hashcat_command
+from hashview.utils.utils import get_md5_hash, get_linecount, get_filehash, update_dynamic_wordlist, update_job_task_status, import_hashfilehashes, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile, send_email, send_pushover, notify_admins, build_hashcat_command, ingest_static_wordlist_file, compress_to_gz
 from hashview.models import db
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy import func
@@ -353,14 +353,24 @@ def v1_api_get_wordlist_download(wordlist_id):
 
     update_heartbeat(request.cookies.get('uuid'))
     wordlist = Wordlists.query.get(wordlist_id)
-    wordlist_name = wordlist.path.split('/')[-1]
-    random_hex = secrets.token_hex(8)
-    cmd = "gzip -9 -k -c hashview/control/wordlists/" + wordlist_name + " > hashview/control/tmp/" + wordlist_name + "_" + random_hex + ".gz"
+    if wordlist is None:
+        return jsonify({'status': 404, 'type': 'Error', 'msg': 'Wordlist not found'}), 404
 
-    # What command injection?!
-    # TODO
-    os.system(cmd)
-    return send_from_directory('control/tmp', wordlist_name + "_" + random_hex + ".gz", mimetype = 'application/octet-stream')
+    wordlists_dir = os.path.join(current_app.root_path, 'control/wordlists')
+    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
+    wordlist_name = wordlist.path.split('/')[-1]
+
+    if wordlist.type == 'static':
+        # Stored compressed at rest: serve the .gz directly. The stored bytes
+        # are stable, so the agent's sha256(.gz) matches the DB checksum.
+        return send_from_directory(wordlists_dir, wordlist_name, mimetype='application/octet-stream')
+
+    # Dynamic wordlists stay uncompressed on the server (regenerated from the
+    # DB via /v1/updateWordlist). Compress the current .txt into control/tmp
+    # and serve that. No shell; pure-Python streamed gzip -9.
+    tmp_gz = os.path.join(tmp_dir, secrets.token_hex(8) + '.gz')
+    compress_to_gz(wordlist.path, tmp_gz, 9)
+    return send_from_directory(tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
 
 # Update Dynamic Wordlist
 @api.route('/v1/updateWordlist/<int:wordlist_id>', methods=['GET'])
@@ -384,8 +394,9 @@ def v1_api_add_wordlist(wordlist_name):
     if not is_authorized(user=True, agent=True, request=request):
         return redirect("/v1/not_authorized")
 
-    # Expect raw plain‑text body (Content‑Type: text/plain)
-    raw_content = request.get_data(as_text=True)
+    # Read the body as BYTES (not as_text) so an uploaded gzip wordlist isn't
+    # corrupted by text decoding. The body may be plain text or a gzip file.
+    raw_content = request.get_data()
     if not raw_content:
         return jsonify({
             'status': 400,
@@ -403,30 +414,23 @@ def v1_api_add_wordlist(wordlist_name):
             'msg': 'User not found'
         })
 
-    # Generate a random filename for storage
-    random_name = secrets.token_hex(8) + '.txt'
-    file_path = os.path.abspath(os.path.join(current_app.root_path, 'control/wordlists', random_name))
-
-    # Save the raw content to disk
+    # Write the raw body to a control/tmp temp, then ingest it into
+    # compressed-at-rest storage (handles plain text or gzip; validates gzip).
+    tmp_path = os.path.abspath(os.path.join(current_app.root_path, 'control/tmp', secrets.token_hex(8)))
     try:
-        with open(file_path, 'w') as f:
+        with open(tmp_path, 'wb') as f:
             f.write(raw_content)
+        wordlist_entry = ingest_static_wordlist_file(tmp_path, user.id, wordlist_name)
     except Exception as e:
         return jsonify({
-            'status': 500,
+            'status': 400,
             'type': 'Error',
-            'msg': f'Failed to write wordlist file: {e}'
+            'msg': f'Failed to process wordlist (not valid text or gzip?): {e}'
         })
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
-    # Create DB entry using the URL parameter as the name
-    wordlist_entry = Wordlists(
-        name=wordlist_name,
-        owner_id=user.id,
-        type='static',
-        path=file_path,
-        checksum=get_filehash(file_path),
-        size=get_linecount(file_path)
-    )
     db.session.add(wordlist_entry)
     db.session.commit()
 
