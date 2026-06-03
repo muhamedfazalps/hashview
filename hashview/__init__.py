@@ -317,7 +317,10 @@ def create_app(testing=False, config_overrides=None):
                         return "%.1f %s" % (h / div, unit)
                 return ("%d H/s" % int(h)) if h else "0 H/s"
 
-            up = sum(1 for a in agents if _connected(a) and _state(a) in up_states)
+            # Single source of truth for "is this agent up" (sidebar, agents page, AND
+            # the dashboard all read from this, so they can never disagree).
+            up_ids = {a.id for a in agents if _connected(a) and _state(a) in up_states}
+            up = len(up_ids)
             total_hps = sum(_hps(a.benchmark) for a in agents
                             if _connected(a) and _state(a) in running_states)
 
@@ -337,6 +340,7 @@ def create_app(testing=False, config_overrides=None):
                     "down": len(agents) - up,
                     "total": len(agents),
                     "speed": _fmt(total_hps),
+                    "online_ids": up_ids,
                 },
                 "job_queue": {
                     "running": Jobs.query.filter_by(status='Running').count(),

@@ -85,23 +85,34 @@ def home():
 
     user_names = {u.id: ((u.first_name or '') + ' ' + (u.last_name or '')).strip() for u in users}
 
-    recent_recovered = db.session.query(Hashes, HashfileHashes.username) \
+    # Last 10 recovered passwords, deduped by (hash_id, username). The hash↔hashfile_hashes
+    # join is one-to-many (same hash across hashfiles / repeated username rows), so a plain
+    # LIMIT 10 gets eaten by duplicates. We fetch a bounded window of the most-recent joined
+    # rows and dedupe by (hash_id, username) — collapsing exact duplicates while keeping
+    # distinct accounts that happen to share the same password.
+    recent_rows = db.session.query(Hashes, HashfileHashes.username) \
         .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
         .filter(Hashes.cracked == True) \
         .filter(Hashes.recovered_at.isnot(None)) \
         .order_by(Hashes.recovered_at.desc()) \
-        .limit(12).all()
-    recovery_feed = [
-        {
-            'id': h.id,
+        .limit(100).all()
+    recovery_feed = []
+    seen = set()
+    for h, username in recent_rows:
+        key = (h.id, username)
+        if key in seen:
+            continue
+        seen.add(key)
+        recovery_feed.append({
+            'key': '%s:%s' % (h.id, username),
             'time': h.recovered_at.strftime('%H:%M:%S') if h.recovered_at else '—',
             'account': _hexdec(username) or '—',
             'plaintext': _hexdec(h.plaintext),
             'type': hash_type_names.get(str(h.hash_type), str(h.hash_type)),
             'recovered_by': user_names.get(h.recovered_by) or '—',
-        }
-        for h, username in recent_recovered
-    ]
+        })
+        if len(recovery_feed) >= 10:
+            break
 
     return render_template('home.html.j2', jobs=jobs, running_jobs=running_jobs, queued_jobs=queued_jobs, users=users, customers=customers, job_tasks=job_tasks, tasks=tasks, agents=agents, recovered_list=recovered_list, time_estimated_list=time_estimated_list, collapse_all=collapse_all, timestamp=timestamp, datetime=datetime, timedelta=timedelta, fig1_labels=fig1_labels, fig1_values=fig1_values, settings=settings, recovery_feed=recovery_feed)
 

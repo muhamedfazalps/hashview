@@ -13,11 +13,10 @@
     <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}">{{ icon('plus', size=15) }} New Job</a>
 </div>
 
-{# online agent count (last check-in within the hour) #}
-{% set ns = namespace(online=0) %}
-{% for agent in agents %}
-    {% if agent.last_checkin and not ((agent.last_checkin + timedelta(hours=1)) < datetime.now()) %}{% set ns.online = ns.online + 1 %}{% endif %}
-{% endfor %}
+{# agent fleet state — single source: agent_stats (DB-clock based, matches the sidebar) #}
+{% set agt_up = agent_stats.up if agent_stats is defined else 0 %}
+{% set agt_total = agent_stats.total if agent_stats is defined else (agents|length) %}
+{% set agt_online_ids = agent_stats.online_ids if agent_stats is defined else [] %}
 
 {# ---------- KPI row ---------- #}
 <div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--gap);">
@@ -29,8 +28,8 @@
     </div>
     <div class="kpi" style="cursor:pointer;" onclick="document.getElementById('agent-fleet-modal').showModal()" title="View agent fleet">
         <div class="kpi-label">{{ icon('cpu', size=13) }} Agents online</div>
-        <div class="kpi-value">{{ ns.online }}<span style="font-size:16px;color:var(--text-dim);">/{{ agents|length }}</span></div>
-        <div class="kpi-foot mono">{{ agents|length }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
+        <div class="kpi-value">{{ agt_up }}<span style="font-size:16px;color:var(--text-dim);">/{{ agt_total }}</span></div>
+        <div class="kpi-foot mono">{{ agt_total }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
     </div>
     <div class="kpi">
         <div class="kpi-label">{{ icon('jobs', size=13) }} Jobs</div>
@@ -47,16 +46,16 @@
 {# ---------- Agent fleet (modal, opened from the "Agents online" KPI) ---------- #}
 <dialog class="hv-dialog" id="agent-fleet-modal" style="max-width:840px; width:92vw;">
     <div class="hv-dialog-head">
-        <span class="dot-led {% if agents|length == 0 %}idle{% elif ns.online == agents|length %}on{% elif ns.online == 0 %}off{% else %}run{% endif %}"></span>
+        <span class="dot-led {% if agt_total == 0 %}idle{% elif agt_up == agt_total %}on{% elif agt_up == 0 %}off{% else %}run{% endif %}"></span>
         <h3>Agent Fleet</h3>
-        <span class="mono" style="font-size:11px;color:var(--text-mute);">{{ ns.online }}/{{ agents|length }} online</span>
+        <span class="mono" style="font-size:11px;color:var(--text-mute);">{{ agt_up }}/{{ agt_total }} online</span>
         <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
     <div class="hv-dialog-body" style="max-height:70vh; overflow-y:auto;">
             {% if agents %}
             <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
                 {% for agent in agents %}
-                    {% set is_down = agent.last_checkin and (agent.last_checkin + timedelta(hours=1)) < datetime.now() %}
+                    {% set is_down = agent.id not in agt_online_ids %}
                     {% set working = recovered_list.get(agent.id) %}
                     <div class="card" style="padding:14px 15px;{% if is_down %}border-color:var(--red-dim);{% endif %}">
                         <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px;">
@@ -112,7 +111,7 @@
             <thead><tr><th>Time</th><th>Account</th><th>Plaintext</th><th class="center">Type</th><th>Recovered By</th></tr></thead>
             <tbody id="recovery-feed-body">
                 {% for r in recovery_feed %}
-                <tr data-key="{{ r.id }}">
+                <tr data-key="{{ r.key }}">
                     <td class="mono" style="color:var(--text-dim);">{{ r.time }}</td>
                     <td class="mono" style="color:var(--text-dim);">{{ r.account }}</td>
                     <td class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ r.plaintext }}</td>
