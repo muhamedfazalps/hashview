@@ -1,15 +1,24 @@
 """Flask routes to main page"""
 import json
-
-from flask import Blueprint, render_template, redirect, flash
-from flask_login import login_required, current_user
-from sqlalchemy import or_, and_
-
-from hashview.models import Jobs, JobTasks, Users, Customers, Tasks, Agents, HashfileHashes, Hashes, Hashfiles, Settings
-from hashview.utils.utils import update_job_task_status
-from hashview.models import db
-
 from datetime import datetime, timedelta
+
+from flask import Blueprint, flash, redirect, render_template
+from flask_login import current_user, login_required
+from sqlalchemy import and_, or_
+
+from hashview.models import (
+    Agents,
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Jobs,
+    JobTasks,
+    Settings,
+    Tasks,
+    Users,
+    db,
+)
+from hashview.utils.utils import update_job_task_status
 
 main = Blueprint('main', __name__)
 
@@ -104,7 +113,7 @@ def home():
             continue
         seen.add(key)
         recovery_feed.append({
-            'key': '%s:%s' % (h.id, username),
+            'key': f'{h.id}:{username}',
             'time': h.recovered_at.strftime('%H:%M:%S') if h.recovered_at else '—',
             'account': _hexdec(username) or '—',
             'plaintext': _hexdec(h.plaintext),

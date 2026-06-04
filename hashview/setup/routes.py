@@ -1,24 +1,14 @@
 """Flask routes to handle Setup"""
 from datetime import datetime
 
-from flask import flash
-from flask import url_for
-from flask import redirect
-from flask import Blueprint
-from flask import current_app
-from flask import render_template
+from flask import Blueprint, current_app, flash, redirect, render_template, url_for
 from flask_login import login_user
 
-from hashview.setup import admin_pass_needs_changed
-from hashview.setup import settings_needs_added
-from hashview.models import db
-from hashview.models import Users
-from hashview.models import Settings
+from hashview.models import Settings, Users, db
+from hashview.setup import admin_pass_needs_changed, settings_needs_added
 from hashview.users.routes import bcrypt
 
-from .forms import SetupSettingsForm
-from .forms import SetupAdminPassForm
-
+from .forms import SetupAdminPassForm, SetupSettingsForm
 
 blueprint = Blueprint('setup', __name__)
 

@@ -1,14 +1,12 @@
 """Class file to manage loading of database"""
 import json
-
-from hashlib import sha512
 from datetime import datetime
+from hashlib import sha512
 
-from flask import current_app
 from authlib import jose
+from flask import current_app
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
-
 
 db = SQLAlchemy()
 

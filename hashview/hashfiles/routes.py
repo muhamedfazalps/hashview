@@ -1,15 +1,25 @@
 """Flask routes to handle Hashfiles"""
 import io
-from flask import Blueprint, render_template, url_for, redirect, flash, send_file, abort
-from flask_login import login_required, current_user
-from werkzeug.utils import secure_filename
-from sqlalchemy.sql import exists
-from hashview.models import Hashfiles, Customers, Jobs, HashfileHashes, HashNotifications, Hashes, Users, JobTasks
-from hashview.models import db
-from hashview.jobs.forms import JobsNewHashFileForm
 from datetime import datetime
-from sqlalchemy import func, case
+
+from flask import Blueprint, abort, flash, redirect, render_template, send_file, url_for
+from flask_login import current_user, login_required
+from sqlalchemy import case, func
 from sqlalchemy.sql import exists
+from werkzeug.utils import secure_filename
+
+from hashview.jobs.forms import JobsNewHashFileForm
+from hashview.models import (
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Hashfiles,
+    HashNotifications,
+    Jobs,
+    JobTasks,
+    Users,
+    db,
+)
 
 hashfiles = Blueprint('hashfiles', __name__)
 

@@ -1,15 +1,13 @@
 """Flask routes to handle Analytics"""
 import operator
-import re
-from flask import Blueprint, render_template, request, redirect, send_from_directory
-from flask import Blueprint, render_template, request, redirect, send_from_directory
-from flask_login import login_required
-from hashview.models import Customers, HashfileHashes, Hashes, Hashfiles
-from hashview.models import db
-from sqlalchemy import func, select
-import re
-import operator
 import os
+import re
+
+from flask import Blueprint, redirect, render_template, request, send_from_directory
+from flask_login import login_required
+from sqlalchemy import func, select
+
+from hashview.models import Customers, Hashes, HashfileHashes, Hashfiles, db
 
 # TODO
 # This whole things is a mess
@@ -450,7 +448,7 @@ def get_analytics():
 
     fig9_table = []
     for entry in fig9_usernames:
-        if entry != None:
+        if entry is not None:
             fig9_table.append(bytes.fromhex(entry).decode('latin-1'))
         #print(f"Username: {bytes.fromhex(entry).decode('latin-1')}")
 
@@ -728,4 +726,4 @@ def analytics_download_fig8():
     return send_from_directory('control/tmp', filename, as_attachment=True)
 
 def format_display(number): # add commas to the number after every thousand places
-    return "{:,}".format(number)
+    return f"{number:,}"

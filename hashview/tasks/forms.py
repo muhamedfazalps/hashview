@@ -1,7 +1,8 @@
 """Forms Page to manage Tasks"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField, SelectField
+from wtforms import SelectField, StringField, SubmitField
 from wtforms.validators import DataRequired, InputRequired, ValidationError
+
 from hashview.models import Tasks
 
 

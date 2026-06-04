@@ -1,18 +1,33 @@
 """Flask routes to handle utils"""
-import os
-import gzip
-import secrets
-import hashlib
-import re
 import _md5
-import requests
+import gzip
+import hashlib
+import os
+import re
+import secrets
 from datetime import datetime
+
+import requests
 from flask import current_app, url_for
-from hashview.models import db
-from hashview.models import Rules, Wordlists, Hashfiles, HashfileHashes, Hashes, Tasks, Jobs, JobTasks, JobNotifications, Users, Agents, Customers, Settings
-from hashview.utils.hashcat_modes import HASH_ONLY_AUTO_RULES
 from flask_mail import Message
 
+from hashview.models import (
+    Agents,
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Hashfiles,
+    JobNotifications,
+    Jobs,
+    JobTasks,
+    Rules,
+    Settings,
+    Tasks,
+    Users,
+    Wordlists,
+    db,
+)
+from hashview.utils.hashcat_modes import HASH_ONLY_AUTO_RULES
 
 
 def save_file(path, form_file):
@@ -176,7 +191,7 @@ def send_email(user, subject, message):
     try:
         current_app.extensions['mail'].send(msg)
         return True
-    except:
+    except Exception:
         return False
 
 def send_html_email(user, subject, message):
@@ -237,7 +252,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
     """Function to hashfile"""
 
     # Open file
-    file = open(hashfile_path, 'r')
+    file = open(hashfile_path)
     lines = file.readlines()
 
     # for line in file,
@@ -282,7 +297,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
             elif file_type == 'pwdump':
                 # do we let user select LM so that we crack those instead of NTLM?
                 # First extracting usernames so we can filter out machine accounts
-                if re.search(r"\$$", line.split(':')[0]) or re.search(r"\$_history", line.split(':')[0]):
+                if re.search(r"\$$", line.split(':')[0]) or "_history" in line.split(':')[0]:
                 #if '$' in line.split(':')[0]:
                     continue
                 else:
@@ -345,7 +360,7 @@ def _generate_website_keywords(wordlist, job_id):
     words = crawl_website_keywords(target, settings)
 
     tmp_path = os.path.join(current_app.root_path, 'control/tmp', secrets.token_hex(8) + '.txt')
-    with open(tmp_path, 'wt') as tmp:
+    with open(tmp_path, 'w') as tmp:
         for word in sorted(words):
             tmp.write(word + '\n')
     # Atomic on the same filesystem (control/tmp and control/wordlists are
@@ -371,7 +386,7 @@ def update_dynamic_wordlist(wordlist_id, job_id=None):
         _generate_website_keywords(wordlist, job_id)
     else:
         # DB-derived dynamic wordlists: rewrite wordlist.path in place.
-        file = open(wordlist.path, 'wt')
+        file = open(wordlist.path, 'w')
         if 'Passwords' in wordlist.name:
             plains = Hashes.query.filter_by(cracked=True).distinct('plaintext').with_entities(Hashes.plaintext)
             for entry in plains:
@@ -452,7 +467,7 @@ def build_hashcat_command(job_id, task_id):
     if attackmode == 1:
         wordlist_2 = Wordlists.query.get(task.wl_id_2)
         if wordlist_2:
-            relative_wordlist_2_path = 'control/wordlists/' + ensure_gz(wordlist.path.split('/')[-1])
+            relative_wordlist_2_path = 'control/wordlists/' + ensure_gz(wordlist_2.path.split('/')[-1])
         else:
             relative_wordlist_2_path = ''
 
@@ -490,7 +505,7 @@ def build_hashcat_command(job_id, task_id):
             k_rule = " -k '" + task.k_rule + "' "
         else:
             k_rule = ' '
-        cmd += ' ' + ' -a 1 ' + target_file + ' ' + relative_wordlist_path + j_rule + relative_wordlist_path + k_rule
+        cmd += ' ' + ' -a 1 ' + target_file + ' ' + relative_wordlist_path + j_rule + relative_wordlist_2_path + k_rule
     # maskmode
     elif attackmode == 3:
         cmd += ' ' + ' -a 3 ' + target_file + ' ' + mask
@@ -538,7 +553,7 @@ def update_job_task_status(jobtask_id, status):
     job = Jobs.query.get(jobtask.job_id)
     if job.status == 'Queued':
         job.status = 'Running'
-        job.started_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        job.started_at = datetime.now()
         db.session.commit()
 
     # TODO
@@ -552,12 +567,12 @@ def update_job_task_status(jobtask_id, status):
 
     if done:
         job.status = 'Completed'
-        job.ended_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        job.ended_at = datetime.now()
         db.session.commit()
 
-        start_time = datetime.strptime(str(job.started_at), '%Y-%m-%d %H:%M:%S')
-        end_time = datetime.strptime(str(job.ended_at), '%Y-%m-%d %H:%M:%S')
-        durration = abs(end_time - start_time).seconds # So dumb you cant conver this to minutes, only resolution is seconds or days :(
+        start_time = job.started_at          # DateTime columns are already datetime objects
+        end_time = job.ended_at
+        durration = abs(end_time - start_time).seconds if (start_time and end_time) else 0  # So dumb you cant conver this to minutes, only resolution is seconds or days :(
 
         hashfile = Hashfiles.query.get(job.hashfile_id)
         hashfile.runtime += durration
@@ -626,7 +641,7 @@ def _validate_hashfile(hashfile_path, line_validator):
         # utf-8-sig transparently drops a leading BOM (common from Windows
         # editors) so the first hash isn't rejected; errors='replace' keeps the
         # "never raises on binary/garbage" guarantee.
-        with open(hashfile_path, 'r', encoding='utf-8-sig', errors='replace') as handle:
+        with open(hashfile_path, encoding='utf-8-sig', errors='replace') as handle:
             for line_no, raw in enumerate(handle, start=1):
                 if len(raw) > _MAX_LINE_LEN:
                     return ('Error line ' + str(line_no) + ' is too long ('
@@ -905,7 +920,7 @@ def _build_auto_matcher(spec):
                 '%d hex characters, a colon, then a salt' % spec[1])
     # 'prefix' / 'litprefix'
     prefix = spec[1]
-    return (lambda s: s.startswith(prefix), "a hash beginning with '%s'" % prefix)
+    return (lambda s: s.startswith(prefix), f"a hash beginning with '{prefix}'")
 
 
 def validate_hash_only_hashfile(hashfile_path, hash_type):

@@ -1,9 +1,15 @@
 """Flask routes to handle Notifications"""
-from flask import Blueprint, render_template, redirect, flash, url_for
-from flask_login import login_required, current_user
-from hashview.models import JobNotifications, HashNotifications, Jobs, Hashes, Hashfiles
-from hashview.models import db
+from flask import Blueprint, flash, redirect, render_template, url_for
+from flask_login import current_user, login_required
 
+from hashview.models import (
+    Hashes,
+    Hashfiles,
+    HashNotifications,
+    JobNotifications,
+    Jobs,
+    db,
+)
 
 notifications = Blueprint('notifications', __name__)
 

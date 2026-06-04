@@ -1,17 +1,59 @@
-from flask import Blueprint, jsonify, redirect, request, send_from_directory, current_app, url_for
-from hashview.models import Agents, JobTasks, Tasks, Wordlists, Rules, Jobs, Hashes, Hashfiles, HashfileHashes, Users, HashNotifications, Settings, JobNotifications, Customers
-from hashview.utils.utils import get_md5_hash, get_linecount, get_filehash, update_dynamic_wordlist, update_job_task_status, import_hashfilehashes, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile, send_email, send_pushover, notify_admins, build_hashcat_command, ingest_static_wordlist_file, compress_to_gz
-from hashview.models import db
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy import func
-from packaging import version
-from datetime import datetime, timedelta
-import hashview
-import os
-import json
-import secrets
-import hashlib
 import binascii
+import hashlib
+import json
+import os
+import secrets
+from datetime import datetime, timedelta
+
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    redirect,
+    request,
+    send_from_directory,
+    url_for,
+)
+from packaging import version
+from sqlalchemy import func
+from sqlalchemy.ext.declarative import DeclarativeMeta
+
+import hashview
+from hashview.models import (
+    Agents,
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Hashfiles,
+    HashNotifications,
+    JobNotifications,
+    Jobs,
+    JobTasks,
+    Rules,
+    Settings,
+    Tasks,
+    Users,
+    Wordlists,
+    db,
+)
+from hashview.utils.utils import (
+    build_hashcat_command,
+    compress_to_gz,
+    get_md5_hash,
+    import_hashfilehashes,
+    ingest_static_wordlist_file,
+    notify_admins,
+    send_email,
+    send_pushover,
+    update_dynamic_wordlist,
+    update_job_task_status,
+    validate_hash_only_hashfile,
+    validate_kerberos_hashfile,
+    validate_netntlm_hashfile,
+    validate_pwdump_hashfile,
+    validate_shadow_hashfile,
+    validate_user_hash_hashfile,
+)
 
 api = Blueprint('api', __name__)
 
@@ -40,15 +82,27 @@ class AlchemyEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 def is_authorized(user, agent, request):
-    isUser = False
-    if request.cookies:
-        if userAuthorized(request.cookies.get('uuid')):
-            return True
-        if isUser == False:
-            if agentAuthorized(request.cookies.get('uuid')):
-                return True
-    else:
+    # Honor the caller's user/agent flags so each route enforces its own
+    # privilege boundary: a user-only route (user=True, agent=False) must
+    # reject agent credentials, and an agent-only route (user=False,
+    # agent=True) must reject user credentials. Previously this ignored both
+    # flags and returned True for ANY valid user OR agent, letting agents hit
+    # user-only routes and users hit agent-only routes.
+    uuid = request.cookies.get('uuid')
+    # Reject an absent/empty credential outright. Without this, a request with
+    # no 'uuid' cookie passes None to userAuthorized()/agentAuthorized(), which
+    # run filter_by(api_key=None)/filter_by(uuid=None) -> "WHERE col IS NULL".
+    # api_key is nullable and is NOT set at user creation (only via
+    # /profile/generate_api_key), so a NULL match would impersonate any
+    # key-less user. (The old `if request.cookies` check was defeated by sending
+    # any unrelated cookie with no uuid.)
+    if not uuid:
         return False
+    if user and userAuthorized(uuid):
+        return True
+    if agent and agentAuthorized(uuid):
+        return True
+    return False
 
 def userAuthorized(uuid):
     user = Users.query.filter_by(api_key=uuid).first()
@@ -170,7 +224,7 @@ def v1_api_set_agent_heartbeat():
                     }
                     return jsonify(message)
 
-                if settings.max_runtime_tasks > 0 and datetime.strptime(str(job_task.started_at), '%Y-%m-%d %H:%M:%S') + timedelta(hours=settings.max_runtime_tasks) < datetime.now():
+                if settings.max_runtime_tasks > 0 and job_task.started_at is not None and job_task.started_at + timedelta(hours=settings.max_runtime_tasks) < datetime.now():
                     update_job_task_status(job_task.id, 'Canceled')
                     message = {
                         'status': 200,
@@ -181,13 +235,13 @@ def v1_api_set_agent_heartbeat():
 
                 # check if job has exceeded maximum runtime
                 job = Jobs.query.get(job_task.job_id)
-                if settings.max_runtime_jobs > 0 and datetime.strptime(str(job.started_at), '%Y-%m-%d %H:%M:%S') + timedelta(hours=settings.max_runtime_jobs) < datetime.now():
+                if settings.max_runtime_jobs > 0 and job.started_at is not None and job.started_at + timedelta(hours=settings.max_runtime_jobs) < datetime.now():
                     job_tasks = JobTasks.query.filter_by(job_id = job.id).all()
                     for job_task in job_tasks:
                         update_job_task_status(job_task.id, 'Canceled')
 
                     job.status = 'Canceled'
-                    job.ended_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    job.ended_at = datetime.now()
                     db.session.commit()
 
                     message = {
@@ -212,7 +266,7 @@ def v1_api_set_agent_heartbeat():
                 agent.hc_status = ""
                 db.session.commit()
                 already_assigned_task = JobTasks.query.filter_by(agent_id = agent.id).first()
-                if already_assigned_task != None:
+                if already_assigned_task is not None:
                     message = {
                         'status': 200,
                         'type': 'message',
@@ -226,7 +280,7 @@ def v1_api_set_agent_heartbeat():
                     if job_task_entry:
                         job_task_entry.agent_id = agent.id
                         job_task_entry.status = 'Running'
-                        job_task_entry.started_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        job_task_entry.started_at = datetime.now()
                         db.session.commit()
                         message = {
                             'status': 200,
@@ -270,8 +324,9 @@ def v1_api_add_customer():
     if not is_authorized(user=True, agent=False, request=request):
         return redirect("/v1/not_authorized")
 
-    # Expect JSON body
-    customer_data = request.get_json()
+    # Expect JSON body (silent=True so an empty/invalid body returns None
+    # instead of raising a 400 HTML page that callers can't parse as JSON)
+    customer_data = request.get_json(silent=True)
     if not customer_data:
         return jsonify({
             'status': 400,
@@ -280,10 +335,9 @@ def v1_api_add_customer():
         })
 
     try:
-        # Create DB entry
+        # Create DB entry (Customers only has id + name)
         customer_entry = Customers(
-            name=customer_data.get('name'),
-            description=customer_data.get('description')
+            name=customer_data.get('name')
         )
         db.session.add(customer_entry)
         db.session.commit()
@@ -403,8 +457,12 @@ def v1_api_get_update_wordlist(wordlist_id):
 # Create new wordlist
 @api.route('/v1/wordlists/add/<wordlist_name>', methods=['POST'])
 def v1_api_add_wordlist(wordlist_name):
-    # Authorization check
-    if not is_authorized(user=True, agent=True, request=request):
+    # Authorization check. This is a user-upload action — it resolves the
+    # caller to a Users row by api_key — so it's user-only. The agent never
+    # POSTs here (it only GETs wordlists / updateWordlist), so requiring a user
+    # credential refuses agent uuids cleanly instead of letting them through to
+    # a "User not found" 403.
+    if not is_authorized(user=True, agent=False, request=request):
         return redirect("/v1/not_authorized")
 
     # Read the body as BYTES (not as_text) so an uploaded gzip wordlist isn't
@@ -547,7 +605,7 @@ def v1_api_post_add_job():
             return jsonify({
                 'status': 500,
                 'type': 'Error',
-                'msg': f'Not enough data to determine effective tasks for this hash type. Please add more cracked hashes of this type before creating a job.'
+                'msg': 'Not enough data to determine effective tasks for this hash type. Please add more cracked hashes of this type before creating a job.'
             })
         else:
         # for each effective task 
@@ -601,7 +659,7 @@ def v1_api_post_start_job(job_id):
             })        
         if current_user.admin or job.owner_id == current_user.id:
             job.status = 'Queued'
-            job.queued_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            job.queued_at = datetime.now()
             for job_task in job_tasks:
                 job_task.status = 'Queued'
                 job_task.priority = job.priority
@@ -757,7 +815,7 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
                 return jsonify({
                     'status': 500,
                     'type': 'Error',
-                    'msg': f'Something went wrong. Check the filetype / hashtype and try again.'
+                    'msg': 'Something went wrong. Check the filetype / hashtype and try again.'
                 })                  
 
             hashfile_hashes_cnt = db.session.query(HashfileHashes).filter_by(hashfile_id=hashfile.id).count()
@@ -767,7 +825,7 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
                 return jsonify({
                     'status': 500,
                     'type': 'Error',
-                    'msg': f'No valid hashes found in the hashfile. Hashfile not added.'
+                    'msg': 'No valid hashes found in the hashfile. Hashfile not added.'
                 })   
 
             cracked_hashfiles_hashes_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
@@ -990,7 +1048,7 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
 
         # # set job status to completed
         # job.status = 'Completed'
-        # job.ended_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # job.ended_at = datetime.now()
         # print(f"setting Job.id {job.id} to Completed")
         # db.session.commit()
 
@@ -1091,14 +1149,19 @@ def v1_api_search():
 @api.route('/v1/error', methods=['POST'])
 def v1_api_error():
     if not is_authorized(user=False, agent=True, request=request):
-        return redirect("/vi/not_authorized")
+        return redirect("/v1/not_authorized")
 
     uuid = request.cookies.get('uuid')
     agent = Agents.query.filter_by(uuid=uuid).first()
-    message_json = request.get_json()
+    if not agent:
+        # is_authorized() already confirmed an agent credential; this guards the
+        # narrow race where the agent row is removed between the auth check and
+        # this lookup, so we never dereference None on agent.name.
+        return redirect("/v1/not_authorized")
+    message_json = request.get_json(silent=True) or {}
 
     subject = 'Error on ' + str(agent.name)
-    message_body = message_json['error']
+    message_body = message_json.get('error')
 
     notify_admins(subject, message_body)
 
@@ -1112,7 +1175,7 @@ def v1_api_error():
 @api.route('/v1/hashes/import/<int:hash_type>', methods=['POST'])
 def v1_api_hashes_import(hash_type):
     if not is_authorized(user=True, agent=False, request=request):
-        return redirect("/vi/not_authorized")    
+        return redirect("/v1/not_authorized")    
     
     if hash_type == '1000':
     
@@ -1154,7 +1217,7 @@ def v1_api_hashes_import(hash_type):
 
         # import contents from file
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path) as f:
                 for line in f:
                     ciphertext = line.split(':')[0]
                     plaintext = line.split(':')[1:]

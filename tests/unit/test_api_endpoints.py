@@ -84,7 +84,7 @@ def test_admin_settings_authorized_returns_200_with_settings(client, admin_user)
     _db.session.add(settings_row)
     _db.session.commit()
 
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.get("/v1/admin/settings")
 
     assert resp.status_code == 200
@@ -109,7 +109,7 @@ def test_customers_list_authorized_returns_seeded_customer(client, admin_user):
     _db.session.add(cust)
     _db.session.commit()
 
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.get("/v1/customers")
 
     assert resp.status_code == 200
@@ -122,7 +122,7 @@ def test_customers_list_authorized_returns_seeded_customer(client, admin_user):
 @pytest.mark.security
 def test_customers_add_with_body_returns_status_and_id_key(client, admin_user):
     """POST /v1/customers/add with a name-only JSON body creates a Customer."""
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(
         "/v1/customers/add",
         data=json.dumps({"name": "Globex"}),
@@ -138,7 +138,7 @@ def test_customers_add_with_body_returns_status_and_id_key(client, admin_user):
 @pytest.mark.security
 def test_customers_add_missing_body_returns_400(client, admin_user):
     """POST /v1/customers/add with no JSON body returns status 400."""
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(
         "/v1/customers/add",
         data="",
@@ -193,11 +193,51 @@ def test_jobs_start_rejects_agent_cookie(client, authorized_agent):
     The route uses ``is_authorized(user=True, agent=False, ...)`` so even a
     valid agent uuid must be refused.
     """
-    client.set_cookie("uuid", authorized_agent.uuid)
+    # Cookie is genuinely sent (domain matches SERVER_NAME) so this exercises
+    # the privilege boundary itself: a real, authorized agent credential must
+    # still be rejected on a user-only route.
+    client.set_cookie("uuid", authorized_agent.uuid, domain="localhost.test")
     resp = client.post("/v1/jobs/start/1")
     assert 300 <= resp.status_code < 400
     location = resp.headers.get("Location", "")
     assert "not_authorized" in location
+
+
+@pytest.mark.security
+def test_no_uuid_cookie_does_not_match_null_api_key(client):
+    """A request with no 'uuid' cookie must be refused even when a key-less user exists.
+
+    api_key is nullable and is NOT set at user creation (only via
+    /profile/generate_api_key), so a user can legitimately have api_key=NULL.
+    is_authorized() must reject an absent/empty uuid outright — otherwise
+    userAuthorized(None) would run ``filter_by(api_key=None)`` -> ``WHERE
+    api_key IS NULL`` and authenticate as that key-less user. Sending an
+    unrelated cookie (no 'uuid') ensures ``request.cookies`` is truthy, so this
+    exercises the value guard rather than the empty-cookies short-circuit.
+    """
+    keyless = Users(
+        first_name="Key",
+        last_name="Less",
+        email_address="keyless@example.test",
+        password="hashed-pw",
+        admin=True,
+        api_key=None,
+    )
+    _db.session.add(keyless)
+    _db.session.commit()
+    assert keyless.api_key is None
+
+    # No uuid cookie at all, but a non-empty cookie jar.
+    client.set_cookie("decoy", "irrelevant", domain="localhost.test")
+    resp = client.post("/v1/jobs/start/1")
+    assert 300 <= resp.status_code < 400
+    assert "not_authorized" in resp.headers.get("Location", "")
+
+    # An explicitly empty uuid is likewise refused.
+    client.set_cookie("uuid", "", domain="localhost.test")
+    resp = client.post("/v1/jobs/start/1")
+    assert 300 <= resp.status_code < 400
+    assert "not_authorized" in resp.headers.get("Location", "")
 
 
 @pytest.mark.security
@@ -237,7 +277,7 @@ def test_jobs_start_returns_400_when_job_not_queued(client, admin_user):
     _db.session.add(job_task)
     _db.session.commit()
 
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(f"/v1/jobs/start/{job.id}")
     body = _json_body(resp)
     assert body["status"] == 400
@@ -247,7 +287,7 @@ def test_jobs_start_returns_400_when_job_not_queued(client, admin_user):
 @pytest.mark.security
 def test_hashes_import_unsupported_hash_type_returns_403(client, admin_user):
     """POST /v1/hashes/import/<n> for an unsupported hash type returns 403."""
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(
         "/v1/hashes/import/500",
         data="x",
@@ -272,7 +312,7 @@ def test_hashes_import_hash_type_1000_documents_str_int_bug(client, admin_user):
     test will fail loudly and should be updated to reflect the new
     behavior.
     """
-    client.set_cookie("uuid", admin_user.api_key)
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(
         "/v1/hashes/import/1000",
         data="x",
@@ -285,13 +325,15 @@ def test_hashes_import_hash_type_1000_documents_str_int_bug(client, admin_user):
 
 @pytest.mark.security
 def test_error_route_rejects_user_cookie(client, admin_user):
-    """POST /v1/error with a user cookie redirects to (typo'd) not_authorized.
+    """POST /v1/error with a user cookie redirects to not_authorized.
 
-    The route uses ``is_authorized(user=False, agent=True, ...)`` so a user
-    api_key cookie is refused. The route's redirect target is the typo'd
-    ``/vi/not_authorized`` — we tolerate either variant.
+    The route uses ``is_authorized(user=False, agent=True, ...)`` so a valid
+    user api_key cookie is refused on this agent-only route.
     """
-    client.set_cookie("uuid", admin_user.api_key)
+    # Cookie is genuinely sent (domain matches SERVER_NAME) so this exercises
+    # the privilege boundary itself: a real user credential must be rejected on
+    # an agent-only route.
+    client.set_cookie("uuid", admin_user.api_key, domain="localhost.test")
     resp = client.post(
         "/v1/error",
         data=json.dumps({"error": "oh no"}),
@@ -314,7 +356,7 @@ def test_error_route_accepts_agent_cookie_returns_ok(
     monkeypatch.setattr(utils_mod, "send_email", lambda *a, **kw: True)
     monkeypatch.setattr(utils_mod, "send_pushover", lambda *a, **kw: None)
 
-    client.set_cookie("uuid", authorized_agent.uuid)
+    client.set_cookie("uuid", authorized_agent.uuid, domain="localhost.test")
     resp = client.post(
         "/v1/error",
         data=json.dumps({"error": "agent saw something"}),

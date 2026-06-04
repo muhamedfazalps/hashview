@@ -1,12 +1,21 @@
 """Flask routes to handle Agents"""
 import os
-from flask import Blueprint, render_template, abort, flash, redirect, url_for, send_from_directory
-from flask_login import login_required, current_user
+
+from flask import (
+    Blueprint,
+    abort,
+    flash,
+    redirect,
+    render_template,
+    send_from_directory,
+    url_for,
+)
+from flask_login import current_user, login_required
+from sqlalchemy import text
+
 import hashview
 from hashview.agents.forms import AgentsForm
-from hashview.models import Agents, JobTasks
-from hashview.models import db
-from sqlalchemy import text
+from hashview.models import Agents, JobTasks, db
 
 agents = Blueprint('agents', __name__)
 

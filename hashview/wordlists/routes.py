@@ -1,13 +1,24 @@
 """Flask routes to handle Wordlists"""
 import os
 import secrets
-from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, jsonify, send_from_directory, abort
-from flask_login import login_required, current_user
+
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
+from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
-from hashview.wordlists.forms import WordlistsForm
-from hashview.models import Tasks, Wordlists, Users, Rules, JobTasks, Hashes
-from hashview.models import db
+
+from hashview.models import Hashes, JobTasks, Rules, Tasks, Users, Wordlists, db
 from hashview.utils.utils import ingest_static_wordlist_file, update_dynamic_wordlist
+from hashview.wordlists.forms import WordlistsForm
 
 wordlists = Blueprint('wordlists', __name__)
 

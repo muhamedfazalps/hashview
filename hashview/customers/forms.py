@@ -2,7 +2,9 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField
 from wtforms.validators import DataRequired, ValidationError
+
 from hashview.models import Customers
+
 
 class CustomersForm(FlaskForm):
     """Class representing a customer Form"""

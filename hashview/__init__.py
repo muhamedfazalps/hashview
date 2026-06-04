@@ -1,15 +1,10 @@
-import logging
 import datetime
-
-from flask import Flask
-from flask import request
-from flask import url_for
-from flask import redirect
-from jinja2 import select_autoescape
-from pathlib import Path
+import logging
 from functools import partial
 from logging.config import dictConfig as loggingDictConfig
 
+from flask import Flask, redirect, request, url_for
+from jinja2 import select_autoescape
 
 __version__ = '0.8.2'
 
@@ -32,7 +27,6 @@ def do_gui_setup_if_needed():
         return
 
     from hashview.models import db
-
     from hashview.setup import admin_pass_needs_changed
     from hashview.users.routes import bcrypt
     if not admin_pass_needs_changed(db, bcrypt):
@@ -75,8 +69,7 @@ def setup_defaults_if_needed():
         logger.exception('Upgrading Database failed.')
 
     try:
-        from hashview.scheduler import scheduler
-        from hashview.scheduler import data_retention_cleanup
+        from hashview.scheduler import data_retention_cleanup, scheduler
         logger.info('Clearing Scheduled Jobs.')
         scheduler.remove_all_jobs()
         logger.info('Adding Default Scheduled Jobs Progressing.')
@@ -91,9 +84,8 @@ def setup_defaults_if_needed():
         logger.exception('Adding Default Scheduled Jobs failed.')
 
     try:
+        from hashview.setup import add_admin_user, admin_user_needs_added
         from hashview.users.routes import bcrypt
-        from hashview.setup import add_admin_user
-        from hashview.setup import admin_user_needs_added
         if admin_user_needs_added(db):
             logger.info('Adding Admin User.')
             add_admin_user(db, bcrypt)
@@ -101,8 +93,10 @@ def setup_defaults_if_needed():
         logger.exception('Adding Admin User failed.')
 
     try:
-        from hashview.setup import add_default_dynamic_wordlists
-        from hashview.setup import default_dynamic_wordlists_need_added
+        from hashview.setup import (
+            add_default_dynamic_wordlists,
+            default_dynamic_wordlists_need_added,
+        )
         if default_dynamic_wordlists_need_added(db):
             logger.info('Adding Default Dynamic Wordlist.')
             add_default_dynamic_wordlists(db)
@@ -110,8 +104,10 @@ def setup_defaults_if_needed():
         logger.exception('Adding Default Dynamic Wordlists failed.')
 
     try:
-        from hashview.setup import add_default_static_wordlist
-        from hashview.setup import default_static_wordlist_need_added
+        from hashview.setup import (
+            add_default_static_wordlist,
+            default_static_wordlist_need_added,
+        )
         if default_static_wordlist_need_added(db):
             logger.info('Adding Default Static Wordlist.')
             add_default_static_wordlist(db)
@@ -130,8 +126,7 @@ def setup_defaults_if_needed():
         logger.exception('Compressing existing wordlists failed.')
 
     try:
-        from hashview.setup import add_default_rules
-        from hashview.setup import default_rules_need_added
+        from hashview.setup import add_default_rules, default_rules_need_added
         if default_rules_need_added(db):
             logger.info('Adding Default Rules.')
             add_default_rules(db)
@@ -139,8 +134,7 @@ def setup_defaults_if_needed():
         logger.exception('Adding Default Rules failed.')
 
     try:
-        from hashview.setup import add_default_tasks
-        from hashview.setup import default_tasks_need_added
+        from hashview.setup import add_default_tasks, default_tasks_need_added
         if default_tasks_need_added(db):
             logger.info('Adding Default Tasks.')
             add_default_tasks(db)
@@ -228,22 +222,22 @@ def create_app(testing=False, config_overrides=None):
     mail.init_app(app)
 
     from hashview.agents.routes import agents
+    from hashview.analytics.routes import analytics
     from hashview.api.routes import api
     from hashview.customers.routes import customers
     from hashview.hashfiles.routes import hashfiles
     from hashview.jobs.routes import jobs
     from hashview.main.routes import main
+    from hashview.notifications.routes import notifications
     from hashview.rules.routes import rules
+    from hashview.searches.routes import searches
     from hashview.settings.routes import settings
-    from hashview.tasks.routes import tasks
+    from hashview.setup.routes import blueprint as setup_blueprint
     from hashview.task_groups.routes import task_groups
+    from hashview.tasks.routes import tasks
     from hashview.users.routes import users
     from hashview.wordlists.routes import wordlists
-    from hashview.analytics.routes import analytics
-    from hashview.notifications.routes import notifications
-    from hashview.searches.routes import searches
     from hashview.wrapped.routes import wrapped
-    from hashview.setup.routes import blueprint as setup_blueprint
 
     app.register_blueprint(agents)
     app.register_blueprint(api)
@@ -281,9 +275,21 @@ def create_app(testing=False, config_overrides=None):
         try:
             import re
             from datetime import datetime, timedelta
+
             from sqlalchemy import text
-            from hashview.models import (db, Jobs, Agents, Tasks, TaskGroups,
-                                         Hashfiles, Wordlists, Rules, Users, Customers)
+
+            from hashview.models import (
+                Agents,
+                Customers,
+                Hashfiles,
+                Jobs,
+                Rules,
+                TaskGroups,
+                Tasks,
+                Users,
+                Wordlists,
+                db,
+            )
 
             agents = Agents.query.all()
             # last_checkin is stamped with the database clock (api.update_heartbeat uses
@@ -325,7 +331,7 @@ def create_app(testing=False, config_overrides=None):
                 for unit, div in (("PH/s", 1e15), ("TH/s", 1e12), ("GH/s", 1e9),
                                   ("MH/s", 1e6), ("kH/s", 1e3)):
                     if h >= div:
-                        return "%.1f %s" % (h / div, unit)
+                        return f"{h / div:.1f} {unit}"
                 return ("%d H/s" % int(h)) if h else "0 H/s"
 
             # Single source of truth for "is this agent up" (sidebar, agents page, AND

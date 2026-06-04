@@ -1,12 +1,21 @@
 """Flask routes to handle Rules"""
 import csv
 import io
-from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file
+
+from flask import (
+    Blueprint,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 from flask_login import login_required
-from hashview.searches.forms import SearchForm
-from hashview.models import Customers, Hashfiles, HashfileHashes, Hashes
-from hashview.models import db
+
 from hashview import jinja_hex_decode
+from hashview.models import Customers, Hashes, HashfileHashes, Hashfiles, db
+from hashview.searches.forms import SearchForm
 
 searches = Blueprint('searches', __name__)
 
@@ -66,11 +75,11 @@ def export_results(customers, results, hashfiles, separator):
     """Function to export search results"""
     str_io = io.StringIO()
     separator = (',' if separator == "Comma" else ":")
-    get_rows(strIO, customers, results, hashfiles, separator)
+    get_rows(str_io, customers, results, hashfiles, separator)
     byteIO = io.BytesIO()
-    byteIO.write(strIO.getvalue().encode())
+    byteIO.write(str_io.getvalue().encode())
     byteIO.seek(0)
-    strIO.close()
+    str_io.close()
     return send_file(byteIO, download_name="search.txt", as_attachment=True)
 
 #If this logic changes on in the html (search.html) it will need to change here as well
@@ -99,4 +108,4 @@ def get_rows(str_io, customers, results, hashfiles, separator):
             col.append("unrecovered")
 
         writer.writerow([col[0],col[1],col[2],col[3]])
-    return strIO
+    return str_io

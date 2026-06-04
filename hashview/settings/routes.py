@@ -2,13 +2,29 @@
 import os
 import re
 from datetime import datetime
-from flask import Blueprint, render_template, abort, url_for, flash, request, redirect, jsonify, send_from_directory, current_app
-from flask_login import login_required, current_user
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
+from flask_login import current_user, login_required
+
 import hashview
-from hashview.settings.forms import HashviewSettingsForm, DatabaseBackupForm
-from hashview.models import Settings
-from hashview.models import db
-from hashview.utils.backup import create_encrypted_db_backup, purge_stale_backups, BackupError
+from hashview.models import Settings, db
+from hashview.settings.forms import DatabaseBackupForm, HashviewSettingsForm
+from hashview.utils.backup import (
+    BackupError,
+    create_encrypted_db_backup,
+    purge_stale_backups,
+)
 
 # control/tmp filename of a generated backup, e.g. '1a2b3c4d5e6f7a8b.sql.gz.enc'
 _BACKUP_TOKEN_RE = re.compile(r'^[0-9a-f]{16}\.sql\.gz\.enc$')
@@ -23,7 +39,7 @@ def _human_size(num):
         if num < 1024 or unit == 'TB':
             if unit == 'B':
                 return '%d B' % num
-            return ('%.1f %s' % (num, unit)).replace('.0 ', ' ')
+            return (f'{num:.1f} {unit}').replace('.0 ', ' ')
         num /= 1024.0
 
 
@@ -71,7 +87,7 @@ def settings_list():
 
         try:
             database_version = db.session.execute('SELECT version_num FROM alembic_version LIMIT 1;').scalar()
-        except:
+        except Exception:
             database_version = 'error'
 
         return render_template(

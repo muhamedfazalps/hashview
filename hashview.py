@@ -7,7 +7,6 @@ import os
 import sys
 import time
 import traceback
-
 from functools import partial
 from pathlib import Path
 from typing import Optional
@@ -177,8 +176,7 @@ def ensure_dynamic_wordlist(db):
 
 def ensure_static_wordlist(db):
     from hashview.models import Wordlists
-    from hashview.utils.utils import get_filehash
-    from hashview.utils.utils import get_linecount
+    from hashview.utils.utils import get_filehash, get_linecount
 
     static_wordlist_count = Wordlists.query.filter_by(type='static').count()
     if static_wordlist_count > 0:
@@ -204,8 +202,7 @@ def ensure_static_wordlist(db):
 
 def ensure_rules(db):
     from hashview.models import Rules
-    from hashview.utils.utils import get_filehash
-    from hashview.utils.utils import get_linecount
+    from hashview.utils.utils import get_filehash, get_linecount
 
     rule_count = Rules.query.count()
     if rule_count > 0:
@@ -284,8 +281,15 @@ def data_retention_cleanup(app):
         db.init_app(app)
 
         from hashview.models import (
-            Users, Settings, Jobs, JobTasks, JobNotifications,
-            HashfileHashes, HashNotifications, Hashes, Hashfiles,
+            Hashes,
+            HashfileHashes,
+            Hashfiles,
+            HashNotifications,
+            JobNotifications,
+            Jobs,
+            JobTasks,
+            Settings,
+            Users,
         )
         from hashview.utils.utils import send_email
 
@@ -416,8 +420,8 @@ def cli(args) -> int:
         app = create_app()
         with app.app_context():
             from hashview.models import db
-            from hashview.users.routes import bcrypt
             from hashview.scheduler import data_retention_cleanup
+            from hashview.users.routes import bcrypt
 
             ensure_settings_cli(db)
             ensure_admin_account_cli(db, bcrypt)

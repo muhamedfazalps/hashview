@@ -1,10 +1,21 @@
 """Flask routes to handle Tasks"""
-from flask import Blueprint, render_template, redirect, url_for, flash, abort, request
-from flask_login import login_required, current_user
-from hashview.tasks.forms import TasksForm
-from hashview.models import TaskGroups, Tasks, Wordlists, Rules, Users, Jobs, JobTasks, Hashes
-from hashview.models import db
 import os
+
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
+from hashview.models import (
+    Hashes,
+    Jobs,
+    JobTasks,
+    Rules,
+    TaskGroups,
+    Tasks,
+    Users,
+    Wordlists,
+    db,
+)
+from hashview.tasks.forms import TasksForm
 
 tasks = Blueprint('tasks', __name__)
 
@@ -15,7 +26,7 @@ def _human_size(num):
         if num < 1024 or unit == 'TB':
             if unit == 'B':
                 return '%d B' % num
-            return ('%.1f %s' % (num, unit)).replace('.0 ', ' ')
+            return (f'{num:.1f} {unit}').replace('.0 ', ' ')
         num /= 1024.0
 
 @tasks.route("/tasks", methods=['GET', 'POST'])
@@ -132,17 +143,17 @@ def tasks_add():
         else:
             rule_id = tasksForm.rule_id.data
 
-        if tasksForm.wl_id_2.data == None:
+        if tasksForm.wl_id_2.data is None:
             wl_id_2 = None
         else:
             wl_id_2 = tasksForm.wl_id_2.data
 
-        if tasksForm.j_rule.data == None:
+        if tasksForm.j_rule.data is None:
             j_rule = None
         else:
             j_rule = tasksForm.j_rule.data
 
-        if tasksForm.k_rule.data == None:
+        if tasksForm.k_rule.data is None:
             k_rule = None
         else:
             k_rule = tasksForm.k_rule.data

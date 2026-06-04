@@ -1,12 +1,21 @@
 import os
-from flask import Blueprint, render_template, flash, url_for, redirect, current_app, request, send_from_directory, abort
-from flask_login import login_required, current_user
-from werkzeug.utils import secure_filename
-from hashview.models import Rules, Tasks, Jobs, JobTasks, Users, Wordlists, Hashes
-from hashview.rules.forms import RulesForm
-from hashview.utils.utils import save_file, get_linecount, get_filehash
-from hashview.models import db
 
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
+from flask_login import current_user, login_required
+from werkzeug.utils import secure_filename
+
+from hashview.models import Hashes, Jobs, JobTasks, Rules, Tasks, Users, Wordlists, db
+from hashview.rules.forms import RulesForm
+from hashview.utils.utils import get_filehash, get_linecount, save_file
 
 rules = Blueprint('rules', __name__)
 
@@ -96,7 +105,7 @@ def rules_add():
                             checksum=get_filehash(rules_path))
             db.session.add(rule)
             db.session.commit()
-            flash(f'Rules File created!', 'success')
+            flash('Rules File created!', 'success')
             return redirect(url_for('rules.rules_list'))
     return render_template('rules_add.html.j2', title='Rules Add', form=form)
 
@@ -106,7 +115,7 @@ def rules_view(rule_id):
     rule = Rules.query.get_or_404(rule_id)
     # Read file content
     try:
-        with open(rule.path, 'r') as f:
+        with open(rule.path) as f:
             content = f.read()
     except Exception as e:
         flash(f'Error reading file: {e}', 'danger')

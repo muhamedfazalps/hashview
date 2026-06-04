@@ -550,6 +550,37 @@ def test_build_hashcat_command_static_gz(app, tmp_path, attackmode):
     assert ensure_gz(gz_basename) == gz_basename
 
 
+def test_build_hashcat_command_combinator_uses_second_wordlist(app, tmp_path):
+    """Combinator (`-a 1`) must reference BOTH wordlists, not wordlist 1 twice.
+
+    Regression test for a copy/paste bug: the second dictionary path was
+    computed from `wordlist` (the first list) and then never used, so the
+    emitted command listed wordlist 1 in both dictionary positions. With the
+    fix the command must contain the distinct wordlist-2 path.
+    """
+    user = _make_user()
+    src1 = tmp_path / "left.txt"
+    src1.write_bytes(b"a\nb\n")
+    src2 = tmp_path / "right.txt"
+    src2.write_bytes(b"c\nd\ne\n")
+    wl1 = ingest_static_wordlist_file(str(src1), user.id, "Left")
+    wl2 = ingest_static_wordlist_file(str(src2), user.id, "Right")
+    db.session.add_all([wl1, wl2])
+    db.session.commit()
+    gz1 = "control/wordlists/" + os.path.basename(wl1.path)
+    gz2 = "control/wordlists/" + os.path.basename(wl2.path)
+    assert gz1 != gz2
+
+    job, task = _setup_job_for_wordlist(user, wl1, attackmode=1)
+    task.wl_id_2 = wl2.id
+    db.session.commit()
+
+    cmd = build_hashcat_command(job.id, task.id)
+    assert " -a 1 " in cmd
+    assert gz1 in cmd                      # left dictionary
+    assert gz2 in cmd                      # right dictionary — the bug dropped this
+
+
 def test_build_hashcat_command_static_dict_plus_rule(app, tmp_path):
     user = _make_user()
     src = tmp_path / "hc.txt"

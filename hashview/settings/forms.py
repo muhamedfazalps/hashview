@@ -1,6 +1,12 @@
 """Forms Page to manage Settings"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, BooleanField, IntegerField, SubmitField, ValidationError
+from wtforms import (
+    BooleanField,
+    IntegerField,
+    StringField,
+    SubmitField,
+    ValidationError,
+)
 from wtforms.validators import DataRequired, NumberRange
 
 
