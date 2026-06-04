@@ -1,9 +1,22 @@
 """Forms Page to manage Jobs"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField, SelectField, TextAreaField, FileField, BooleanField
-from wtforms.validators import DataRequired, ValidationError, URL
+from wtforms import (
+	BooleanField,
+	FileField,
+	SelectField,
+	StringField,
+	SubmitField,
+	TextAreaField,
+)
+from wtforms.validators import URL, DataRequired, ValidationError
+
 from hashview.models import Jobs
-from hashview.utils.hashcat_modes import (HASH_TYPE_CHOICES, SHADOW_HASH_TYPE_CHOICES, NETNTLM_HASH_TYPE_CHOICES, KERBEROS_HASH_TYPE_CHOICES)
+from hashview.utils.hashcat_modes import (
+	HASH_TYPE_CHOICES,
+	KERBEROS_HASH_TYPE_CHOICES,
+	NETNTLM_HASH_TYPE_CHOICES,
+	SHADOW_HASH_TYPE_CHOICES,
+)
 
 
 class JobsForm(FlaskForm):

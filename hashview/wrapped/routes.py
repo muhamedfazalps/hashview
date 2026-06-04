@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template
-from flask_login import login_required, current_user
-from hashview.models import Tasks, Users, Hashes
-from hashview.models import db
-from sqlalchemy import func, or_
 import datetime
+
+from flask import Blueprint, render_template
+from flask_login import current_user, login_required
+from sqlalchemy import func
+
+from hashview.models import Hashes, Tasks, Users, db
 
 wrapped = Blueprint('wrapped', __name__)
 

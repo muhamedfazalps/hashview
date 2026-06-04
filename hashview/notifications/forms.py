@@ -3,6 +3,7 @@ from flask_wtf import FlaskForm
 from wtforms import SelectField
 from wtforms.validators import DataRequired
 
+
 class NotificationsForm(FlaskForm):
     """Class representing an Notifications Forms"""
     job_completion = SelectField('Notify when Job Complets?', choices=[('no', 'No'),

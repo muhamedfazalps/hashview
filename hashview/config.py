@@ -1,6 +1,7 @@
 """Manage parsing of Config and loading into Config class"""
 import secrets
 from configparser import ConfigParser
+
 file_config = ConfigParser()
 
 class Config:

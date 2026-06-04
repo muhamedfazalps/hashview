@@ -1,7 +1,8 @@
 """Forms Page to manage Wordlists"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, FileField, SubmitField
+from wtforms import FileField, StringField, SubmitField
 from wtforms.validators import DataRequired
+
 
 class WordlistsForm(FlaskForm):
     """Class representing Wordlist Form"""

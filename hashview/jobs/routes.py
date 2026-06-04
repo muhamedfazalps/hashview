@@ -1,16 +1,54 @@
-from flask import Blueprint, render_template, redirect, flash, url_for, current_app, request
-from flask_login import login_required, current_user
-from sqlalchemy import func, case
-from hashview.jobs.forms import JobsForm, JobsNewHashFileForm, JobsNotificationsForm, JobSummaryForm, JobWebsiteKeywordsForm
-from hashview.models import HashNotifications, JobNotifications, Jobs, Customers, Hashfiles, Users, HashfileHashes, Hashes, JobTasks, Tasks, TaskGroups, Settings, Wordlists
-from hashview.utils.utils import save_file, import_hashfilehashes, build_hashcat_command, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile
-from hashview.models import db
-from datetime import datetime
+import json
 import os
 import secrets
-import json
 from datetime import datetime
 
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_login import current_user, login_required
+from sqlalchemy import case, func
+
+from hashview.jobs.forms import (
+    JobsForm,
+    JobsNewHashFileForm,
+    JobsNotificationsForm,
+    JobSummaryForm,
+    JobWebsiteKeywordsForm,
+)
+from hashview.models import (
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Hashfiles,
+    HashNotifications,
+    JobNotifications,
+    Jobs,
+    JobTasks,
+    Settings,
+    TaskGroups,
+    Tasks,
+    Users,
+    Wordlists,
+    db,
+)
+from hashview.utils.utils import (
+    build_hashcat_command,
+    import_hashfilehashes,
+    save_file,
+    validate_hash_only_hashfile,
+    validate_kerberos_hashfile,
+    validate_netntlm_hashfile,
+    validate_pwdump_hashfile,
+    validate_shadow_hashfile,
+    validate_user_hash_hashfile,
+)
 
 jobs = Blueprint('jobs', __name__)
 
@@ -582,7 +620,7 @@ def jobs_assign_notifications(job_id):
         if form.job_completion_email.data == True:
             # Check if we already have a notification set
             pre_existing_job_notification = JobNotifications.query.filter_by(job_id=job_id, owner_id=current_user.id, method='email').first()
-            if pre_existing_job_notification == None:
+            if pre_existing_job_notification is None:
                 job_notification = JobNotifications(
                     owner_id = current_user.id,
                     job_id = job_id,
@@ -592,7 +630,7 @@ def jobs_assign_notifications(job_id):
                 db.session.commit()
         if form.job_completion_pushover.data == True:
             pre_existing_job_notification = JobNotifications.query.filter_by(job_id=job_id, owner_id=current_user.id, method='push').first()
-            if pre_existing_job_notification == None:
+            if pre_existing_job_notification is None:
                 job_notification = JobNotifications(
                     owner_id = current_user.id,
                     job_id = job_id,

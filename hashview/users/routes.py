@@ -1,18 +1,46 @@
 """Flask routes to handle Users"""
-from textwrap import dedent
-from datetime import datetime
-
-from flask import Blueprint, render_template, url_for, flash, abort, redirect, request, current_app
-from flask_login import login_required, logout_user, current_user, login_user
-from flask_login import LoginManager
-from flask_bcrypt import Bcrypt
-
-from hashview.models import db
-from hashview.models import Users, Jobs, Wordlists, Rules, TaskGroups, Tasks, Hashfiles, Customers
-from hashview.users.forms import LoginForm, UsersForm, ProfileForm, RequestResetForm, ResetPasswordForm
-from hashview.utils.utils import send_email, send_pushover
-
 import uuid
+from datetime import datetime
+from textwrap import dedent
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_bcrypt import Bcrypt
+from flask_login import (
+    LoginManager,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
+
+from hashview.models import (
+    Customers,
+    Hashfiles,
+    Jobs,
+    Rules,
+    TaskGroups,
+    Tasks,
+    Users,
+    Wordlists,
+    db,
+)
+from hashview.users.forms import (
+    LoginForm,
+    ProfileForm,
+    RequestResetForm,
+    ResetPasswordForm,
+    UsersForm,
+)
+from hashview.utils.utils import send_email, send_pushover
 
 bcrypt = Bcrypt()
 

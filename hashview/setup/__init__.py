@@ -1,22 +1,17 @@
 import os
 import secrets
 
-from pathlib import Path
-
 from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
 
-from hashview.models import Rules
-from hashview.models import Tasks
-from hashview.models import Users
-from hashview.models import Settings
-from hashview.models import Wordlists
-from hashview.utils.utils import get_filehash
-from hashview.utils.utils import get_linecount
-from hashview.utils.utils import get_filesize
-from hashview.utils.utils import is_gzip
-from hashview.utils.utils import compress_to_gz
-
+from hashview.models import Rules, Settings, Tasks, Users, Wordlists
+from hashview.utils.utils import (
+    compress_to_gz,
+    get_filehash,
+    get_filesize,
+    get_linecount,
+    is_gzip,
+)
 
 DEFAULT_PASSWORD = 'hashview'
 

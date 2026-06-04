@@ -1,13 +1,11 @@
 """Function file to scheduler"""
-from logging import Logger
 from functools import partial
+from logging import Logger
 
 from flask import Flask
-from flask_mail import Mail
-from flask_mail import Message
-from flask_sqlalchemy import SQLAlchemy
 from flask_apscheduler import APScheduler
-
+from flask_mail import Mail, Message
+from flask_sqlalchemy import SQLAlchemy
 
 scheduler = APScheduler()
 
@@ -40,15 +38,20 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
     """ description needed """
 
     import time
-
+    from datetime import datetime, timedelta
     from pathlib import Path
-    from datetime import datetime
-    from datetime import timedelta
     from textwrap import dedent
 
     from hashview.models import (
-        Users, Settings, Jobs, JobTasks, JobNotifications,
-        HashfileHashes, HashNotifications, Hashes, Hashfiles,
+        Hashes,
+        HashfileHashes,
+        Hashfiles,
+        HashNotifications,
+        JobNotifications,
+        Jobs,
+        JobTasks,
+        Settings,
+        Users,
     )
 
     try_send_email_ = partial(try_send_email, mailer=mailer)

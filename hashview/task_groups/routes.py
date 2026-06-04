@@ -1,11 +1,11 @@
 """Flask routes to handle Task Groups"""
 import json
-from flask import Blueprint, render_template, redirect, url_for, flash, abort, request
-from flask_login import login_required, current_user
-from hashview.task_groups.forms import TaskGroupsForm
-from hashview.models import Tasks, TaskGroups, Users, Hashes
-from hashview.models import db
 
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
+from hashview.models import Hashes, TaskGroups, Tasks, Users, db
+from hashview.task_groups.forms import TaskGroupsForm
 
 task_groups = Blueprint('task_groups', __name__)
 

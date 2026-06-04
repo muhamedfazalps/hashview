@@ -1,11 +1,19 @@
 """Flask routes to handle Customers"""
-from flask import Blueprint, render_template, redirect, url_for, flash, request
-from flask_login import login_required, current_user
-from sqlalchemy import func, case
-from hashview.models import Customers, Jobs, Hashfiles, HashfileHashes, Hashes, HashNotifications
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+from sqlalchemy import case, func
+
 from hashview.customers.forms import CustomersForm
 from hashview.jobs.forms import JobsNewHashFileForm
-from hashview.models import db
+from hashview.models import (
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Hashfiles,
+    HashNotifications,
+    Jobs,
+    db,
+)
 
 
 def _hash_type_names():

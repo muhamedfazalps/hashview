@@ -1,17 +1,59 @@
-from flask import Blueprint, jsonify, redirect, request, send_from_directory, current_app, url_for
-from hashview.models import Agents, JobTasks, Tasks, Wordlists, Rules, Jobs, Hashes, Hashfiles, HashfileHashes, Users, HashNotifications, Settings, JobNotifications, Customers
-from hashview.utils.utils import get_md5_hash, get_linecount, get_filehash, update_dynamic_wordlist, update_job_task_status, import_hashfilehashes, validate_pwdump_hashfile, validate_netntlm_hashfile, validate_kerberos_hashfile, validate_shadow_hashfile, validate_user_hash_hashfile, validate_hash_only_hashfile, send_email, send_pushover, notify_admins, build_hashcat_command, ingest_static_wordlist_file, compress_to_gz
-from hashview.models import db
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy import func
-from packaging import version
-from datetime import datetime, timedelta
-import hashview
-import os
-import json
-import secrets
-import hashlib
 import binascii
+import hashlib
+import json
+import os
+import secrets
+from datetime import datetime, timedelta
+
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    redirect,
+    request,
+    send_from_directory,
+    url_for,
+)
+from packaging import version
+from sqlalchemy import func
+from sqlalchemy.ext.declarative import DeclarativeMeta
+
+import hashview
+from hashview.models import (
+    Agents,
+    Customers,
+    Hashes,
+    HashfileHashes,
+    Hashfiles,
+    HashNotifications,
+    JobNotifications,
+    Jobs,
+    JobTasks,
+    Rules,
+    Settings,
+    Tasks,
+    Users,
+    Wordlists,
+    db,
+)
+from hashview.utils.utils import (
+    build_hashcat_command,
+    compress_to_gz,
+    get_md5_hash,
+    import_hashfilehashes,
+    ingest_static_wordlist_file,
+    notify_admins,
+    send_email,
+    send_pushover,
+    update_dynamic_wordlist,
+    update_job_task_status,
+    validate_hash_only_hashfile,
+    validate_kerberos_hashfile,
+    validate_netntlm_hashfile,
+    validate_pwdump_hashfile,
+    validate_shadow_hashfile,
+    validate_user_hash_hashfile,
+)
 
 api = Blueprint('api', __name__)
 
@@ -224,7 +266,7 @@ def v1_api_set_agent_heartbeat():
                 agent.hc_status = ""
                 db.session.commit()
                 already_assigned_task = JobTasks.query.filter_by(agent_id = agent.id).first()
-                if already_assigned_task != None:
+                if already_assigned_task is not None:
                     message = {
                         'status': 200,
                         'type': 'message',
@@ -563,7 +605,7 @@ def v1_api_post_add_job():
             return jsonify({
                 'status': 500,
                 'type': 'Error',
-                'msg': f'Not enough data to determine effective tasks for this hash type. Please add more cracked hashes of this type before creating a job.'
+                'msg': 'Not enough data to determine effective tasks for this hash type. Please add more cracked hashes of this type before creating a job.'
             })
         else:
         # for each effective task 
@@ -773,7 +815,7 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
                 return jsonify({
                     'status': 500,
                     'type': 'Error',
-                    'msg': f'Something went wrong. Check the filetype / hashtype and try again.'
+                    'msg': 'Something went wrong. Check the filetype / hashtype and try again.'
                 })                  
 
             hashfile_hashes_cnt = db.session.query(HashfileHashes).filter_by(hashfile_id=hashfile.id).count()
@@ -783,7 +825,7 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
                 return jsonify({
                     'status': 500,
                     'type': 'Error',
-                    'msg': f'No valid hashes found in the hashfile. Hashfile not added.'
+                    'msg': 'No valid hashes found in the hashfile. Hashfile not added.'
                 })   
 
             cracked_hashfiles_hashes_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
@@ -1175,7 +1217,7 @@ def v1_api_hashes_import(hash_type):
 
         # import contents from file
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path) as f:
                 for line in f:
                     ciphertext = line.split(':')[0]
                     plaintext = line.split(':')[1:]
