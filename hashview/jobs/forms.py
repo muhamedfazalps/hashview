@@ -81,7 +81,7 @@ class JobsNotificationsForm(FlaskForm):
 class JobSummaryForm(FlaskForm):
     """Class representing an Jobs Summary"""
 
-    submit = SubmitField('Complete')
+    submit = SubmitField('Create & Queue Job')
 
 class JobWebsiteKeywordsForm(FlaskForm):
     """URL to crawl for the (DYNAMIC) Website Keywords wordlist."""

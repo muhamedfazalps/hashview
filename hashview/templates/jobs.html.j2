@@ -8,7 +8,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Jobs</h1>
-        <div class="page-sub">// {{ pagination.total }} jobs total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
+        <div class="page-sub">// {{ pagination.total | commafy }} jobs total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
     </div>
     <div style="display:flex; gap:10px;">
         {% if show_only_mine == 'true' %}
@@ -225,7 +225,7 @@ function hvFilterJobs(q){
             <div>{{ kv_label('Hashfile') }}<div class="mono" style="color:var(--text);">{% for h in hashfiles %}{% if h.id == job.hashfile_id %}{{ h.name }}{% endif %}{% endfor %}{% if not job.hashfile_id %}<span style="color:var(--text-mute);">—</span>{% endif %}</div></div>
             <div>{{ kv_label('Hash type') }}<div>{% if job_hash_type is defined and job_hash_type.get(job.id) %}<span class="badge cyan">{{ job_hash_type[job.id] }}</span>{% else %}<span style="color:var(--text-mute);">—</span>{% endif %}</div></div>
             <div>{{ kv_label('Priority') }}<div style="display:inline-flex; align-items:center; gap:9px;">{{ priority_pips(job.priority) }}<span class="mono" style="color:var(--text-dim);">{{ job.priority }}/5</span></div></div>
-            <div>{{ kv_label('Tasks') }}{% set tc = job_task_count.get(job.id, 0) if job_task_count is defined else 0 %}<div style="color:var(--text);">{{ tc }} attack{{ '' if tc == 1 else 's' }} queued</div></div>
+            <div>{{ kv_label('Tasks') }}{% set tc = job_task_count.get(job.id, 0) if job_task_count is defined else 0 %}<div style="color:var(--text);">{{ tc | commafy }} attack{{ '' if tc == 1 else 's' }} queued</div></div>
             <div>{{ kv_label('Started') }}<div class="mono" style="color:var(--text);">{{ job.started_at.strftime('%b %d %H:%M') if job.started_at else 'Not started' }}</div></div>
             <div>{{ kv_label('Runtime') }}<div class="mono" style="color:var(--text);">{{ job_runtime.get(job.id, '-') if job_runtime is defined else '-' }}</div></div>
         </div>

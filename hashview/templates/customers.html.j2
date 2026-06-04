@@ -7,7 +7,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Customers</h1>
-        <div class="page-sub">// {{ customers|length }} customer{{ '' if customers|length == 1 else 's' }} · jobs, passwords &amp; hashes are scoped to a customer</div>
+        <div class="page-sub">// {{ customers|length | commafy }} customer{{ '' if customers|length == 1 else 's' }} · jobs, passwords &amp; hashes are scoped to a customer</div>
     </div>
     <button type="button" class="btn btn-primary" onclick="document.getElementById('add-customer-modal').showModal()">{{ icon('plus', size=15) }} Add customer</button>
 </div>
@@ -34,8 +34,8 @@
                         {{ customer.name }}
                     </span>
                 </td>
-                <td class="center num">{{ st.jobs if st else 0 }}</td>
-                <td class="center num">{{ st.hashfiles if st else 0 }}</td>
+                <td class="center num">{{ (st.jobs if st else 0) | commafy }}</td>
+                <td class="center num">{{ (st.hashfiles if st else 0) | commafy }}</td>
                 <td class="center">
                     {% if st and st.total %}
                     <div class="mono num" style="font-size:12.5px;">

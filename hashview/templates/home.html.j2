@@ -4,6 +4,11 @@
 {% block title %}Dashboard · Hashview{% endblock %}
 {% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
 {% block content %}
+<style>
+/* Running-jobs task tables: slightly larger STATUS badges than the app default. */
+.rj-tasks td .badge { font-size: 12px; padding: 4px 11px; }
+.rj-tasks td .badge svg { width: 14px; height: 14px; }
+</style>
 
 <div class="page-head">
     <div>
@@ -22,24 +27,24 @@
 <div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--gap);">
     <div class="kpi">
         <div class="kpi-label">{{ icon('key', size=13) }} Recovered today</div>
-        <div class="kpi-value accent">{{ fig1_values[-1] if fig1_values else 0 }}</div>
+        <div class="kpi-value accent">{{ (fig1_values[-1] if fig1_values else 0) | commafy }}</div>
         {% set delta = (fig1_values[-1] - fig1_values[-2]) if fig1_values and fig1_values|length > 1 else 0 %}
-        <div class="kpi-foot">{% if delta >= 0 %}<span class="up">▲ {{ delta }}</span>{% else %}<span class="down">▼ {{ delta|abs }}</span>{% endif %} vs yesterday</div>
-    </div>
-    <div class="kpi" style="cursor:pointer;" onclick="document.getElementById('agent-fleet-modal').showModal()" title="View agent fleet">
-        <div class="kpi-label">{{ icon('cpu', size=13) }} Agents online</div>
-        <div class="kpi-value">{{ agt_up }}<span style="font-size:16px;color:var(--text-dim);">/{{ agt_total }}</span></div>
-        <div class="kpi-foot mono">{{ agt_total }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
-    </div>
-    <div class="kpi">
-        <div class="kpi-label">{{ icon('jobs', size=13) }} Jobs</div>
-        <div class="kpi-value">{{ running_jobs|length }}<span style="font-size:16px;color:var(--text-dim);"> running</span></div>
-        <div class="kpi-foot"><span style="color:var(--amber);">{{ queued_jobs|length }} queued</span></div>
+        <div class="kpi-foot">{% if delta >= 0 %}<span class="up">▲ {{ delta | commafy }}</span>{% else %}<span class="down">▼ {{ delta|abs | commafy }}</span>{% endif %} vs yesterday</div>
     </div>
     <div class="kpi">
         <div class="kpi-label">{{ icon('hash', size=13) }} Cracked this week</div>
-        <div class="kpi-value">{{ fig1_values|sum }}</div>
+        <div class="kpi-value">{{ fig1_values|sum | commafy }}</div>
         <div class="kpi-foot mono">last 7 days</div>
+    </div>
+    <div class="kpi" style="cursor:pointer;" onclick="document.getElementById('agent-fleet-modal').showModal()" title="View agent fleet">
+        <div class="kpi-label">{{ icon('cpu', size=13) }} Agents online</div>
+        <div class="kpi-value">{{ agt_up | commafy }}<span style="font-size:16px;color:var(--text-dim);">/{{ agt_total | commafy }}</span></div>
+        <div class="kpi-foot mono">{{ agt_total | commafy }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('jobs', size=13) }} Jobs</div>
+        <div class="kpi-value">{{ running_jobs|length | commafy }}<span style="font-size:16px;color:var(--text-dim);"> running</span></div>
+        <div class="kpi-foot"><span style="color:var(--amber);">{{ queued_jobs|length | commafy }} queued</span></div>
     </div>
 </div>
 
@@ -48,7 +53,7 @@
     <div class="hv-dialog-head">
         <span class="dot-led {% if agt_total == 0 %}idle{% elif agt_up == agt_total %}on{% elif agt_up == 0 %}off{% else %}run{% endif %}"></span>
         <h3>Agent Fleet</h3>
-        <span class="mono" style="font-size:11px;color:var(--text-mute);">{{ agt_up }}/{{ agt_total }} online</span>
+        <span class="mono" style="font-size:11px;color:var(--text-mute);">{{ agt_up | commafy }}/{{ agt_total | commafy }} online</span>
         <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
     <div class="hv-dialog-body" style="max-height:70vh; overflow-y:auto;">
@@ -203,7 +208,7 @@
                         <div class="seg-run" style="width: {{ (running.value / total.value) * 100 }}%"></div>
                         {% endif %}
                     </div>
-                    <table class="tbl" style="margin-top:16px;">
+                    <table class="tbl rj-tasks" style="margin-top:16px;">
                         <thead><tr><th>Task</th><th class="center">Status</th><th>Agent</th><th class="center">Recovered</th><th class="center">Rate</th><th class="center">ETA</th><th></th></tr></thead>
                         <tbody>
                             {% for jt in job_tasks %}{% if jt.job_id == job.id %}
@@ -214,7 +219,7 @@
                                     <td class="mono">{{ tname.v }}</td>
                                     <td class="center">{{ status_badge(jt.status) }}</td>
                                     <td class="mono" style="color:var(--text-dim);">{{ ag.name or '—' }}</td>
-                                    <td class="center num" style="color:{{ 'var(--primary)' if ag.rec else 'var(--text-mute)' }};">{{ ag.rec or '—' }}</td>
+                                    <td class="center num" style="color:{{ 'var(--primary)' if ag.rec else 'var(--text-mute)' }};">{{ ag.rec.split('/') | map('commafy') | join('/') if ag.rec else '—' }}</td>
                                     <td class="center num" style="color:var(--text-dim);">{{ ag.rate or '—' }}</td>
                                     <td class="center num" style="color:{{ 'var(--amber)' if ag.eta else 'var(--text-mute)' }};">{{ ag.eta or '—' }}</td>
                                     <td class="center">{% if jt.status == 'Running' %}<a class="icon-btn" href="{{ url_for('main.stop_job_task', job_task_id=jt.id) }}" title="Stop task">{{ icon('stop', size=15) }}</a>{% endif %}</td>
@@ -286,7 +291,7 @@
                 pointBorderWidth: 2,
                 pointRadius: 3,
                 pointHoverRadius: 5,
-                lineTension: 0.25,
+                lineTension: 0,
                 fill: true
             }]
         },
@@ -294,7 +299,19 @@
             responsive: true,
             maintainAspectRatio: false,
             legend: { display: false },
-            tooltips: { backgroundColor: '#161a14', titleFontFamily: mono, bodyFontFamily: mono, titleFontColor: tick, bodyFontColor: primary, borderColor: '#2a3525', borderWidth: 1 },
+            tooltips: {
+                backgroundColor: '#161a14', titleFontFamily: mono, bodyFontFamily: mono,
+                titleFontColor: tick, bodyFontColor: primary, borderColor: '#2a3525', borderWidth: 1,
+                displayColors: false,
+                callbacks: {
+                    // Show e.g. "1,000 cracked": thousands-separated value (commas
+                    // kick in at >= 1000 via toLocaleString) with the word appended.
+                    label: function (tooltipItem) {
+                        var n = Number(tooltipItem.yLabel) || 0;
+                        return n.toLocaleString('en-US') + ' cracked';
+                    }
+                }
+            },
             scales: {
                 xAxes: [{ gridLines: { color: grid, zeroLineColor: grid, drawBorder: false }, ticks: { fontColor: tick, fontFamily: mono, fontSize: 10 } }],
                 yAxes: [{ gridLines: { color: grid, zeroLineColor: grid, drawBorder: false }, ticks: { fontColor: tick, fontFamily: mono, fontSize: 10, beginAtZero: true, precision: 0 } }]

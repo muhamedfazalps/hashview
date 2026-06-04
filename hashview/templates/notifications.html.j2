@@ -1,59 +1,74 @@
 {% extends "layout.html.j2" %}
 {% from "icons.html.j2" import icon %}
 {% block title %}Notifications · Hashview{% endblock %}
+
+{# EMAIL / PUSHOVER delivery badge (cyan / amber), shared by both tables and the KPI #}
+{% macro method_badge(method) -%}
+    {%- if method == 'email' -%}<span class="badge cyan">{{ icon('mail', size=12) }} EMAIL</span>
+    {%- elif method == 'push' -%}<span class="badge amber">{{ icon('bell', size=12) }} PUSHOVER</span>
+    {%- else -%}<span class="badge dim">{{ method }}</span>{%- endif -%}
+{%- endmacro %}
+
 {% block content %}
+{% set total_alerts = job_notifications|length + hash_notifications|length %}
 
 <div class="page-head">
     <div>
         <h1 class="page-title">Notifications</h1>
-        <div class="page-sub">// job &amp; recovered-hash alert subscriptions</div>
+        <div class="page-sub">// {{ total_alerts | commafy }} alert{{ '' if total_alerts == 1 else 's' }} configured · delivered to {{ current_user.email_address.split('@')[0] }}</div>
+    </div>
+    <button type="button" class="btn" onclick="document.getElementById('account-settings-modal').showModal()">{{ icon('settings', size=15) }} Channels</button>
+</div>
+
+{# ---------- KPI row ---------- #}
+<div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: var(--gap);">
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('jobs', size=13) }} Job alerts</div>
+        <div class="kpi-value">{{ job_notifications|length | commafy }}</div>
+        <div class="kpi-foot">fire when a job finishes</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('key', size=13) }} Hash alerts</div>
+        <div class="kpi-value accent">{{ hash_notifications|length | commafy }}</div>
+        <div class="kpi-foot">fire the instant a hash cracks</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('bell', size=13) }} Channels</div>
+        <div class="kpi-value" style="display:flex; align-items:center; gap:8px; line-height:1;">
+            {% if channels.email %}<span class="badge cyan">{{ icon('mail', size=13) }} EMAIL</span>{% endif %}
+            {% if channels.pushover %}<span class="badge amber">{{ icon('bell', size=13) }} PUSHOVER</span>{% endif %}
+            {% if not channels.email and not channels.pushover %}<span class="badge dim">none</span>{% endif %}
+        </div>
+        <div class="kpi-foot">active delivery methods</div>
     </div>
 </div>
 
+{# ---------- Job notifications ---------- #}
 <div class="card">
     <div class="card-head">
+        <span class="dot-led on"></span>
         <h3>Job Notifications</h3>
-        <span class="field-hint" style="margin-top:0;">Alerts triggered when a subscribed job changes state.</span>
+        <span class="mono" style="margin-left:auto; font-size:11px; color:var(--text-mute);">{{ job_notifications|length | commafy }} configured</span>
     </div>
     {% if job_notifications %}
     <table class="tbl" style="table-layout:fixed;">
-        <colgroup><col style="width:28%;"><col style="width:24%;"><col style="width:14%;"><col style="width:18%;"><col style="width:16%;"></colgroup>
+        <colgroup><col style="width:24%;"><col style="width:34%;"><col style="width:15%;"><col style="width:15%;"><col style="width:12%;"></colgroup>
         <thead>
-            <tr>
-                <th>Job Name</th>
-                <th>Hash File</th>
-                <th></th>
-                <th>Method</th>
-                <th class="center">Control</th>
-            </tr>
+            <tr><th>Job Name</th><th>Hash File</th><th></th><th>Method</th><th style="text-align:right;">Control</th></tr>
         </thead>
         <tbody>
             {% for job_notification in job_notifications %}
             <tr>
                 <td style="font-weight:500;">
-                    {% for job in jobs %}
-                        {% if job.id == job_notification.job_id %}
-                            {{job.name}}
-                        {% endif %}
-                    {% endfor %}
+                    {% for job in jobs %}{% if job.id == job_notification.job_id %}<span style="display:inline-flex; align-items:center; gap:7px;">{{ icon('jobs', size=14) }} {{ job.name }} <span class="mono" style="color:var(--text-mute); font-weight:400;">#{{ job.id }}</span></span>{% endif %}{% endfor %}
                 </td>
-                <td style="color:var(--text-dim);">
-                    {% for job in jobs %}
-                        {% if job.id == job_notification.job_id %}
-                            {% for hashfile in hashfiles %}
-                                {% if hashfile.id == job.hashfile_id %}
-                                    {{hashfile.name}}
-                                {% endif %}
-                            {% endfor %}
-                        {% endif %}
-                    {% endfor %}
+                <td class="mono" style="color:var(--text-dim); word-break:break-all;">
+                    {% for job in jobs %}{% if job.id == job_notification.job_id %}{% for hashfile in hashfiles %}{% if hashfile.id == job.hashfile_id %}{{ hashfile.name }}{% endif %}{% endfor %}{% endif %}{% endfor %}
                 </td>
                 <td></td>
-                <td style="color:var(--text-dim);">{{ job_notification.method }}</td>
-                <td class="center">
-                    <div style="display:flex; gap:4px; justify-content:center;">
-                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-job-{{ job_notification.id }}').showModal()">{{ icon('trash', size=15) }}</button>
-                    </div>
+                <td>{{ method_badge(job_notification.method) }}</td>
+                <td style="text-align:right;">
+                    <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-job-{{ job_notification.id }}').showModal()">{{ icon('trash', size=15) }}</button>
                 </td>
             </tr>
             {% endfor %}
@@ -66,38 +81,34 @@
     {% endif %}
 </div>
 
+{# ---------- Hash notifications ---------- #}
 <div class="card" style="margin-top:var(--gap);">
     <div class="card-head">
+        <span class="dot-led on"></span>
         <h3>Hash Notifications</h3>
-        <span class="field-hint" style="margin-top:0;">Alerts triggered when a subscribed hash is recovered.</span>
+        <span class="mono" style="margin-left:auto; font-size:11px; color:var(--text-mute);">{{ hash_notifications|length | commafy }} configured</span>
     </div>
     {% if hash_notifications %}
     <table class="tbl" style="table-layout:fixed;">
-        <colgroup><col style="width:28%;"><col style="width:24%;"><col style="width:14%;"><col style="width:18%;"><col style="width:16%;"></colgroup>
+        <colgroup><col style="width:24%;"><col style="width:34%;"><col style="width:15%;"><col style="width:15%;"><col style="width:12%;"></colgroup>
         <thead>
-            <tr>
-                <th>Hash</th>
-                <th></th>
-                <th>Hashtype</th>
-                <th>Method</th>
-                <th class="center">Control</th>
-            </tr>
+            <tr><th>Account</th><th>Hash</th><th>Hashtype</th><th>Method</th><th style="text-align:right;">Control</th></tr>
         </thead>
         <tbody>
             {% for hash_notification in hash_notifications %}
+            {% set hash = hashes.get(hash_notification.hash_id) %}
             <tr>
-                {% for hash in hashes %}
-                    {% if hash_notification.hash_id == hash.id %}
-                        <td class="mono" style="color:var(--text-dim); word-break:break-all;">{{ hash.ciphertext }}</td>
-                        <td></td>
-                        <td class="num">{{ hash.hash_type }}</td>
-                    {% endif %}
-                {% endfor %}
-                <td style="color:var(--text-dim);">{{ hash_notification.method }}</td>
-                <td class="center">
-                    <div style="display:flex; gap:4px; justify-content:center;">
-                        <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-hash-{{ hash_notification.id }}').showModal()">{{ icon('trash', size=15) }}</button>
-                    </div>
+                <td class="mono" style="word-break:break-all;">
+                    {% set acct = hash_account.get(hash_notification.hash_id) %}
+                    {% if acct %}<span style="display:inline-flex; align-items:center; gap:7px;">{{ icon('key', size=13) }} {{ acct | jinja_hex_decode }}</span>{% else %}<span style="color:var(--text-mute);">&mdash;</span>{% endif %}
+                </td>
+                <td class="mono" style="color:var(--text-dim); word-break:break-all;">{% if hash %}{{ hash.ciphertext }}{% else %}&mdash;{% endif %}</td>
+                <td>
+                    {% if hash %}{% set nm = hash_type_names.get(hash.hash_type|string) %}<span class="badge cyan">{{ nm if nm else hash.hash_type }}</span>{% else %}<span style="color:var(--text-mute);">&mdash;</span>{% endif %}
+                </td>
+                <td>{{ method_badge(hash_notification.method) }}</td>
+                <td style="text-align:right;">
+                    <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-hash-{{ hash_notification.id }}').showModal()">{{ icon('trash', size=15) }}</button>
                 </td>
             </tr>
             {% endfor %}

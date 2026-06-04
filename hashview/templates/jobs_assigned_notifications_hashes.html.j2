@@ -19,7 +19,10 @@
             <span>Hash Notifications</span>
             <span class="page-sub" style="margin:0;" title="Select the hashes you wish to be notified by once cracked. Note, cracked hash notifications will persist after job has been completed or removed.">{{ icon('info', size=14) }}</span>
         </div>
-        <input type="search" id="hash_filter" class="input" placeholder="Filter hashes…" style="max-width:240px;" oninput="filterHashes(this.value)">
+        <div style="display:flex; align-items:stretch; gap:10px; margin-left:auto;">
+            <input type="search" id="hash_filter" class="input" placeholder="Filter hashes…" style="max-width:240px;" oninput="filterHashes(this.value)">
+            <button type="button" class="btn" id="select_all_btn" onclick="toggleSelectAll()" style="white-space:nowrap;">{{ icon('check', size=14) }} <span id="select_all_lbl">Select all</span></button>
+        </div>
     </div>
 
     <table id="hash_options" class="tbl">
@@ -74,6 +77,24 @@
         for(var i=0; i < rows.length; i++){
             rows[i].style.display = rows[i].textContent.toLowerCase().indexOf(q) > -1 ? '' : 'none';
         }
+    }
+
+    // Select/clear every checkbox in the currently-VISIBLE rows (respects the
+    // active filter). Toggles: if all visible are already checked it clears
+    // them, otherwise it checks them all; the button label tracks the action.
+    function toggleSelectAll(){
+        var rows = document.querySelectorAll('#hash_options tbody tr');
+        var boxes = [];
+        Array.prototype.forEach.call(rows, function(r){
+            if (r.style.display === 'none') return;
+            var cb = r.querySelector('input.hv-check');
+            if (cb) boxes.push(cb);
+        });
+        if (!boxes.length) return;
+        var allChecked = boxes.every(function(b){ return b.checked; });
+        boxes.forEach(function(b){ b.checked = !allChecked; });
+        var lbl = document.getElementById('select_all_lbl');
+        if (lbl) lbl.textContent = allChecked ? 'Select all' : 'Clear';
     }
 </script>
 {% endblock content %}

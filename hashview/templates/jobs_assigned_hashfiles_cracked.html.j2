@@ -37,7 +37,7 @@
                 <td class="mono" style="color:var(--text-dim);">{{ entry[0].ciphertext }}</td>
                 <td>
                     {% if entry[0].plaintext %}
-                        {{ entry[0].plaintext | jinja_hex_decode }}
+                        <span class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ entry[0].plaintext | jinja_hex_decode }}</span>
                     {% else %}
                         <span style="color:var(--text-mute);">None</span>
                     {% endif %}

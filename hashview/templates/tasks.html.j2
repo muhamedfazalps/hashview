@@ -85,7 +85,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Tasks</h1>
-        <div class="page-sub">// Predefined hashcat commands. Any number of tasks can be assigned to a job · {{ pagination.total }} total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
+        <div class="page-sub">// Predefined hashcat commands. Any number of tasks can be assigned to a job · {{ pagination.total | commafy }} total · page {{ pagination.page }}/{{ pagination.pages or 1 }}</div>
     </div>
     <button type="button" class="btn btn-primary" onclick="document.getElementById('add-task-modal').showModal()">{{ icon('plus', size=15) }} Add Task</button>
 </div>
@@ -379,7 +379,7 @@ function hvFilterTasks(q){
         {% set jl = namespace(count=0) %}
         {% for jt in job_tasks %}{% if jt.task_id == task.id %}{% for j in jobs %}{% if j.id == jt.job_id %}{% set jl.count = jl.count + 1 %}{% endif %}{% endfor %}{% endif %}{% endfor %}
         <div style="margin-top:24px;">
-            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('jobs', size=14) }} Used in {{ jl.count }} job{{ '' if jl.count == 1 else 's' }}</div>
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('jobs', size=14) }} Used in {{ jl.count | commafy }} job{{ '' if jl.count == 1 else 's' }}</div>
             {% if jl.count %}
             {% for jt in job_tasks %}{% if jt.task_id == task.id %}{% for j in jobs %}{% if j.id == jt.job_id %}
             <div class="card" style="margin-bottom:8px; padding:12px 14px; display:flex; align-items:center; gap:10px;">

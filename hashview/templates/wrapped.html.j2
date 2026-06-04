@@ -76,7 +76,7 @@
             <div class="card-body">
                 <h5 style="margin:0 0 6px; color:var(--text);">Longest Password</h5>
                 <h6 style="margin:0 0 10px; color:var(--text-mute);">Your longest recovered password: {{longest_password_personal}}</h6>
-                <p style="margin:0; color:var(--text-dim);">Your longest password was {{ longest_password_personal | length }} characters long and is ranked {{longest_password_personal_rank}} out of {{longest_password_all_cnt}} of all recovered passwords this past year.</p>
+                <p style="margin:0; color:var(--text-dim);">Your longest password was {{ longest_password_personal | length | commafy }} characters long and is ranked {{longest_password_personal_rank | commafy}} out of {{longest_password_all_cnt | commafy}} of all recovered passwords this past year.</p>
             </div>
         </div>
         <br>
@@ -97,7 +97,7 @@
                     <tbody>
                         {% for entry in longest_password_all_table %}
                             <tr>
-                                <td class="num">{{ entry.length }}</td>
+                                <td class="num">{{ entry.length | commafy }}</td>
                                 <td>{{ entry.recovered_at }}</td>
                                 <td>{{ entry.plaintext }}</td>
                                 <td>{{ entry.email_address }}</td>
@@ -115,9 +115,9 @@
                 <h6 style="margin:0 0 10px; color:var(--text-mute);">Warming the planet one hash at a time.</h6>
                 <p style="margin:0; color:var(--text-dim);">
                     {% if total_passwords_recovered_personal_pct > 50 %}
-                        You recovered {{total_passwords_recovered_personal_cnt}} passwords last year. This puts you in the top {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
+                        You recovered {{total_passwords_recovered_personal_cnt | commafy}} passwords last year. This puts you in the top {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
                     {% else %}
-                        You recovered {{total_passwords_recovered_personal_cnt}} passwords last year. This puts you in the bottom {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
+                        You recovered {{total_passwords_recovered_personal_cnt | commafy}} passwords last year. This puts you in the bottom {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
                     {% endif %}
                 </p>
               </div>
@@ -138,7 +138,7 @@
                     <tbody>
                         {% for entry in most_passwords_recovered_all_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.email_address }}</td>
                             </tr>
                         {% endfor %}
@@ -163,7 +163,7 @@
                     <tbody>
                         {% for entry in most_effective_tasks_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.task_name }}</td>
                                 <td>{{ entry.task_author }}</td>
                             </tr>
@@ -182,9 +182,9 @@
                     {% if total_ntlm_recovered_personal_cnt == 0 %}
                         You recovered no NTLM hashes this year. Did you even try?
                     {% elif total_ntlm_recovered_personal_pct > 50 %}
-                        You recovered {{ total_ntlm_recovered_personal_cnt }} NTLM hashes last year. This puts you in the top {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
+                        You recovered {{ total_ntlm_recovered_personal_cnt | commafy }} NTLM hashes last year. This puts you in the top {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
                     {% else %}
-                        You recovered {{ total_ntlm_recovered_personal_cnt }} NTLM hashes last year. This puts you in the bottom {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
+                        You recovered {{ total_ntlm_recovered_personal_cnt | commafy }} NTLM hashes last year. This puts you in the bottom {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
                     {% endif %}
                 </p>
               </div>
@@ -205,7 +205,7 @@
                     <tbody>
                         {% for entry in total_ntlm_recovered_all_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.email_address }}</td>
                             </tr>
                         {% endfor %}
@@ -230,7 +230,7 @@
                     <tbody>
                         {% for entry in most_effective_tasks_ntlm_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.task_name }}</td>
                                 <td>{{ entry.task_author }}</td>
                             </tr>
@@ -249,9 +249,9 @@
                     {% if total_ntlmv1_recovered_personal_cnt == 0 %}
                         You recovered no NTLMv1 hashes this year. Did you even try?
                     {% elif total_ntlmv1_recovered_personal_pct > 50 %}
-                        You recovered {{ total_ntlmv1_recovered_personal_cnt }} NTLMv1 hashes last year. This puts you in the top {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
+                        You recovered {{ total_ntlmv1_recovered_personal_cnt | commafy }} NTLMv1 hashes last year. This puts you in the top {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
                     {% else %}
-                        You recovered {{ total_ntlmv1_recovered_personal_cnt }} NTLMv1 hashes last year. This puts you in the bottom {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
+                        You recovered {{ total_ntlmv1_recovered_personal_cnt | commafy }} NTLMv1 hashes last year. This puts you in the bottom {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
                     {% endif %}
                 </p>
               </div>
@@ -272,7 +272,7 @@
                     <tbody>
                         {% for entry in total_ntlmv1_recovered_all_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.email_address }}</td>
                             </tr>
                         {% endfor %}
@@ -297,7 +297,7 @@
                     <tbody>
                         {% for entry in most_effective_tasks_ntlmv1_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.task_name }}</td>
                                 <td>{{ entry.task_author }}</td>
                             </tr>
@@ -316,9 +316,9 @@
                     {% if total_ntlmv2_recovered_personal_cnt == 0 %}
                         You recovered no NTLMv2 hashes this year. Did you even try?
                     {% elif total_ntlmv2_recovered_personal_pct > 50 %}
-                        You recovered {{ total_ntlmv2_recovered_personal_cnt }} NTLMv2 hashes last year. This puts you in the top {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
+                        You recovered {{ total_ntlmv2_recovered_personal_cnt | commafy }} NTLMv2 hashes last year. This puts you in the top {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
                     {% else %}
-                        You recovered {{ total_ntlmv2_recovered_personal_cnt }} NTLMv2 hashes last year. This puts you in the bottom {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
+                        You recovered {{ total_ntlmv2_recovered_personal_cnt | commafy }} NTLMv2 hashes last year. This puts you in the bottom {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
                     {% endif %}
                 </p>
               </div>
@@ -339,7 +339,7 @@
                     <tbody>
                         {% for entry in total_ntlmv2_recovered_all_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.email_address }}</td>
                             </tr>
                         {% endfor %}
@@ -364,7 +364,7 @@
                     <tbody>
                         {% for entry in most_effective_tasks_ntlmv2_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.task_name }}</td>
                                 <td>{{ entry.task_author }}</td>
                             </tr>
@@ -383,9 +383,9 @@
                     {% if total_kerberos_recovered_personal_cnt == 0 %}
                         You recovered no Kerberos hashes this year. Did you even try?
                     {% elif total_ntlmv2_recovered_personal_pct > 50 %}
-                        You recovered {{ total_kerberos_recovered_personal_cnt }} Kerberos hashes last year. This puts you in the top {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
+                        You recovered {{ total_kerberos_recovered_personal_cnt | commafy }} Kerberos hashes last year. This puts you in the top {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
                     {% else %}
-                        You recovered {{ total_kerberos_recovered_personal_cnt }} Kerberos hashes last year. This puts you in the bottom {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
+                        You recovered {{ total_kerberos_recovered_personal_cnt | commafy }} Kerberos hashes last year. This puts you in the bottom {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
                     {% endif %}
                 </p>
               </div>
@@ -406,7 +406,7 @@
                     <tbody>
                         {% for entry in total_kerberos_recovered_all_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.email_address }}</td>
                             </tr>
                         {% endfor %}
@@ -431,7 +431,7 @@
                     <tbody>
                         {% for entry in most_effective_tasks_kerberos_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.task_name }}</td>
                                 <td>{{ entry.task_author }}</td>
                             </tr>
@@ -450,9 +450,9 @@
                     {% if total_dcc2_recovered_personal_cnt == 0 %}
                         You recovered no DCC2 hashes this year. Its okay, they're quite hard
                     {% elif total_dcc2_recovered_personal_pct > 50 %}
-                        You recovered {{ total_dcc2_recovered_personal_cnt }} DCC2 hashes last year. This puts you in the top {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
+                        You recovered {{ total_dcc2_recovered_personal_cnt | commafy }} DCC2 hashes last year. This puts you in the top {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
                     {% else %}
-                        You recovered {{ total_dcc2_recovered_personal_cnt }} DCC2 hashes last year. This puts you in the bottom {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
+                        You recovered {{ total_dcc2_recovered_personal_cnt | commafy }} DCC2 hashes last year. This puts you in the bottom {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
                     {% endif %}
                 </p>
               </div>
@@ -473,7 +473,7 @@
                     <tbody>
                         {% for entry in total_dcc2_recovered_all_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.email_address }}</td>
                             </tr>
                         {% endfor %}
@@ -498,7 +498,7 @@
                     <tbody>
                         {% for entry in most_effective_tasks_dcc2_table %}
                             <tr>
-                                <td class="num">{{ entry.count }}</td>
+                                <td class="num">{{ entry.count | commafy }}</td>
                                 <td>{{ entry.task_name }}</td>
                                 <td>{{ entry.task_author }}</td>
                             </tr>

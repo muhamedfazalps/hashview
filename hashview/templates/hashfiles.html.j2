@@ -10,7 +10,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Hashfiles</h1>
-        <div class="page-sub">// {{ hashfiles|length }} files · {{ "{:,}".format(total_recovered) }}/{{ "{:,}".format(total_hashes) }} recovered</div>
+        <div class="page-sub">// {{ hashfiles|length | commafy }} files · {{ "{:,}".format(total_recovered) }}/{{ "{:,}".format(total_hashes) }} recovered</div>
     </div>
 </div>
 
@@ -119,7 +119,7 @@ function hvFilterHashfiles(q){
         {{ icon('file', size=16) }}
         <div style="line-height:1.2;">
             <h3 style="margin:0;">{{ hashfile.name }}</h3>
-            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">job history · {{ hfjobs|length }} job{{ '' if hfjobs|length == 1 else 's' }} run against this file</div>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">job history · {{ hfjobs|length | commafy }} job{{ '' if hfjobs|length == 1 else 's' }} run against this file</div>
         </div>
         <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
     </div>
@@ -150,7 +150,7 @@ function hvFilterHashfiles(q){
             </div>
             <div style="display:flex; align-items:center; gap:20px; margin-top:11px; font-family:var(--mono); font-size:11.5px; color:var(--text-mute);">
                 <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('users', size=14) }} {{ j.owner }}</span>
-                <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('task', size=14) }} {{ j.tasks }} tasks</span>
+                <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('task', size=14) }} {{ j.tasks | commafy }} tasks</span>
                 <span style="display:inline-flex; align-items:center; gap:6px;">{{ icon('clock', size=14) }} {{ j.runtime }}</span>
                 <span style="margin-left:auto;">{{ j.date.strftime('%b %d %H:%M') if j.date else '—' }}</span>
             </div>
@@ -162,7 +162,7 @@ function hvFilterHashfiles(q){
     </div>
     <div class="hv-dialog-foot">
         {% set completed = hfjobs | selectattr('status', 'equalto', 'Completed') | list | length %}
-        <span class="mono" style="font-size:11.5px; color:var(--text-mute); margin-right:auto;">{{ completed }} completed · {{ hfjobs|length }} total</span>
+        <span class="mono" style="font-size:11.5px; color:var(--text-mute); margin-right:auto;">{{ completed | commafy }} completed · {{ hfjobs|length | commafy }} total</span>
         <button class="btn" onclick="this.closest('dialog').close()">Close</button>
     </div>
 </dialog>

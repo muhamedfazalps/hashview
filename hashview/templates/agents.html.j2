@@ -8,7 +8,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Agents</h1>
-        <div class="page-sub">// {% if agent_stats is defined %}{{ agent_stats.up }}/{{ agent_stats.total }} online | {{ agent_stats.speed }} aggregate{% else %}0/0 online | 0 H/s aggregate{% endif %}</div>
+        <div class="page-sub">// {% if agent_stats is defined %}{{ agent_stats.up | commafy }}/{{ agent_stats.total | commafy }} online | {{ agent_stats.speed }} aggregate{% else %}0/0 online | 0 H/s aggregate{% endif %}</div>
     </div>
     <a class="btn btn-primary" href="{{ url_for('agents.agents_download') }}" role="button">{{ icon('download', size=15) }} Download Agent</a>
 </div>
@@ -17,7 +17,7 @@
 <div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: var(--gap);">
     <div class="kpi">
         <div class="kpi-label">{{ icon('power', size=16) }} Agents Online</div>
-        <div class="kpi-value"><span style="color:var(--primary); text-shadow:var(--glow-text);">{{ agent_stats.up if agent_stats is defined else 0 }}</span><span style="font-size:18px; color:var(--text-dim);">/{{ agent_stats.total if agent_stats is defined else 0 }}</span></div>
+        <div class="kpi-value"><span style="color:var(--primary); text-shadow:var(--glow-text);">{{ (agent_stats.up if agent_stats is defined else 0) | commafy }}</span><span style="font-size:18px; color:var(--text-dim);">/{{ (agent_stats.total if agent_stats is defined else 0) | commafy }}</span></div>
     </div>
     <div class="kpi">
         <div class="kpi-label">{{ icon('zap', size=16) }} Aggregate Rate</div>

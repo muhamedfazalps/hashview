@@ -415,12 +415,12 @@
             <div>{{ kv_label('Words') }}<div class="mono" style="color:var(--text);">{{ "{:,}".format(wordlist.size|int) }}</div></div>
             <div>{{ kv_label('Size on disk') }}<div class="mono" style="color:var(--text);">{{ size_on_disk }}</div></div>
             <div>{{ kv_label('Historical hits') }}<div><span class="mono" style="color:{{ 'var(--primary)' if hits else 'var(--text-mute)' }};{% if hits %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(hits|int) }}</span> <span style="color:var(--text-dim);">passwords recovered</span></div></div>
-            <div>{{ kv_label('Used by') }}<div style="color:var(--text);">{{ tcount }} task{{ '' if tcount == 1 else 's' }} · {{ jcount }} job{{ '' if jcount == 1 else 's' }}</div></div>
+            <div>{{ kv_label('Used by') }}<div style="color:var(--text);">{{ tcount | commafy }} task{{ '' if tcount == 1 else 's' }} · {{ jcount | commafy }} job{{ '' if jcount == 1 else 's' }}</div></div>
         </div>
 
         {# used-by tasks #}
         <div style="margin-top:24px;">
-            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('task', size=14) }} Used by {{ used|length }} task{{ '' if used|length == 1 else 's' }}</div>
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:11px;">{{ icon('task', size=14) }} Used by {{ used|length | commafy }} task{{ '' if used|length == 1 else 's' }}</div>
             {% if used %}
             {% for u in used %}
             <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">

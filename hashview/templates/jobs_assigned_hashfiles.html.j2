@@ -116,7 +116,7 @@
 
         {# Upload / Paste share one form #}
         <div id="pane-newhash" style="display:{{ 'none' if default_tab == 'existing' else 'block' }};">
-            <form action='' id='hf_form' method='post' name='hf_form' enctype='multipart/form-data'>
+            <form action='' id='hf_form' method='post' name='hf_form' enctype='multipart/form-data' onsubmit="return hvHfSubmit(event)">
                 {{ jobsNewHashFileForm.hidden_tag() }}
 
                 <div class="grid" style="grid-template-columns:1fr 1fr; max-width:680px;">
@@ -211,5 +211,218 @@
     <span class="spacer"></span>
     <button type="submit" id="hf_next" form="{{ 'hf_form_existing' if default_tab == 'existing' else 'hf_form' }}" class="btn btn-primary"{% if default_tab == 'existing' and not hashfiles.count() %} style="display:none;"{% endif %}>Next {{ icon('arrowRight', size=15) }}</button>
 </div>
+
+{# ---- hashfile import progress modal (opened when the Upload/Paste form submits) ----
+   Same look + mechanics as the wordlist upload modal: real upload % from the XHR,
+   then optimistic staged labels with an indeterminate bar while the server parses,
+   imports, and links already-cracked hashes (single synchronous pass). #}
+<style>
+#hf-import-modal #hf-progress { padding: 10px 30px 4px; }
+#hf-import-modal .hf-steps { display:flex; flex-direction:column; gap:13px; margin:4px 0 20px; }
+#hf-import-modal .hf-step { display:flex; align-items:center; gap:11px; color:var(--text-mute); transition:color .2s; }
+#hf-import-modal .hf-step-dot { width:18px; height:18px; flex:none; border-radius:50%; border:2px solid var(--border); position:relative; transition:all .2s; }
+#hf-import-modal .hf-step-name { font-size:13px; }
+#hf-import-modal .hf-step-meta { margin-left:auto; font-size:11.5px; color:var(--text-mute); }
+#hf-import-modal .hf-step.active { color:var(--text); }
+#hf-import-modal .hf-step.active .hf-step-dot { border-color:var(--primary); box-shadow:var(--glow-sm); }
+#hf-import-modal .hf-step.active .hf-step-dot::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--primary); animation:hfPulse 1s ease-in-out infinite; }
+#hf-import-modal .hf-step.done { color:var(--text); }
+#hf-import-modal .hf-step.done .hf-step-dot { border-color:var(--primary); background:var(--primary); }
+#hf-import-modal .hf-step.done .hf-step-dot::after { content:"✓"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; line-height:1; color:var(--bg); font-weight:700; }
+@keyframes hfPulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+#hf-import-modal .hf-bar { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
+#hf-import-modal .hf-bar-fill { height:100%; width:0%; border-radius:3px; background:linear-gradient(90deg,var(--primary-deep),var(--primary)); box-shadow:var(--glow-sm); transition:width .15s ease; }
+#hf-import-modal .hf-bar.indeterminate .hf-bar-fill { width:38% !important; transition:none; animation:hfIndet 1.1s ease-in-out infinite; }
+@keyframes hfIndet { 0%{margin-left:-38%;} 100%{margin-left:100%;} }
+</style>
+<dialog class="hv-dialog" id="hf-import-modal" style="max-width:560px; width:92vw;" oncancel="hvHfOnCancel(event)">
+    <div class="hv-dialog-head">
+        {{ icon('upload', size=16) }}
+        <div style="line-height:1.2;">
+            <h3 style="margin:0;">Importing hashfile</h3>
+            <div class="mono" style="font-size:10px; letter-spacing:0.5px; color:var(--text-mute); margin-top:3px;">uploading · parsing · checking local database</div>
+        </div>
+        <button type="button" class="icon-btn" id="hf-up-close" onclick="this.closest('dialog').close()" aria-label="Close" style="display:none;">{{ icon('x', size=15) }}</button>
+    </div>
+    <div class="hv-dialog-body">
+        <div id="hf-progress">
+            <div class="hf-steps">
+                <div class="hf-step" id="hf-step-upload"><span class="hf-step-dot"></span><span class="hf-step-name">Uploading hashes</span><span class="hf-step-meta mono" id="hf-step-upload-meta"></span></div>
+                <div class="hf-step" id="hf-step-receive"><span class="hf-step-dot"></span><span class="hf-step-name">Receiving on server</span><span class="hf-step-meta mono" id="hf-step-receive-meta"></span></div>
+                <div class="hf-step" id="hf-step-import"><span class="hf-step-dot"></span><span class="hf-step-name">Parsing &amp; importing hashes</span><span class="hf-step-meta mono" id="hf-step-import-meta"></span></div>
+                <div class="hf-step" id="hf-step-check"><span class="hf-step-dot"></span><span class="hf-step-name">Checking for already-cracked</span><span class="hf-step-meta mono" id="hf-step-check-meta"></span></div>
+                <div class="hf-step" id="hf-step-done"><span class="hf-step-dot"></span><span class="hf-step-name">Done</span><span class="hf-step-meta mono" id="hf-step-done-meta"></span></div>
+            </div>
+            <div class="hf-bar" id="hf-bar"><div class="hf-bar-fill" id="hf-bar-fill"></div></div>
+            <div class="mono" id="hf-status-text" style="margin-top:11px; font-size:12px; color:var(--text-dim);">Preparing…</div>
+            <div class="invalid-feedback" id="hf-progress-error" style="display:none; margin-top:11px;"></div>
+        </div>
+    </div>
+    <div class="hv-dialog-foot">
+        <button type="button" class="btn" id="hf-up-cancel" onclick="hvHfCancel()">Cancel</button>
+    </div>
+</dialog>
+<script>
+    var hvHfXhr = null;        // in-flight import request
+    var hvHfBusy = false;      // true while uploading/importing
+    var hvHfCheckTimer = null; // optimistic import -> checking advance
+
+    // Ordered phases of the stepper; hvHfPhase marks everything before the named
+    // phase "done", the named one "active" (or all "done" at the end).
+    var HVHF_PHASES = ['upload', 'receive', 'import', 'check', 'done'];
+    function hvHfPhase(name){
+        var idx = HVHF_PHASES.indexOf(name);
+        HVHF_PHASES.forEach(function(s, i){
+            var el = document.getElementById('hf-step-' + s);
+            if (!el) return;
+            el.classList.remove('active', 'done');
+            if (name === 'done' || i < idx) el.classList.add('done');
+            else if (i === idx) el.classList.add('active');
+        });
+    }
+
+    function hvHfSubmit(e){
+        e.preventDefault();
+        var form = document.getElementById('hf_form');
+
+        // client-side guard: which input the active tab uses must be provided
+        var uploadActive = document.getElementById('upload-pane').style.display !== 'none';
+        var fileInput = document.getElementById('hashfile_input');
+        var pasteBox = document.getElementById('paste_box');
+        if (uploadActive){
+            if (!fileInput.files || !fileInput.files.length){
+                hvHfFail('Please choose a hashfile to upload first.', true);
+                return false;
+            }
+        } else {
+            if (!pasteBox || !pasteBox.value.trim()){
+                hvHfFail('Please paste at least one hash first.', true);
+                return false;
+            }
+        }
+
+        // open the modal in its initial (uploading) state
+        document.getElementById('hf-progress-error').style.display = 'none';
+        document.getElementById('hf-up-close').style.display = 'none';
+        var modal = document.getElementById('hf-import-modal');
+        if (!modal.open) modal.showModal();
+        hvHfBusy = true;
+        var bar = document.getElementById('hf-bar');
+        var statusEl = document.getElementById('hf-status-text');
+        var phase = 'upload';   // local guard so phases only move forward
+        HVHF_PHASES.forEach(function(s){
+            var m = document.getElementById('hf-step-' + s + '-meta'); if (m) m.textContent = '';
+        });
+        hvHfPhase('upload');
+        bar.classList.remove('indeterminate');
+        document.getElementById('hf-bar-fill').style.width = '0%';
+        statusEl.textContent = 'Uploading…';
+
+        var xhr = new XMLHttpRequest();
+        hvHfXhr = xhr;
+        xhr.open('POST', form.action || window.location.href, true);
+        xhr.setRequestHeader('X-Requested-With', 'fetch');
+
+        xhr.upload.onprogress = function(ev){
+            if (!ev.lengthComputable) return;
+            var pct = Math.round(ev.loaded / ev.total * 100);
+            if (phase === 'upload'){
+                document.getElementById('hf-bar-fill').style.width = pct + '%';
+                document.getElementById('hf-step-upload-meta').textContent = pct + '%';
+                statusEl.textContent = 'Uploading… ' + pct + '%';
+            }
+            if (pct >= 100 && phase === 'upload'){
+                phase = 'receive';
+                document.getElementById('hf-step-upload-meta').textContent = '100%';
+                hvHfPhase('receive');
+                bar.classList.add('indeterminate');
+                statusEl.textContent = 'Transfer complete — receiving on the server…';
+            }
+        };
+        xhr.upload.onload = function(){
+            // body fully received; the server is now parsing/importing/checking
+            if (phase === 'upload' || phase === 'receive'){
+                phase = 'import';
+                document.getElementById('hf-step-upload-meta').textContent = '100%';
+                hvHfPhase('import');
+                bar.classList.add('indeterminate');
+                statusEl.textContent = 'Parsing & importing hashes (large files can take a while)…';
+                // optimistically advance to the cracked-check bullet while we wait
+                if (hvHfCheckTimer) clearTimeout(hvHfCheckTimer);
+                hvHfCheckTimer = setTimeout(function(){
+                    if (hvHfBusy && phase === 'import'){
+                        phase = 'check';
+                        hvHfPhase('check');
+                        statusEl.textContent = 'Checking for hashes already cracked in the local database…';
+                    }
+                }, 1500);
+            }
+        };
+        xhr.onload = function(){
+            hvHfXhr = null; hvHfBusy = false;
+            if (hvHfCheckTimer){ clearTimeout(hvHfCheckTimer); hvHfCheckTimer = null; }
+            bar.classList.remove('indeterminate');
+            var data = {};
+            try { data = JSON.parse(xhr.responseText); } catch (err) {}
+            if (xhr.status >= 200 && xhr.status < 300 && data && data.status === 'ok'){
+                hvHfPhase('done');
+                document.getElementById('hf-bar-fill').style.width = '100%';
+                statusEl.textContent = data.msg ? (data.msg + ' Loading results…') : 'Done. Loading results…';
+                setTimeout(function(){ window.location = data.redirect || window.location.href; }, 800);
+            } else {
+                hvHfFail((data && data.msg) ? data.msg : ('Import failed (HTTP ' + xhr.status + ').'));
+            }
+        };
+        xhr.onerror = function(){ hvHfXhr = null; hvHfBusy = false; if (hvHfCheckTimer){clearTimeout(hvHfCheckTimer);hvHfCheckTimer=null;} hvHfFail('Network error during upload.'); };
+        xhr.onabort  = function(){ hvHfXhr = null; hvHfBusy = false; if (hvHfCheckTimer){clearTimeout(hvHfCheckTimer);hvHfCheckTimer=null;} };
+        xhr.send(new FormData(form));
+        return false;
+    }
+
+    function hvHfFail(msg, pickError){
+        hvHfBusy = false;
+        if (hvHfCheckTimer){ clearTimeout(hvHfCheckTimer); hvHfCheckTimer = null; }
+        document.getElementById('hf-bar').classList.remove('indeterminate');
+        var modal = document.getElementById('hf-import-modal');
+        if (!modal.open) modal.showModal();
+        if (pickError){
+            // nothing was sent (no file / no pasted hashes) — reset the stepper
+            HVHF_PHASES.forEach(function(s){
+                var el = document.getElementById('hf-step-' + s);
+                if (el) el.classList.remove('active', 'done');
+            });
+            document.getElementById('hf-bar-fill').style.width = '0%';
+            document.getElementById('hf-status-text').textContent = 'Nothing to import yet.';
+        } else {
+            document.getElementById('hf-status-text').textContent = 'Import failed.';
+        }
+        document.getElementById('hf-up-close').style.display = '';
+        var err = document.getElementById('hf-progress-error');
+        err.textContent = msg;
+        err.style.display = 'block';
+    }
+
+    function hvHfCancel(){
+        if (hvHfXhr){ try { hvHfXhr.abort(); } catch (e) {} hvHfXhr = null; }
+        hvHfBusy = false;
+        if (hvHfCheckTimer){ clearTimeout(hvHfCheckTimer); hvHfCheckTimer = null; }
+        var modal = document.getElementById('hf-import-modal');
+        if (modal.open) modal.close();
+        // reset visual state for a possible retry
+        HVHF_PHASES.forEach(function(s){
+            var el = document.getElementById('hf-step-' + s);
+            if (el) el.classList.remove('active', 'done');
+            var meta = document.getElementById('hf-step-' + s + '-meta'); if (meta) meta.textContent = '';
+        });
+        document.getElementById('hf-bar').classList.remove('indeterminate');
+        document.getElementById('hf-bar-fill').style.width = '0%';
+        document.getElementById('hf-progress-error').style.display = 'none';
+    }
+
+    function hvHfOnCancel(e){
+        // block Esc from dismissing the dialog mid-import
+        if (hvHfBusy) e.preventDefault();
+    }
+</script>
 
 {% endblock content %}

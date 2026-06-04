@@ -315,12 +315,12 @@
                 {% if customer_id %}
                 <tr>
                     <td>Total Accounts:</td>
-                    <td class="num">{{ total_accounts }}</td>
+                    <td class="num">{{ total_accounts | commafy }}</td>
                 </tr>
                 {% endif %}
                 <tr>
                     <td>Total Unique Hashes:</td>
-                    <td class="num">{{ total_unique_hashes }}</td>
+                    <td class="num">{{ total_unique_hashes | commafy }}</td>
                 </tr>
                 {% if customer_id %}
                 <tr>
@@ -486,7 +486,7 @@
                 {% for entry in fig7_values %}
                 <tr>
                     <td class="mono">{{entry}}</td>
-                    <td class="num">{{fig7_values[entry]}}</td>
+                    <td class="num">{{fig7_values[entry] | commafy}}</td>
                     <td class="num">{{ (fig7_values[entry] / fig7_total * 100) | round(2) }}%</td>
                 </tr>
                 {% endfor %}
