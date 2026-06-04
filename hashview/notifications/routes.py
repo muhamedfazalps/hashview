@@ -10,6 +10,7 @@ from hashview.models import (
     HashNotifications,
     JobNotifications,
     Jobs,
+    Settings,
     db,
 )
 
@@ -53,10 +54,13 @@ def notifications_list():
                .first())
         hash_account[hn.hash_id] = hfh.username if hfh else None
 
-    # Active delivery channels for the current user (the CHANNELS KPI).
+    # Active delivery channels for the current user (the CHANNELS KPI): the channel
+    # must be enabled instance-wide AND the user must have the per-channel config.
+    settings = Settings.query.first()
     channels = {
-        'email': bool(current_user.email_address),
-        'pushover': bool(current_user.pushover_app_id and current_user.pushover_user_key),
+        'email': bool(settings and settings.email_enabled and current_user.email_address),
+        'pushover': bool(settings and settings.pushover_enabled and current_user.pushover_app_id and current_user.pushover_user_key),
+        'slack': bool(settings and settings.slack_enabled and current_user.slack_id),
     }
 
     return render_template('notifications.html.j2', title='Notifications',

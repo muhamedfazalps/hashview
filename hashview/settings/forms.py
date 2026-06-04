@@ -23,6 +23,11 @@ class HashviewSettingsForm(FlaskForm):
     crawl_force_lowercase = BooleanField('Force crawled words to lowercase.')
     crawl_depth = IntegerField('Crawl depth', validators=[DataRequired(), NumberRange(min=1, max=100)])
     crawl_threads = IntegerField('Crawler threads', validators=[DataRequired(), NumberRange(min=1, max=256)])
+    # Notification channel master switches
+    email_enabled = BooleanField('Enable Email notifications.')
+    pushover_enabled = BooleanField('Enable Pushover notifications.')
+    slack_enabled = BooleanField('Enable Slack notifications.')
+    slack_bot_token = StringField('Slack bot token (xoxb-…)')
     submit = SubmitField('Update')
 
     def validate_rention_period(self, retention_period):

@@ -13,8 +13,11 @@
 <form method="POST" action="">
     {{ form.hidden_tag() }}
 
+    {% set any_channel = notify_channels.email or notify_channels.pushover or notify_channels.slack %}
+    {% if any_channel %}
     <div class="card">
         <div class="card-head">{{ icon('flag', size=15) }}<h3>Job completion</h3></div>
+        {% if notify_channels.email %}
         <label class="notif-row">
             {{ icon('mail', size=19) }}
             <span class="notif-txt">
@@ -23,7 +26,9 @@
             </span>
             <span class="switch">{{ form.job_completion_email(id="job_completion_email", role="switch") }}<span class="track"></span></span>
         </label>
-        <label class="notif-row" style="border-bottom:0;">
+        {% endif %}
+        {% if notify_channels.pushover %}
+        <label class="notif-row">
             {{ icon('bell', size=19) }}
             <span class="notif-txt">
                 <span class="notif-title">Pushover alert on completion</span>
@@ -31,10 +36,22 @@
             </span>
             <span class="switch">{{ form.job_completion_pushover(id="job_completion_pushover", role="switch") }}<span class="track"></span></span>
         </label>
+        {% endif %}
+        {% if notify_channels.slack %}
+        <label class="notif-row">
+            {{ icon('slack', size=19) }}
+            <span class="notif-txt">
+                <span class="notif-title">Slack alert on completion</span>
+                <span class="field-hint" style="margin-top:2px;">Direct message via the Hashview Slack bot</span>
+            </span>
+            <span class="switch">{{ form.job_completion_slack(id="job_completion_slack", role="switch") }}<span class="track"></span></span>
+        </label>
+        {% endif %}
     </div>
 
     <div class="card" style="margin-top:16px;">
         <div class="card-head">{{ icon('key', size=15) }}<h3>Per-hash alerts</h3></div>
+        {% if notify_channels.email %}
         <label class="notif-row">
             {{ icon('mail', size=19) }}
             <span class="notif-txt">
@@ -43,7 +60,9 @@
             </span>
             <span class="switch">{{ form.hash_completion_email(id="hash_completion_email", role="switch", onchange="hvSyncAlertStep()") }}<span class="track"></span></span>
         </label>
-        <label class="notif-row" style="border-bottom:0;">
+        {% endif %}
+        {% if notify_channels.pushover %}
+        <label class="notif-row">
             {{ icon('bell', size=19) }}
             <span class="notif-txt">
                 <span class="notif-title">Pushover on specific hash recovery</span>
@@ -51,9 +70,25 @@
             </span>
             <span class="switch">{{ form.hash_completion_pushover(id="hash_completion_pushover", role="switch", onchange="hvSyncAlertStep()") }}<span class="track"></span></span>
         </label>
+        {% endif %}
+        {% if notify_channels.slack %}
+        <label class="notif-row">
+            {{ icon('slack', size=19) }}
+            <span class="notif-txt">
+                <span class="notif-title">Slack on specific hash recovery</span>
+                <span class="field-hint" style="margin-top:2px;">Slack DM the moment a flagged hash is recovered</span>
+            </span>
+            <span class="switch">{{ form.hash_completion_slack(id="hash_completion_slack", role="switch", onchange="hvSyncAlertStep()") }}<span class="track"></span></span>
+        </label>
+        {% endif %}
     </div>
 
     <div class="field-hint" style="margin-top:14px;">↳ Per-hash targets are selected on the next step when an alert toggle is on. Cracked-hash notifications persist after the job completes or is removed.</div>
+    {% else %}
+    <div class="card"><div class="card-body" style="text-align:center; padding:36px 24px;">
+        <div class="mono" style="color:var(--text-dim);">No notification channels are enabled. An administrator can enable Email, Pushover, or Slack under Settings → Notifications.</div>
+    </div></div>
+    {% endif %}
 
     <div class="wizard-nav">
         <a class="btn" href="{{ url_for('jobs.jobs_assigned_hashfile', job_id=job.id) }}">{{ icon('arrowLeft', size=15) }} Back</a>
@@ -65,9 +100,8 @@
 <script>
     // Reveal the conditional "Alert Hashes" wizard step when a per-hash alert is on.
     function hvSyncAlertStep(){
-        var a = document.getElementById('hash_completion_email');
-        var b = document.getElementById('hash_completion_pushover');
-        var on = (a && a.checked) || (b && b.checked);
+        var on = ['hash_completion_email', 'hash_completion_pushover', 'hash_completion_slack']
+            .some(function(id){ var el = document.getElementById(id); return el && el.checked; });
         var s = document.querySelector('.wizard-steps');
         if (s) s.classList.toggle('show-alert', on);
     }

@@ -137,7 +137,8 @@
                     <span class="field-hint" style="margin-top:8px; display:block;">Used to authenticate against the Hashview REST API. Regenerating immediately revokes the previous key.</span>
                 </div>
 
-                {# PUSHOVER #}
+                {# PUSHOVER — only when the channel is enabled instance-wide #}
+                {% if notify_channels.pushover %}
                 <div class="as-sec">Pushover notifications</div>
                 <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
                     <div class="field" style="margin-bottom:0;">
@@ -153,6 +154,20 @@
                     <a class="btn" href="{{ url_for('users.send_test_pushover', next=request.path) }}" role="button">{{ icon('bell', size=15) }} Send test notification</a>
                 </div>
                 <span class="field-hint" style="margin-top:8px; display:block;">Enter both your Pushover user key and an app token to enable push alerts.</span>
+                {% endif %}
+
+                {# SLACK — only when the channel is enabled instance-wide #}
+                {% if notify_channels.slack %}
+                <div class="as-sec">Slack notifications</div>
+                <div class="field" style="margin-bottom:0;">
+                    <label class="field-label" for="as-slack-id">Slack Member ID</label>
+                    <input class="input mono" type="text" name="slack_id" id="as-slack-id" value="{{ current_user.slack_id or '' }}" placeholder="U0123ABCD" autocomplete="off">
+                </div>
+                <div style="margin-top:12px;">
+                    <a class="btn" href="{{ url_for('users.send_test_slack', next=request.path) }}" role="button">{{ icon('slack', size=15) }} Send test Slack</a>
+                </div>
+                <span class="field-hint" style="margin-top:8px; display:block;">In Slack: your profile → ⋮ → Copy member ID (looks like U0123ABCD).</span>
+                {% endif %}
             </div>
             <div class="hv-dialog-foot">
                 <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>

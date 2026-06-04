@@ -264,6 +264,7 @@ details.job-card[open] > summary .chev { transform: rotate(90deg); }
 
 /* notification toggle rows (ported from wizard.jsx StepNotify) */
 .notif-row { display: flex; align-items: center; gap: 14px; padding: 15px 16px; border-bottom: 1px solid var(--border-soft); cursor: pointer; color: var(--text-mute); }
+.notif-row:last-child { border-bottom: 0; }
 .notif-row:hover { background: var(--surface-2); }
 .notif-row .ico { flex: none; }
 .notif-row .notif-txt { flex: 1; min-width: 0; }

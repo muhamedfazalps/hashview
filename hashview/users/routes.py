@@ -40,7 +40,7 @@ from hashview.users.forms import (
     ResetPasswordForm,
     UsersForm,
 )
-from hashview.utils.utils import send_email, send_pushover
+from hashview.utils.utils import send_email, send_pushover, send_slack
 
 bcrypt = Bcrypt()
 
@@ -230,6 +230,8 @@ def profile():
             current_user.pushover_user_key = form.pushover_user_key.data
         if form.pushover_app_id.data:
             current_user.pushover_app_id = form.pushover_app_id.data
+        if form.slack_id.data:
+            current_user.slack_id = form.slack_id.data
         db.session.commit()
         flash('Profile Updated!', 'success')
         return redirect(_safe_next())
@@ -247,6 +249,16 @@ def send_test_pushover():
     user = Users.query.get(current_user.id)
     send_pushover(user, 'Test Message From Hashview', 'This is a test pushover message from hashview')
     flash('Pushover Sent', 'success')
+    return redirect(_safe_next())
+
+@users.route("/profile/send_test_slack", methods=['GET'])
+@login_required
+def send_test_slack():
+    """Function to test slack notification"""
+
+    user = Users.query.get(current_user.id)
+    send_slack(user, 'Test Message From Hashview', 'This is a test Slack message from Hashview.')
+    flash('Slack Sent', 'success')
     return redirect(_safe_next())
 
 @users.route("/profile/send_test_email", methods=['GET'])

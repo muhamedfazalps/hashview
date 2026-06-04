@@ -68,8 +68,10 @@ class JobsNewHashFileForm(FlaskForm):
 class JobsNotificationsForm(FlaskForm):
     job_completion_email = BooleanField('Send an email when job completes?')
     job_completion_pushover = BooleanField('Send a Pushover message when job completes?')
+    job_completion_slack = BooleanField('Send a Slack message when job completes?')
     hash_completion_email = BooleanField('Send an email when a specific hash is recovered?')
     hash_completion_pushover = BooleanField('Send a Pushover message when a specific has is recovered?')
+    hash_completion_slack = BooleanField('Send a Slack message when a specific hash is recovered?')
     # job_completion = SelectField('Notify when Job completes', choices=[('none', 'No'),
 	# 												                    ('email', 'Send Email'),
 	# 												                    ('push', 'Send Push Notification')], validators=[DataRequired()])

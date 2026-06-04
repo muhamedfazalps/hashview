@@ -682,16 +682,31 @@ def jobs_assign_notifications(job_id):
                 )
                 db.session.add(job_notification)
                 db.session.commit()
-        if form.hash_completion_pushover.data == True and form.hash_completion_email.data == True:
-            return redirect("/jobs/"+str(job_id)+"/notifications/both/hashes")
-        elif form.hash_completion_pushover.data == True and form.hash_completion_email.data == False:
-            return redirect("/jobs/"+str(job_id)+"/notifications/push/hashes")
-        elif form.hash_completion_pushover.data == False and form.hash_completion_email.data == True:
-            return redirect("/jobs/"+str(job_id)+"/notifications/email/hashes")
-        else:
-            return redirect("/jobs/" + str(job_id)+ "/tasks")
+        if form.job_completion_slack.data == True:
+            pre_existing_job_notification = JobNotifications.query.filter_by(job_id=job_id, owner_id=current_user.id, method='slack').first()
+            if pre_existing_job_notification is None:
+                job_notification = JobNotifications(
+                    owner_id = current_user.id,
+                    job_id = job_id,
+                    method = 'slack'
+                )
+                db.session.add(job_notification)
+                db.session.commit()
+        # Per-hash alerts: carry the chosen channel(s) to the hash-selection step as
+        # a comma-joined list (e.g. "email,push,slack"); empty -> skip to tasks.
+        hash_methods = []
+        if form.hash_completion_email.data:
+            hash_methods.append('email')
+        if form.hash_completion_pushover.data:
+            hash_methods.append('push')
+        if form.hash_completion_slack.data:
+            hash_methods.append('slack')
+        if hash_methods:
+            return redirect("/jobs/" + str(job_id) + "/notifications/" + ",".join(hash_methods) + "/hashes")
+        return redirect("/jobs/" + str(job_id) + "/tasks")
     else:
-        return render_template('jobs_assigned_notifications.html.j2', title='Jobs Assigned Notifications', job=job, form=form)
+        settings = Settings.query.first()
+        return render_template('jobs_assigned_notifications.html.j2', title='Jobs Assigned Notifications', job=job, form=form, settings=settings)
 
 @jobs.route("/jobs/<int:job_id>/notifications/<method>/hashes", methods=['GET', 'POST'])
 @login_required
@@ -701,40 +716,21 @@ def jobs_assign_notification_hashes(job_id, method):
     job = Jobs.query.get(job_id)
     hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==job.hashfile_id).with_entities(Hashes.id, HashfileHashes.username, Hashes.ciphertext).all()
     existing_hash_notifications = HashNotifications.query.filter_by(owner_id=current_user.id)
+    # `method` is a comma-joined list of channels, e.g. "email,push,slack".
+    methods = [m for m in (method or '').split(',') if m in ('email', 'push', 'slack')]
     if request.method == 'POST':
+        selected_ids = set(request.form.getlist('selected'))
         for entry in hashes:
-            for selected in request.form.getlist('selected'):
-                if str(selected) == str(entry[0]):
-                    hash_notification_exists = HashNotifications.query.filter_by(hash_id=entry[0]).filter_by(owner_id=current_user.id).first()
-                    if not hash_notification_exists:
-                        if method == 'push' or method == 'email':
-                            hash_notification = HashNotifications(
-                                owner_id = current_user.id,
-                                hash_id = entry[0],
-                                method = method
-                            )
-                            db.session.add(hash_notification)
-                            db.session.commit()
-                        elif method == 'both':
-                            hash_notification_email = HashNotifications(
-                                owner_id = current_user.id,
-                                hash_id = entry[0],
-                                method = 'email'
-                            )
-                            hash_notification_pushover = HashNotifications(
-                                owner_id = current_user.id,
-                                hash_id = entry[0],
-                                method = 'push'
-                            )
-                            db.session.add(hash_notification_email)
-                            db.session.add(hash_notification_pushover)
-                            db.session.commit()
-                        else:
-                            continue
-                            
-        # Some for entry in request/post
-        # add hash notification if not already set
-        #return redirect("/jobs/"+str(job_id)+"/summary")
+            if str(entry[0]) not in selected_ids:
+                continue
+            for m in methods:
+                # one row per (hash, channel); skip if that exact pairing exists
+                exists = HashNotifications.query.filter_by(
+                    hash_id=entry[0], owner_id=current_user.id, method=m).first()
+                if not exists:
+                    db.session.add(HashNotifications(
+                        owner_id=current_user.id, hash_id=entry[0], method=m))
+        db.session.commit()
         return redirect("/jobs/"+str(job_id)+"/tasks")
 
     return render_template('jobs_assigned_notifications_hashes.html.j2', title='Assigned Hash Notifications', job=job, hashes=hashes, existing_hash_notifications=existing_hash_notifications)

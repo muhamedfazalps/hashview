@@ -17,6 +17,7 @@ from hashview.models import (
     Hashes,
     HashfileHashes,
     Hashfiles,
+    HashNotifications,
     JobNotifications,
     Jobs,
     JobTasks,
@@ -176,12 +177,20 @@ def ingest_static_wordlist_file(src_path, owner_id, name):
     )
 
 def notify_admins(subject, message):
+    # Respect the instance-wide channel switches (Settings -> Notifications) so a
+    # disabled channel never sends, even for admin alerts. Defaults match the UI:
+    # email/pushover are on when there is no Settings row yet.
+    settings = Settings.query.first()
+    email_on = bool(settings.email_enabled) if settings else True
+    push_on = bool(settings.pushover_enabled) if settings else True
+
     users = Users.query.filter_by(admin=True).all()
 
     for user in users:
-        if user.pushover_app_id and user.pushover_user_key:
+        if push_on and user.pushover_app_id and user.pushover_user_key:
             send_pushover(user, subject, message)
-        send_email(user, subject, message)
+        if email_on:
+            send_email(user, subject, message)
 
 def send_email(user, subject, message):
     """Function to send email"""
@@ -228,6 +237,91 @@ def send_pushover(user, subject, message):
 
     current_app.logger.info('SendPushover is Complete with Success(%s).', response_json)
     return
+
+def send_slack(user, subject, message):
+    """Send a Slack DM to a user via the global bot, addressed by their Slack
+    Member ID (user.slack_id). Mirrors send_pushover: logs the outcome and never
+    raises. No-ops (with a log line) when Slack is disabled/unconfigured globally
+    or the user has no Slack Member ID."""
+
+    settings = Settings.query.first()
+    if not settings or not settings.slack_enabled or not settings.slack_bot_token:
+        current_app.logger.info('SendSlack is Complete with Failure(Slack not enabled/configured).')
+        return
+
+    if not user.slack_id:
+        current_app.logger.info('SendSlack is Complete with Failure(User Slack ID not configured).')
+        return
+
+    # https://api.slack.com/methods/chat.postMessage - posting to a user's member
+    # ID DMs them (bot needs the chat:write scope).
+    headers = {'Authorization': 'Bearer ' + settings.slack_bot_token}
+    payload = {'channel': user.slack_id, 'text': '*' + subject + '*\n' + message}
+    response = requests.post('https://slack.com/api/chat.postMessage', json=payload, headers=headers, timeout=30)
+    response_json = response.json()
+    if not response_json.get('ok'):
+        current_app.logger.info('SendSlack is Complete with Failure(%s).', response_json.get('error'))
+        return
+
+    current_app.logger.info('SendSlack is Complete with Success.')
+    return
+
+def deliver_user_notification(user, method, subject, message, html_message=None):
+    """Dispatch one notification to `user` over a single `method`
+    ('email' | 'push' | 'slack'), centralising the channel branching + the
+    missing-config email fallbacks. For 'email', html_message (when given) is
+    sent as HTML; otherwise the plaintext message. Unknown methods are a no-op.
+
+    A channel disabled instance-wide (Settings -> Notifications) is skipped
+    silently — so a previously-configured notification never fires through a
+    channel an admin has since turned off. Missing-config fallbacks only email
+    the user when the Email channel is itself enabled."""
+
+    settings = Settings.query.first()
+    # No Settings row (fresh DB): match the UI defaults — email/pushover on, slack off.
+    enabled = {
+        'email': bool(settings.email_enabled) if settings else True,
+        'push': bool(settings.pushover_enabled) if settings else True,
+        'slack': bool(settings.slack_enabled) if settings else False,
+    }
+    if not enabled.get(method):
+        current_app.logger.info('Notification skipped: channel "%s" is disabled.', method)
+        return
+
+    if method == 'email':
+        if html_message is not None:
+            send_html_email(user, subject, html_message)
+        else:
+            send_email(user, subject, message)
+    elif method == 'push':
+        if user.pushover_user_key and user.pushover_app_id:
+            send_pushover(user, subject, message)
+        elif enabled['email']:
+            send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
+    elif method == 'slack':
+        if settings and settings.slack_bot_token and user.slack_id:
+            send_slack(user, subject, message)
+        elif enabled['email']:
+            send_email(user, 'Hashview: Missing Slack configuration', 'Hello, you were due to receive a Slack notification, but your Slack Member ID is not set. Please set it under your account settings.')
+
+def process_recovered_hash_notifications():
+    """Send + clear the per-hash "recovered" notifications for every watched hash
+    that is now cracked. Called after an agent/manual upload marks hashes cracked.
+    (Previously three identical inline copies in api/routes.py.)"""
+
+    for hash_notification in HashNotifications.query.all():
+        hash = Hashes.query.get(hash_notification.hash_id)
+        if not hash or not hash.cracked:
+            continue
+        user = Users.query.get(hash_notification.owner_id)
+        message = (
+            "Congratulations, a hash has been recovered!: \n\n"
+            "You can check the results using the following link: \n"
+            + url_for('searches.searches_list', hash_id=hash.id, _external=True)
+        )
+        deliver_user_notification(user, hash_notification.method, 'Hashview User Hash Recovered!', message)
+        db.session.delete(hash_notification)
+        db.session.commit()
 
 def get_md5_hash(string):
     """Function to get md5 hash of string"""
@@ -587,13 +681,13 @@ def update_job_task_status(jobtask_id, status):
             user = Users.query.get(job_notification.owner_id)
             cracked_cnt = db.session.query(Hashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==job.hashfile_id).count()
             uncracked_cnt = db.session.query(Hashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==job.hashfile_id).count()
-            if job_notification.method == 'email':
-                send_html_email(user, 'Hashview Job: "' + job.name + '" Has Completed!', 'Your job has completed. It ran for ' + getTimeFormat(durration) + ' and resulted in a total of ' + str(cracked_cnt) + ' out of ' + str(cracked_cnt+uncracked_cnt) + ' hashes being recovered! <br /><br /> <a href="' + url_for('analytics.get_analytics',customer_id=job.customer_id,hashfile_id=job.hashfile_id, _external=True) + '">View Analytics</a>')
-            elif job_notification.method == 'push':
-                if user.pushover_user_key and user.pushover_app_id:
-                    send_pushover(user, 'Message from Hashview', 'Hashview Job: "' + job.name + '" Has Completed!')
-                else:
-                    send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
+            subject = 'Hashview Job: "' + job.name + '" Has Completed!'
+            plain = ('Your job "' + job.name + '" has completed. It ran for ' + getTimeFormat(durration)
+                     + ' and recovered ' + str(cracked_cnt) + ' out of ' + str(cracked_cnt + uncracked_cnt) + ' hashes.')
+            html = ('Your job has completed. It ran for ' + getTimeFormat(durration) + ' and resulted in a total of '
+                    + str(cracked_cnt) + ' out of ' + str(cracked_cnt + uncracked_cnt) + ' hashes being recovered!'
+                    + ' <br /><br /> <a href="' + url_for('analytics.get_analytics', customer_id=job.customer_id, hashfile_id=job.hashfile_id, _external=True) + '">View Analytics</a>')
+            deliver_user_notification(user, job_notification.method, subject, plain, html_message=html)
             db.session.delete(job_notification)
             db.session.commit()
 

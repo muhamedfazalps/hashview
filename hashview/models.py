@@ -28,6 +28,7 @@ class Users(db.Model, UserMixin):
     admin             = db.Column(db.Boolean,    nullable=False, default=False)
     pushover_app_id   = db.Column(db.String(50), nullable=True)
     pushover_user_key = db.Column(db.String(50), nullable=True)
+    slack_id          = db.Column(db.String(50), nullable=True)   # per-user Slack Member ID (U…)
     last_login_utc    = db.Column(db.DateTime,   nullable=True,  default=datetime.utcnow)
     api_key           = db.Column(db.String(60), nullable=True)
     wordlists         = db.relationship('Wordlists',  backref='tbd',   lazy=True)
@@ -119,6 +120,14 @@ class Settings(db.Model):
     crawl_force_lowercase = db.Column(db.Boolean, nullable=False, default=True)
     crawl_depth = db.Column(db.Integer, nullable=False, default=2)
     crawl_threads = db.Column(db.Integer, nullable=False, default=5)
+    # Notification channel master switches (admin-controlled, Settings -> Notifications).
+    # email/pushover default True to preserve existing behaviour on upgrade; slack is
+    # opt-in. A disabled channel is hidden in the job wizard + user profile and never
+    # sends. Slack also needs a bot token; users hold their own Slack Member ID.
+    email_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    pushover_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    slack_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    slack_bot_token = db.Column(db.String(255), nullable=True)
 
 class Jobs(db.Model):
     """Class object to represent Jobs"""

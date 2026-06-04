@@ -12,7 +12,6 @@ from flask import (
     redirect,
     request,
     send_from_directory,
-    url_for,
 )
 from packaging import version
 from sqlalchemy import func
@@ -25,7 +24,6 @@ from hashview.models import (
     Hashes,
     HashfileHashes,
     Hashfiles,
-    HashNotifications,
     JobNotifications,
     Jobs,
     JobTasks,
@@ -43,8 +41,7 @@ from hashview.utils.utils import (
     import_hashfilehashes,
     ingest_static_wordlist_file,
     notify_admins,
-    send_email,
-    send_pushover,
+    process_recovered_hash_notifications,
     update_dynamic_wordlist,
     update_job_task_status,
     validate_hash_only_hashfile,
@@ -908,27 +905,8 @@ def v1_api_put_jobtask_crackfile_upload(task_id, hash_type):
                     print('Failed to import following cracked hash: ' + str(encoded_plaintext))
                     print('Reason: ' + str(error))
 
-    # Send Hash Completion Notifications
-    hash_notifications = HashNotifications.query.all()
-    for hash_notification in hash_notifications:
-        user = Users.query.get(hash_notification.owner_id)
-        message = "Congratulations, a hash has been recovered!: \n\n"
-
-        # Check if hash is cracked
-        hash = Hashes.query.get(hash_notification.hash_id)
-        if hash.cracked:
-
-            message += 'You can check the results using the following link: ' + "\n"
-            message += url_for('searches.searches_list', hash_id=hash.id, _external=True)
-            if hash_notification.method == 'email':
-                send_email(user, 'Hashview User Hash Recovered!', message)
-            elif hash_notification.method == 'push':
-                if user.pushover_user_key and user.pushover_app_id:
-                    send_pushover(user, 'Message from Hashview', message)
-            else:
-                send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
-            db.session.delete(hash_notification)
-            db.session.commit()
+    # Send per-hash "recovered" notifications (email/push/slack) for any now-cracked watched hash.
+    process_recovered_hash_notifications()
 
     message = {
         'status': 200,
@@ -1008,27 +986,8 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
                     print('Failed to import following cracked hash: ' + str(encoded_plaintext))
                     print('Reason: ' + str(error))
 
-    # Send Hash Completion Notifications
-    hash_notifications = HashNotifications.query.all()
-    for hash_notification in hash_notifications:
-        user = Users.query.get(hash_notification.owner_id)
-        message = "Congratulations, a hash has been recovered!: \n\n"
-
-        # Check if hash is cracked
-        hash = Hashes.query.get(hash_notification.hash_id)
-        if hash.cracked:
-
-            message += 'You can check the results using the following link: ' + "\n"
-            message += url_for('searches.searches_list', hash_id=hash.id, _external=True)
-            if hash_notification.method == 'email':
-                send_email(user, 'Hashview User Hash Recovered!', message)
-            elif hash_notification.method == 'push':
-                if user.pushover_user_key and user.pushover_app_id:
-                    send_pushover(user, 'Message from Hashview', message)
-            else:
-                send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
-            db.session.delete(hash_notification)
-            db.session.commit()
+    # Send per-hash "recovered" notifications (email/push/slack) for any now-cracked watched hash.
+    process_recovered_hash_notifications()
 
     # Check if job type is one and done
     if job.limit_recovered and recovered_at_least_one_hash:
@@ -1257,27 +1216,8 @@ def v1_api_hashes_import(hash_type):
                 'msg': f'Failed to openfile file: {e}'
             })
 
-        # Send Hash Completion Notifications
-        hash_notifications = HashNotifications.query.all()
-        for hash_notification in hash_notifications:
-            user = Users.query.get(hash_notification.owner_id)
-            message = "Congratulations, a hash has been recovered!: \n\n"
-
-            # Check if hash is cracked
-            hash = Hashes.query.get(hash_notification.hash_id)
-            if hash.cracked:
-
-                message += 'You can check the results using the following link: ' + "\n"
-                message += url_for('searches.searches_list', hash_id=hash.id, _external=True)
-                if hash_notification.method == 'email':
-                    send_email(user, 'Hashview User Hash Recovered!', message)
-                elif hash_notification.method == 'push':
-                    if user.pushover_user_key and user.pushover_app_id:
-                        send_pushover(user, 'Message from Hashview', message)
-                else:
-                    send_email(user, 'Hashview: Missing Pushover Key', 'Hello, you were due to recieve a pushover notification, but because your account was not provisioned with an pushover ID and Key, one could not be set. Please log into hashview and set these options under Manage->Profile.')
-                db.session.delete(hash_notification)
-                db.session.commit()
+        # Send per-hash "recovered" notifications (email/push/slack) for any now-cracked watched hash.
+        process_recovered_hash_notifications()
 
         message = {
             'status': 200,

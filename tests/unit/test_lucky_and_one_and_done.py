@@ -153,10 +153,9 @@ def test_one_and_done_cancels_remaining_tasks_when_hash_recovered(
     Job must be transitioned to status ``Canceled`` — including the
     Running task that did the recovering and any Queued siblings.
     """
-    # The api module re-imports send_email/send_pushover by name, and the
-    # utils module is also called into by update_job_task_status (which
-    # this code path eventually triggers). Patch both so the test never
-    # touches the network / mail server.
+    # All notification senders now live in hashview.utils.utils (api/routes calls
+    # process_recovered_hash_notifications, which dispatches through them). Patch
+    # the utils senders so the test never touches the network / mail server.
     monkeypatch.setattr(
         "hashview.utils.utils.send_email", lambda *a, **kw: True
     )
@@ -167,10 +166,7 @@ def test_one_and_done_cancels_remaining_tasks_when_hash_recovered(
         "hashview.utils.utils.send_html_email", lambda *a, **kw: None
     )
     monkeypatch.setattr(
-        "hashview.api.routes.send_email", lambda *a, **kw: True
-    )
-    monkeypatch.setattr(
-        "hashview.api.routes.send_pushover", lambda *a, **kw: None
+        "hashview.utils.utils.send_slack", lambda *a, **kw: None
     )
 
     admin = Users(
