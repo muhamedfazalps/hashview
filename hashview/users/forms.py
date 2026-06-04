@@ -54,6 +54,7 @@ class ProfileForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
     pushover_user_key = StringField('Pushover User Key (optional)')
     pushover_app_id = StringField('Pushover App Id (optional)')
+    slack_id = StringField('Slack Member ID (optional)')
     submit = SubmitField('Update')
 
 class RequestResetForm(FlaskForm):

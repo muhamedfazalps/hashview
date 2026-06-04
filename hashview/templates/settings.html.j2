@@ -17,6 +17,30 @@
         var n = btn.nextElementSibling;
         if (n && n.classList && n.classList.contains('hv-placeholder-note')) n.style.display = 'inline';
     }
+    // Grey out + make non-interactible a notification channel's settings when its
+    // master toggle is off. Inputs use readonly (not disabled) so their values
+    // still POST — disabling Slack must not wipe the saved bot token.
+    function hvSyncNotif(channel) {
+        var ids = { email: 'email_enabled', push: 'pushover_enabled', slack: 'slack_enabled' };
+        var toggle = document.getElementById(ids[channel]);
+        var section = document.getElementById('notif-' + channel);
+        if (!toggle || !section) return;
+        var body = section.querySelector('.notif-body');
+        if (!body) return;
+        var on = toggle.checked;
+        body.style.opacity = on ? '' : '0.4';
+        body.style.pointerEvents = on ? '' : 'none';
+        body.querySelectorAll('input, textarea, select').forEach(function (el) {
+            if (on) { el.removeAttribute('readonly'); } else { el.setAttribute('readonly', 'readonly'); }
+        });
+        body.querySelectorAll('a, button').forEach(function (el) {
+            el.setAttribute('tabindex', on ? '0' : '-1');
+            el.setAttribute('aria-disabled', on ? 'false' : 'true');
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        ['email', 'push', 'slack'].forEach(hvSyncNotif);
+    });
 </script>
 
 <div class="page-head">
@@ -31,6 +55,7 @@
     {# ---------- left tab nav ---------- #}
     <div class="card" style="flex:none; width:210px; padding:8px;">
         <button type="button" class="set-tab hv-settings-tab active" data-tab="general" onclick="hvShowSettingsTab('general')">{{ icon('settings', size=16) }}<span>General</span></button>
+        <button type="button" class="set-tab hv-settings-tab" data-tab="notifications" onclick="hvShowSettingsTab('notifications')">{{ icon('bell', size=16) }}<span>Notifications</span></button>
         <button type="button" class="set-tab hv-settings-tab" data-tab="data" onclick="hvShowSettingsTab('data')">{{ icon('file', size=16) }}<span>Data management</span></button>
         <button type="button" class="set-tab hv-settings-tab" data-tab="info" onclick="hvShowSettingsTab('info')">{{ icon('info', size=16) }}<span>Information</span></button>
     </div>
@@ -111,9 +136,63 @@
                             </div>
                             <label class="switch">{{ HashviewForm.crawl_force_lowercase(role="switch") }}<span class="track"></span></label>
                         </div>
+                    </div>
+                </div>
+            </div>
 
-                        <div style="height:1px; background:var(--border-soft); margin:20px 0 14px;"></div>
-                        <a class="btn" href="{{ url_for('users.send_test_email') }}" role="button">{{ icon('mail', size=15) }} Send test email</a>
+            {# ---- Notifications (channel master switches) ---- #}
+            <div class="hv-settings-pane" data-pane="notifications" style="display:none;">
+                <div class="card">
+                    <div class="card-body">
+                        <span class="field-hint" style="margin-top:0; display:block; margin-bottom:18px;">Master switch for each notification channel. A disabled channel is hidden during job creation and in every user's profile, and never sends — its settings below are greyed out until re-enabled.</span>
+
+                        {# EMAIL #}
+                        <div class="notif-channel" id="notif-email">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="flex:1; min-width:0;">
+                                    <div style="color:var(--text); display:flex; align-items:center; gap:8px;">{{ icon('mail', size=16) }} Email notifications</div>
+                                    <div class="field-hint" style="margin-top:2px;">Delivered via the configured SMTP server to each user's account email address.</div>
+                                </div>
+                                <label class="switch">{{ HashviewForm.email_enabled(role="switch", onchange="hvSyncNotif('email')") }}<span class="track"></span></label>
+                            </div>
+                            <div class="notif-body" style="margin-top:14px;">
+                                <a class="btn" href="{{ url_for('users.send_test_email') }}" role="button">{{ icon('mail', size=15) }} Send test email</a>
+                            </div>
+                        </div>
+
+                        <div style="height:1px; background:var(--border-soft); margin:20px 0;"></div>
+
+                        {# PUSHOVER #}
+                        <div class="notif-channel" id="notif-push">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="flex:1; min-width:0;">
+                                    <div style="color:var(--text); display:flex; align-items:center; gap:8px;">{{ icon('bell', size=16) }} Pushover notifications</div>
+                                    <div class="field-hint" style="margin-top:2px;">Mobile push — each user enters their own Pushover user key &amp; app token under account settings.</div>
+                                </div>
+                                <label class="switch">{{ HashviewForm.pushover_enabled(role="switch", onchange="hvSyncNotif('push')") }}<span class="track"></span></label>
+                            </div>
+                        </div>
+
+                        <div style="height:1px; background:var(--border-soft); margin:20px 0;"></div>
+
+                        {# SLACK #}
+                        <div class="notif-channel" id="notif-slack">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="flex:1; min-width:0;">
+                                    <div style="color:var(--text); display:flex; align-items:center; gap:8px;">{{ icon('slack', size=16) }} Slack notifications</div>
+                                    <div class="field-hint" style="margin-top:2px;">The Hashview bot DMs each user — each user sets their Slack Member ID under account settings.</div>
+                                </div>
+                                <label class="switch">{{ HashviewForm.slack_enabled(role="switch", onchange="hvSyncNotif('slack')") }}<span class="track"></span></label>
+                            </div>
+                            <div class="notif-body" style="margin-top:18px;">
+                                <div class="field" style="margin-bottom:0;">
+                                    <label class="field-label" for="set-slack-token">Bot user OAuth token</label>
+                                    {{ HashviewForm.slack_bot_token(class="input mono", id="set-slack-token", placeholder="xoxb-…", autocomplete="off") }}
+                                    <span class="field-hint">Create a Slack app, add the <span class="mono">chat:write</span> + <span class="mono">im:write</span> bot scopes, install it to your workspace, and paste the Bot User OAuth Token here.</span>
+                                    {% for e in HashviewForm.slack_bot_token.errors %}<div class="invalid-feedback" style="display:block;">{{ e }}</div>{% endfor %}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -6,6 +6,7 @@
 {% macro method_badge(method) -%}
     {%- if method == 'email' -%}<span class="badge cyan">{{ icon('mail', size=12) }} EMAIL</span>
     {%- elif method == 'push' -%}<span class="badge amber">{{ icon('bell', size=12) }} PUSHOVER</span>
+    {%- elif method == 'slack' -%}<span class="badge violet">{{ icon('slack', size=12) }} SLACK</span>
     {%- else -%}<span class="badge dim">{{ method }}</span>{%- endif -%}
 {%- endmacro %}
 
@@ -37,7 +38,8 @@
         <div class="kpi-value" style="display:flex; align-items:center; gap:8px; line-height:1;">
             {% if channels.email %}<span class="badge cyan">{{ icon('mail', size=13) }} EMAIL</span>{% endif %}
             {% if channels.pushover %}<span class="badge amber">{{ icon('bell', size=13) }} PUSHOVER</span>{% endif %}
-            {% if not channels.email and not channels.pushover %}<span class="badge dim">none</span>{% endif %}
+            {% if channels.slack %}<span class="badge violet">{{ icon('slack', size=13) }} SLACK</span>{% endif %}
+            {% if not channels.email and not channels.pushover and not channels.slack %}<span class="badge dim">none</span>{% endif %}
         </div>
         <div class="kpi-foot">active delivery methods</div>
     </div>

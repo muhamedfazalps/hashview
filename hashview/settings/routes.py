@@ -71,6 +71,10 @@ def settings_list():
             settings.crawl_force_lowercase = hashview_form.crawl_force_lowercase.data
             settings.crawl_depth = hashview_form.crawl_depth.data
             settings.crawl_threads = hashview_form.crawl_threads.data
+            settings.email_enabled = hashview_form.email_enabled.data
+            settings.pushover_enabled = hashview_form.pushover_enabled.data
+            settings.slack_enabled = hashview_form.slack_enabled.data
+            settings.slack_bot_token = hashview_form.slack_bot_token.data
             db.session.commit()
             flash('Updated Hashview settings!', 'success')
             return redirect(url_for('settings.settings_list'))
@@ -84,6 +88,10 @@ def settings_list():
             hashview_form.crawl_force_lowercase.data = settings.crawl_force_lowercase
             hashview_form.crawl_depth.data = settings.crawl_depth
             hashview_form.crawl_threads.data = settings.crawl_threads
+            hashview_form.email_enabled.data = settings.email_enabled
+            hashview_form.pushover_enabled.data = settings.pushover_enabled
+            hashview_form.slack_enabled.data = settings.slack_enabled
+            hashview_form.slack_bot_token.data = settings.slack_bot_token
 
         try:
             database_version = db.session.execute('SELECT version_num FROM alembic_version LIMIT 1;').scalar()

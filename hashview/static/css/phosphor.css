@@ -472,6 +472,7 @@ html[data-scanlines="off"] .scanlines { display: none; }
 .badge.red   { color: var(--red);   border-color: var(--red-dim);   background: rgba(255,95,86,.07); }
 .badge.dim   { color: var(--text-dim); border-color: var(--border-bright); background: var(--surface-2); }
 .badge.cyan  { color: var(--cyan); border-color: #1f3d40; background: rgba(79,214,224,.07); }
+.badge.violet { color: #c9a0ff; border-color: #43306b; background: rgba(155,109,255,.08); }   /* Slack */
 
 /* progress */
 .progress {

@@ -393,6 +393,26 @@ def create_app(testing=False, config_overrides=None):
         except Exception:  # pragma: no cover - defensive: never break rendering
             return {}
 
+    @app.context_processor
+    def inject_notify_channels():
+        """Per-channel master switches (Settings -> Notifications), available to
+        every template (job wizard, account-settings modal, notifications page) so
+        disabled channels can be hidden. Defaults to email+pushover on / slack off
+        when Settings is missing or unreadable (e.g. a pre-migration database)."""
+        defaults = {'email': True, 'pushover': True, 'slack': False}
+        try:
+            from hashview.models import Settings
+            s = Settings.query.first()
+            if not s:
+                return {'notify_channels': defaults}
+            return {'notify_channels': {
+                'email': bool(s.email_enabled),
+                'pushover': bool(s.pushover_enabled),
+                'slack': bool(s.slack_enabled),
+            }}
+        except Exception:  # pragma: no cover - pre-migration / no DB
+            return {'notify_channels': defaults}
+
     if not (testing or app.config.get("HASHVIEW_SKIP_SETUP")):
         with app.app_context():
             setup_defaults_if_needed()
