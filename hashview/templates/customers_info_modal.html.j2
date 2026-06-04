@@ -27,8 +27,8 @@
     {# KPI cards — Jobs, Hashfiles, Hashes, Recovered #}
     <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:10px;">
         {% for stat in [
-            {'n': cust_jobs|length,      'ico': 'jobs', 'lbl': 'JOBS',      'fmt': false},
-            {'n': cust_hashfiles|length, 'ico': 'file', 'lbl': 'HASHFILES', 'fmt': false},
+            {'n': cust_jobs|length | commafy,      'ico': 'jobs', 'lbl': 'JOBS',      'fmt': false},
+            {'n': cust_hashfiles|length | commafy, 'ico': 'file', 'lbl': 'HASHFILES', 'fmt': false},
             {'n': total_hashes,          'ico': 'hash', 'lbl': 'HASHES',    'fmt': true},
             {'n': total_cracked,         'ico': 'key',  'lbl': 'RECOVERED', 'fmt': true}
         ] %}
@@ -42,7 +42,7 @@
 
     {# Jobs #}
     <div style="margin-top:22px;">
-        <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('jobs', size=14) }} Jobs · {{ cust_jobs|length }}</div>
+        <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('jobs', size=14) }} Jobs · {{ cust_jobs|length | commafy }}</div>
         {% if cust_jobs %}
         {% for job in cust_jobs %}
         {% set js = hf_stats.get(job.hashfile_id) %}
@@ -62,7 +62,7 @@
 
     {# Hashfiles #}
     <div style="margin-top:18px;">
-        <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('file', size=14) }} Hashfiles · {{ cust_hashfiles|length }}</div>
+        <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('file', size=14) }} Hashfiles · {{ cust_hashfiles|length | commafy }}</div>
         {% if cust_hashfiles %}
         {% for hf in cust_hashfiles %}
         {% set hs = hf_stats.get(hf.id) %}

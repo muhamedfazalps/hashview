@@ -2,6 +2,12 @@
 {% from "macros.html.j2" import icon, phos_field, status_badge, priority_pips, wizard_stepper %}
 {% block title %}Job Summary · Hashview{% endblock %}
 {% block content %}
+<style>
+/* Job-summary detail table: pin the cells to the top of each row so the
+   left-column labels line up with the first line of multi-line values
+   (tasks, runtimes, notifications). */
+#job-summary-tbl td { vertical-align: top; }
+</style>
 
 <div class="page-head">
     <div>
@@ -19,11 +25,11 @@
             <span class="page-sub" style="margin-left:8px;">// review and confirm — if everything looks good, submit below</span>
         </div>
         <div class="card-body" style="padding:0;">
-            <table class="tbl">
+            <table class="tbl" id="job-summary-tbl">
                 <tbody>
                     <tr>
                         <td style="color:var(--text-dim);width:200px;">Job Name</td>
-                        <td style="font-weight:500;">{{ job.name }}</td>
+                        <td style="font-weight:700;">{{ job.name }}</td>
                     </tr>
                     <tr>
                         <td style="color:var(--text-dim);">Customer</td>
@@ -35,24 +41,14 @@
                             <td>
                                 <span style="display:inline-flex;align-items:center;gap:8px;">
                                     {{ priority_pips(job.priority) }}
-                                    {% if job.priority == 5 %}
-                                        <span class="mono">{{ job.priority }} - highest</span>
-                                    {% elif job.priority == 4 %}
-                                        <span class="mono">{{ job.priority }} - higher</span>
-                                    {% elif job.priority == 3 %}
-                                        <span class="mono">{{ job.priority }} - normal</span>
-                                    {% elif job.priority == 2 %}
-                                        <span class="mono">{{ job.priority }} - lower</span>
-                                    {% elif job.priority == 1 %}
-                                        <span class="mono">{{ job.priority }} - lowest</span>
-                                    {% endif %}
+                                    <span class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ job.priority }}/5</span>
                                 </span>
                             </td>
                         </tr>
                     {% endif %}
                     <tr>
                         <td style="color:var(--text-dim);">Hashfile</td>
-                        <td>{{ hashfile.name }} <span class="mono" style="color:var(--text-mute);">({{ cracked_rate }})</span></td>
+                        <td><span style="color:var(--primary); text-shadow:var(--glow-text);">{{ hashfile.name }}</span> <span class="mono" style="color:var(--text-mute);">({{ cracked_cnt | commafy }}/{{ hash_total | commafy }}){% if hashfile_hash_type %} {{ hashfile_hash_type }}{% endif %}</span></td>
                     </tr>
                     <tr>
                         <td style="color:var(--text-dim);">Recover Amount</td>
@@ -66,9 +62,10 @@
                         <td style="color:var(--text-dim);">Tasks</td>
                         <td>
                             {% for job_task in job_tasks %}
+                                {% set order = loop.index %}
                                 {% for task in tasks %}
                                     {% if task.id == job_task.task_id %}
-                                        {{ task.name }} <br>
+                                        <span class="mono" style="color:var(--text-mute); margin-right:8px;">{{ '%02d' % order }}</span>{{ task.name }} <br>
                                     {% endif %}
                                 {% endfor %}
                             {% endfor %}
@@ -100,7 +97,7 @@
                                 Job Notification: {{ job_notification.method }} <br>
                             {% endif %}
                             {% if hash_notification %}
-                                Hash Notification ({{ hash_notification_cnt }} Hashes): {{ hash_notification.method }} <br>
+                                Hash Notification ({{ hash_notification_cnt | commafy }} Hashes): {{ hash_notification.method }} <br>
                             {% endif %}
                         </td>
                     </tr>
@@ -112,7 +109,7 @@
     <div class="wizard-nav">
         <a class="btn" href="{{ url_for('jobs.jobs_list_tasks', job_id = job.id) }}">{{ icon('arrowLeft', size=15) }} Back</a>
         <span class="spacer"></span>
-        {{ form.submit(class="btn btn-primary") }}
+        <button type="submit" name="submit" class="btn btn-primary">{{ icon('zap', size=15) }} Create &amp; Queue Job</button>
     </div>
 </form>
 

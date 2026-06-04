@@ -7,6 +7,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -236,6 +237,11 @@ def jobs_assigned_hashfile(job_id):
     job = Jobs.query.get(job_id)
     hashfiles = Hashfiles.query.filter_by(customer_id=job.customer_id)
     jobs_new_hashfile_form = JobsNewHashFileForm()
+    # The import-progress modal posts the upload/paste form via XHR (so it can
+    # show live upload + import status) and sets this header; for those requests
+    # we answer with JSON instead of flash+redirect. A plain (no-JS) form post
+    # still falls through to the original flash/redirect behaviour.
+    is_ajax = request.headers.get('X-Requested-With') == 'fetch'
     hashfile_cracked_rate = {}
     hashfile_info = {}
 
@@ -294,69 +300,96 @@ def jobs_assigned_hashfile(job_id):
             # Going to have to save a file manually instead of using save_file since save_file requires form data to be passed and we're not collecting that object for this tab
 
             if len(jobs_new_hashfile_form.name.data) == 0:
+                if is_ajax:
+                    return jsonify({'status': 'error', 'msg': 'You must assign a name to the hashfile.'}), 400
                 flash('You must assign a name to the hashfile', 'danger')
                 return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
             else:
                 hashfile_name = jobs_new_hashfile_form.name.data
 
             random_hex = secrets.token_hex(8)
-            hashfile_path = 'hashview/control/tmp/' + random_hex
-            hashfilehashes_file = open(hashfile_path, 'w+')
-            hashfilehashes_file.write(jobs_new_hashfile_form.hashfilehashes.data)
-            hashfilehashes_file.close()
+            # Absolute path rooted at the app (the upload branch above does the
+            # same via save_file); a CWD-relative path breaks when the process
+            # isn't launched from the repo root.
+            hashfile_path = os.path.join(current_app.root_path, 'control/tmp', random_hex)
+            with open(hashfile_path, 'w+') as hashfilehashes_file:
+                hashfilehashes_file.write(jobs_new_hashfile_form.hashfilehashes.data)
 
         if len(hashfile_path) > 0:
-            if jobs_new_hashfile_form.file_type.data == 'pwdump':
-                has_problem = validate_pwdump_hashfile(hashfile_path, jobs_new_hashfile_form.pwdump_hash_type.data)
-                hash_type = jobs_new_hashfile_form.pwdump_hash_type.data
-            elif jobs_new_hashfile_form.file_type.data == 'NetNTLM':
-                has_problem = validate_netntlm_hashfile(hashfile_path, jobs_new_hashfile_form.netntlm_hash_type.data)
-                hash_type = jobs_new_hashfile_form.netntlm_hash_type.data
-            elif jobs_new_hashfile_form.file_type.data == 'kerberos':
-                has_problem = validate_kerberos_hashfile(hashfile_path, jobs_new_hashfile_form.kerberos_hash_type.data)
-                hash_type = jobs_new_hashfile_form.kerberos_hash_type.data
-            elif jobs_new_hashfile_form.file_type.data == 'shadow':
-                has_problem = validate_shadow_hashfile(hashfile_path, jobs_new_hashfile_form.shadow_hash_type.data)
-                hash_type = jobs_new_hashfile_form.shadow_hash_type.data
-            elif jobs_new_hashfile_form.file_type.data == 'user_hash':
-                has_problem = validate_user_hash_hashfile(hashfile_path)
-                hash_type = jobs_new_hashfile_form.hash_type.data
-            elif jobs_new_hashfile_form.file_type.data == 'hash_only':
-                has_problem = validate_hash_only_hashfile(hashfile_path, jobs_new_hashfile_form.hash_type.data)
-                hash_type = jobs_new_hashfile_form.hash_type.data
-            else:
-                has_problem = 'Invalid File Format'
+            try:
+                if jobs_new_hashfile_form.file_type.data == 'pwdump':
+                    has_problem = validate_pwdump_hashfile(hashfile_path, jobs_new_hashfile_form.pwdump_hash_type.data)
+                    hash_type = jobs_new_hashfile_form.pwdump_hash_type.data
+                elif jobs_new_hashfile_form.file_type.data == 'NetNTLM':
+                    has_problem = validate_netntlm_hashfile(hashfile_path, jobs_new_hashfile_form.netntlm_hash_type.data)
+                    hash_type = jobs_new_hashfile_form.netntlm_hash_type.data
+                elif jobs_new_hashfile_form.file_type.data == 'kerberos':
+                    has_problem = validate_kerberos_hashfile(hashfile_path, jobs_new_hashfile_form.kerberos_hash_type.data)
+                    hash_type = jobs_new_hashfile_form.kerberos_hash_type.data
+                elif jobs_new_hashfile_form.file_type.data == 'shadow':
+                    has_problem = validate_shadow_hashfile(hashfile_path, jobs_new_hashfile_form.shadow_hash_type.data)
+                    hash_type = jobs_new_hashfile_form.shadow_hash_type.data
+                elif jobs_new_hashfile_form.file_type.data == 'user_hash':
+                    has_problem = validate_user_hash_hashfile(hashfile_path)
+                    hash_type = jobs_new_hashfile_form.hash_type.data
+                elif jobs_new_hashfile_form.file_type.data == 'hash_only':
+                    has_problem = validate_hash_only_hashfile(hashfile_path, jobs_new_hashfile_form.hash_type.data)
+                    hash_type = jobs_new_hashfile_form.hash_type.data
+                else:
+                    has_problem = 'Invalid File Format'
 
-            if has_problem:
-                flash(has_problem, 'danger')
-                return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
-            else:
-                hashfile = Hashfiles(name=hashfile_name, customer_id=job.customer_id, owner_id=current_user.id)
-                db.session.add(hashfile)
-                db.session.commit()
-
-                # Parse Hashfile
-                if not import_hashfilehashes(   hashfile_id=hashfile.id,
-                                                hashfile_path=hashfile_path,
-                                                file_type=jobs_new_hashfile_form.file_type.data,
-                                                hash_type=hash_type
-                                                ):
-                    return ('Something went wrong. Check the filetype / hashtype and try again.')
-
-                hashfile_hashes_cnt = db.session.query(HashfileHashes).filter_by(hashfile_id=hashfile.id).count()
-                if hashfile_hashes_cnt == 0:
-                    db.session.delete(hashfile)
-                    db.session.commit()
-                    flash('No valid hashes found in the hashfile. Hashfile not added.', 'danger')
+                if has_problem:
+                    if is_ajax:
+                        return jsonify({'status': 'error', 'msg': has_problem}), 400
+                    flash(has_problem, 'danger')
                     return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
+                else:
+                    hashfile = Hashfiles(name=hashfile_name, customer_id=job.customer_id, owner_id=current_user.id)
+                    db.session.add(hashfile)
+                    db.session.commit()
 
+                    # Parse Hashfile
+                    if not import_hashfilehashes(   hashfile_id=hashfile.id,
+                                                    hashfile_path=hashfile_path,
+                                                    file_type=jobs_new_hashfile_form.file_type.data,
+                                                    hash_type=hash_type
+                                                    ):
+                        msg = 'Something went wrong. Check the filetype / hashtype and try again.'
+                        if is_ajax:
+                            return jsonify({'status': 'error', 'msg': msg}), 400
+                        flash(msg, 'danger')
+                        return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
 
-                # Delete hashfile file on disk
-                # TODO
-                job.hashfile_id = hashfile.id
-                db.session.commit()
+                    hashfile_hashes_cnt = db.session.query(HashfileHashes).filter_by(hashfile_id=hashfile.id).count()
+                    if hashfile_hashes_cnt == 0:
+                        db.session.delete(hashfile)
+                        db.session.commit()
+                        if is_ajax:
+                            return jsonify({'status': 'error', 'msg': 'No valid hashes found in the hashfile. Hashfile not added.'}), 400
+                        flash('No valid hashes found in the hashfile. Hashfile not added.', 'danger')
+                        return redirect(url_for('jobs.jobs_assigned_hashfile', job_id=job_id))
 
-            return redirect(str(hashfile.id))
+                    job.hashfile_id = hashfile.id
+                    db.session.commit()
+
+                if is_ajax:
+                    return jsonify({
+                        'status': 'ok',
+                        'msg': f'{hashfile_hashes_cnt:,} hashes imported.',
+                        'redirect': url_for('jobs.jobs_assigned_hashfile_cracked',
+                                            job_id=job_id, hashfile_id=hashfile.id),
+                    })
+                return redirect(str(hashfile.id))
+            finally:
+                # Implements the long-standing "delete hashfile on disk" TODO:
+                # the validators + import have already read the temp file, so
+                # remove it on every exit path (success or error) — otherwise
+                # control/tmp accumulates one file per submission. Best-effort.
+                try:
+                    if os.path.exists(hashfile_path):
+                        os.remove(hashfile_path)
+                except OSError:
+                    pass
 
     elif request.method == 'POST' and request.form.get('hashfile_id'):
         # User selected an existing hashfile
@@ -365,6 +398,17 @@ def jobs_assigned_hashfile(job_id):
         return redirect("/jobs/" + str(job.id)+"/notifications")
 
     else:
+        if is_ajax:
+            # Validation failed (missing file format/hash type, bad CSRF, …):
+            # answer the XHR with the collected errors so the modal can show
+            # them instead of receiving the full HTML page.
+            msgs = []
+            for _field in (jobs_new_hashfile_form.name, jobs_new_hashfile_form.file_type,
+                           jobs_new_hashfile_form.hash_type, jobs_new_hashfile_form.hashfile,
+                           jobs_new_hashfile_form.hashfilehashes):
+                msgs.extend(str(m) for m in _field.errors)
+            return jsonify({'status': 'error',
+                            'msg': '; '.join(msgs) or 'Invalid upload request.'}), 400
         for error in jobs_new_hashfile_form.name.errors:
             print(str(error))
         for error in jobs_new_hashfile_form.file_type.errors:
@@ -391,7 +435,7 @@ def jobs_assigned_hashfile_cracked(job_id, hashfile_id):
     cracked_hashfiles_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).all()
     cracked_hashfiles_hashes_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
     if cracked_hashfiles_hashes_cnt > 0:
-        flash(str(cracked_hashfiles_hashes_cnt) + " instacracked Hashes!", 'success')
+        flash(f"{cracked_hashfiles_hashes_cnt:,} instacracked Hashes!", 'success')
     # Oppertunity for either a stored procedure or for some fancy queries.
 
     return render_template('jobs_assigned_hashfiles_cracked.html.j2', title='Jobs Assigned Hashfiles Cracked', hashfile=hashfile, job=job, cracked_hashfiles_hashes=cracked_hashfiles_hashes)
@@ -755,6 +799,23 @@ def jobs_summary(job_id):
     cracked_cnt = db.session.query(Hashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
     hash_total = db.session.query(Hashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile.id).count()
     cracked_rate = str(cracked_cnt) + '/' + str(hash_total)
+    # Representative hashcat mode for the hashfile -> a concise friendly name
+    # (same derivation as the assigned-hashfile view) to show next to the
+    # cracked count on the summary.
+    hash_mode = db.session.query(func.min(Hashes.hash_type)) \
+        .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+        .filter(HashfileHashes.hashfile_id == hashfile.id).scalar()
+    hashfile_hash_type = ''
+    if hash_mode is not None:
+        _names = {}
+        _f = JobsNewHashFileForm()
+        for _sel in (_f.hash_type, _f.pwdump_hash_type, _f.netntlm_hash_type,
+                     _f.kerberos_hash_type, _f.shadow_hash_type):
+            for _v, _lab in _sel.choices:
+                if _v is not None and str(_v) not in _names:
+                    _nm = _lab.split(') ', 1)[1] if ') ' in _lab else _lab
+                    _names[str(_v)] = _nm.split(' / ')[0].split(',')[0].strip()
+        hashfile_hash_type = _names.get(str(hash_mode), 'mode ' + str(hash_mode))
     hash_notification_cnt = db.session.query(HashNotifications).join(HashfileHashes, HashNotifications.hash_id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id == hashfile.id).count()
     hash_notification = db.session.query(HashNotifications).join(HashfileHashes, HashNotifications.hash_id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id == hashfile.id).first()
     job_notification = JobNotifications.query.filter_by(job_id = job.id).first()
@@ -762,18 +823,24 @@ def jobs_summary(job_id):
     job_notification = JobNotifications.query.filter_by(job_id=job_id).first()
 
     if form.validate_on_submit():
-        for job_task in job_tasks:
-            job_task.status = 'Ready'
-
-        job.status = 'Ready'
+        # "Create & Queue Job": create the job AND queue it in one step. Mirrors
+        # jobs_start — set the job and its tasks to Queued, stamp queued_at,
+        # propagate the job priority to each task, and pre-build each task's
+        # hashcat command so agents can pick up the work immediately.
+        job.status = 'Queued'
+        job.queued_at = datetime.now()
         job.updated_at = datetime.now()
+        for job_task in job_tasks:
+            job_task.status = 'Queued'
+            job_task.priority = job.priority
+            job_task.command = build_hashcat_command(job.id, job_task.task_id)
         db.session.commit()
 
-        flash('Job successfully created', 'success')
+        flash('Job created and queued', 'success')
 
         return redirect(url_for('jobs.jobs_list'))
 
-    return render_template('jobs_summary.html.j2', title='Job Summary', job=job, form=form, job_notification=job_notification, cracked_rate=cracked_rate, job_tasks=job_tasks, hash_notification_cnt=hash_notification_cnt, customer=customer, hashfile=hashfile, tasks=tasks, hash_notification=hash_notification, settings=settings, website=_job_uses_website_keywords(job_id))
+    return render_template('jobs_summary.html.j2', title='Job Summary', job=job, form=form, job_notification=job_notification, cracked_rate=cracked_rate, cracked_cnt=cracked_cnt, hash_total=hash_total, hashfile_hash_type=hashfile_hash_type, job_tasks=job_tasks, hash_notification_cnt=hash_notification_cnt, customer=customer, hashfile=hashfile, tasks=tasks, hash_notification=hash_notification, settings=settings, website=_job_uses_website_keywords(job_id))
 
 @jobs.route("/jobs/start/<int:job_id>", methods=['GET'])
 @login_required

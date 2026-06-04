@@ -149,6 +149,30 @@ def jinja_hex_decode(text):
     return bytes.fromhex(text).decode('latin-1')
 
 
+def jinja_commafy(value):
+    """jinja2 filter: render a quantity with thousands separators.
+
+    1000 -> '1,000', 1000000 -> '1,000,000'; values below 1000 are unchanged.
+    Ints and integer-valued strings format without a fractional part; real
+    floats keep theirs ('1,234.5'). Anything non-numeric (None, bools, or a
+    composite string like '5/10 (50%)') passes through untouched, so the filter
+    is safe to pipe onto any expression that *might* be a count.
+
+    Use for counts/totals throughout the UI. Do NOT use on a raw recovered
+    password — those can be all digits but are not quantities.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        pass
+    try:
+        return f"{float(value):,}"
+    except (TypeError, ValueError):
+        return value
+
+
 def create_app(testing=False, config_overrides=None):
     app = Flask(__name__)
     if testing:
@@ -258,6 +282,7 @@ def create_app(testing=False, config_overrides=None):
     app.register_blueprint(setup_blueprint)
 
     app.add_template_filter(jinja_hex_decode)
+    app.add_template_filter(jinja_commafy, 'commafy')
     app.add_template_global(get_application_version, get_application_version.__name__)
     # Expose a csrf_token() template global (no global CSRFProtect is installed) so the
     # account-settings modal in the layout can post to the CSRF-protected profile route.

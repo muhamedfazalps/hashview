@@ -41,7 +41,7 @@
                         </label>
                     </form>
                 </td>
-                <td class="center num">{{ jobs|selectattr('owner_id', 'equalto', user.id)|list|length }}</td>
+                <td class="center num">{{ jobs|selectattr('owner_id', 'equalto', user.id)|list|length | commafy }}</td>
                 <td style="color:var(--text-dim);">
                     {% if user.last_login_utc %}
                         <span class="rel-time mono" data-ts="{{ user.last_login_utc.strftime('%Y-%m-%dT%H:%M:%SZ') }}" title="{{ user.last_login_utc.strftime('%a, %b. %d %Y %I:%M:%S %Z') }}">…</span>
@@ -102,7 +102,7 @@
             ] %}
             <div style="text-align:center; padding:14px 6px; border:1px solid var(--border-soft); border-radius:10px; background:var(--surface-2); min-width:0;">
                 <div style="color:var(--text-mute); display:flex; justify-content:center;">{{ icon(stat.ico, size=16) }}</div>
-                <div class="mono" style="font-size:22px; color:var(--text); margin-top:6px;">{{ stat.n }}</div>
+                <div class="mono" style="font-size:22px; color:var(--text); margin-top:6px;">{{ stat.n | commafy }}</div>
                 <div class="mono" style="font-size:8.5px; letter-spacing:1px; color:var(--text-mute); margin-top:2px;">{{ stat.lbl }}</div>
             </div>
             {% endfor %}
@@ -111,7 +111,7 @@
         {# Jobs #}
         {% if u_jobs %}
         <div style="margin-top:22px;">
-            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('jobs', size=14) }} Jobs · {{ u_jobs|length }}</div>
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('jobs', size=14) }} Jobs · {{ u_jobs|length | commafy }}</div>
             {% for job in u_jobs %}
             <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
                 <span class="mono" style="color:var(--text-mute); font-size:11px; flex:none;">#{{ job.id }}</span>
@@ -128,7 +128,7 @@
         {# Hashfiles #}
         {% if u_hashfiles %}
         <div style="margin-top:18px;">
-            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('file', size=14) }} Hashfiles · {{ u_hashfiles|length }}</div>
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon('file', size=14) }} Hashfiles · {{ u_hashfiles|length | commafy }}</div>
             {% for hf in u_hashfiles %}
             <div class="card" style="margin-bottom:8px; padding:11px 14px; display:flex; align-items:center; gap:10px;">
                 <span style="color:var(--text-mute); display:inline-flex;">{{ icon('file', size=15) }}</span>
@@ -148,7 +148,7 @@
         ] %}
         {% if sec.rows %}
         <div style="margin-top:18px;">
-            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon(sec.ico, size=14) }} {{ sec.lbl }} · {{ sec.rows|length }}</div>
+            <div class="mono" style="display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:10px;">{{ icon(sec.ico, size=14) }} {{ sec.lbl }} · {{ sec.rows|length | commafy }}</div>
             {% for it in sec.rows %}
             <div class="card" style="margin-bottom:8px; padding:10px 14px; display:flex; align-items:center; gap:10px;">
                 <span style="color:var(--text-mute); display:inline-flex;">{{ icon(sec.ico, size=15) }}</span>

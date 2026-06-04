@@ -61,7 +61,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Task Groups</h1>
-        <div class="page-sub">// {{ task_groups|length }} preset bundle{{ '' if task_groups|length == 1 else 's' }} · queue many tasks in one click</div>
+        <div class="page-sub">// {{ task_groups|length | commafy }} preset bundle{{ '' if task_groups|length == 1 else 's' }} · queue many tasks in one click</div>
     </div>
     <button type="button" class="btn btn-primary" onclick="document.getElementById('new-group-modal').showModal()">{{ icon('plus', size=15) }} New group</button>
 </div>
@@ -82,7 +82,7 @@
                     {{ icon('users', size=12) }} {{ group_owner.get(task_group.id, '—') if group_owner is defined else '—' }}
                 </div>
             </div>
-            <span class="badge dim" style="flex:none;">{{ gtasks|length }} task{{ '' if gtasks|length == 1 else 's' }}</span>
+            <span class="badge dim" style="flex:none;">{{ gtasks|length | commafy }} task{{ '' if gtasks|length == 1 else 's' }}</span>
         </div>
 
         {# numbered task list — shows ~7 rows, scrolls within the card beyond that #}

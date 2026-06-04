@@ -8,7 +8,10 @@
         // support all other attack types
         if(Index.value == 'add_new')
         {
-          document.getElementById('new_customer_div').style.display = 'inline';
+          // 'block' (not 'inline') so the .field's margin-bottom:18px applies — an
+          // inline element drops vertical margins, which made Job Priority butt
+          // right up against the Customer Name field.
+          document.getElementById('new_customer_div').style.display = 'block';
         }
         else
         {
