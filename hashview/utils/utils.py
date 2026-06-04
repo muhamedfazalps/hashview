@@ -282,7 +282,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
             elif file_type == 'pwdump':
                 # do we let user select LM so that we crack those instead of NTLM?
                 # First extracting usernames so we can filter out machine accounts
-                if re.search(r"\$$", line.split(':')[0]) or re.search(r"\$_history", line.split(':')[0]):
+                if re.search(r"\$$", line.split(':')[0]) or "_history" in line.split(':')[0]:
                 #if '$' in line.split(':')[0]:
                     continue
                 else:
@@ -538,7 +538,7 @@ def update_job_task_status(jobtask_id, status):
     job = Jobs.query.get(jobtask.job_id)
     if job.status == 'Queued':
         job.status = 'Running'
-        job.started_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        job.started_at = datetime.now()
         db.session.commit()
 
     # TODO
@@ -552,12 +552,12 @@ def update_job_task_status(jobtask_id, status):
 
     if done:
         job.status = 'Completed'
-        job.ended_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        job.ended_at = datetime.now()
         db.session.commit()
 
-        start_time = datetime.strptime(str(job.started_at), '%Y-%m-%d %H:%M:%S')
-        end_time = datetime.strptime(str(job.ended_at), '%Y-%m-%d %H:%M:%S')
-        durration = abs(end_time - start_time).seconds # So dumb you cant conver this to minutes, only resolution is seconds or days :(
+        start_time = job.started_at          # DateTime columns are already datetime objects
+        end_time = job.ended_at
+        durration = abs(end_time - start_time).seconds if (start_time and end_time) else 0  # So dumb you cant conver this to minutes, only resolution is seconds or days :(
 
         hashfile = Hashfiles.query.get(job.hashfile_id)
         hashfile.runtime += durration

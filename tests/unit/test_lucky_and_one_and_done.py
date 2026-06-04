@@ -221,7 +221,7 @@ def test_one_and_done_cancels_remaining_tasks_when_hash_recovered(
     db_session.add_all([t1, t2])
     db_session.commit()
 
-    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    started_at = datetime.now()   # a datetime object (SQLite rejects strings in DateTime cols)
 
     job = Jobs(
         name="J",
@@ -259,7 +259,7 @@ def test_one_and_done_cancels_remaining_tasks_when_hash_recovered(
     db_session.add(agent)
     db_session.commit()
 
-    client.set_cookie("uuid", "agent-uuid-1")
+    client.set_cookie("uuid", "agent-uuid-1", domain="localhost.test")
 
     resp = client.post(
         f"/v1/uploadCrackFile/{jt1.id}",
