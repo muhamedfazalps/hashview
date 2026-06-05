@@ -96,7 +96,11 @@ def get_hashfile(hashfile_id):
     return http.get('/v1/hashfiles/' + str(hashfile_id))
 
 def uploadCrackFile(file_path, job_task_id):
-    with open(file_path, 'r') as file:
+    # The crack file is hashcat's outfile (hash:hex_plain). For NetNTLM/Kerberos
+    # the hash portion embeds a username that can carry arbitrary non-UTF-8 bytes,
+    # so decode tolerantly (errors='replace') instead of crashing the whole upload
+    # on one stray byte and silently dropping every recovered crack in the file.
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
     # we use jobtask to determin hashtype server side. 
         #response =  http.post('/v1/uploadCrackFile/' + str(task_id) + "/" + str(hash_type), data={'file': file.read()})
         response = http.post('/v1/uploadCrackFile/' + str(job_task_id), data = {'file': file.read()})

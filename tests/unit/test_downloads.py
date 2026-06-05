@@ -11,11 +11,8 @@ real control dirs are touched (send_from_directory resolves abspath(dirname)).
 """
 
 import gzip
-import os
 
-import pytest
-
-from hashview.models import db, Users, Hashfiles, HashfileHashes, Hashes, Wordlists, Rules
+from hashview.models import Hashes, HashfileHashes, Hashfiles, Rules, Users, Wordlists, db
 
 
 def _admin():
@@ -32,18 +29,14 @@ def _login(client, user):
         sess["_fresh"] = True
 
 
-def _hex(s):
-    return s.encode("latin-1").hex()
-
-
 def _make_hashfile_with_hashes(owner_id):
-    """3 hashes: 2 cracked (with hex plaintext), 1 uncracked."""
+    """3 hashes: 2 cracked (plaintext stored as plain text), 1 uncracked."""
     hf = Hashfiles(name="corp dump", customer_id=1, owner_id=owner_id)
     db.session.add(hf)
     db.session.commit()
     specs = [
-        ("aaa111", _hex("Passw0rd!"), True),
-        ("bbb222", _hex("letmein"), True),
+        ("aaa111", "Passw0rd!", True),
+        ("bbb222", "letmein", True),
         ("ccc333", None, False),
     ]
     for ct, pt, cracked in specs:

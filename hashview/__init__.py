@@ -126,6 +126,13 @@ def setup_defaults_if_needed():
         logger.exception('Compressing existing wordlists failed.')
 
     try:
+        # One-time: convert legacy hex-encoded usernames/plaintext to UTF-8 text.
+        from hashview.setup import decode_legacy_hex_if_needed
+        decode_legacy_hex_if_needed(db)
+    except Exception:
+        logger.exception('Decoding legacy hex usernames/plaintext failed.')
+
+    try:
         from hashview.setup import add_default_rules, default_rules_need_added
         if default_rules_need_added(db):
             logger.info('Adding Default Rules.')
@@ -143,10 +150,14 @@ def setup_defaults_if_needed():
 
 
 def jinja_hex_decode(text):
-    """ jinja2 filter to convert hex to bytes """
-    if not text:
-        return text #if all hashes in a file are already cracked
-    return bytes.fromhex(text).decode('latin-1')
+    """jinja2 filter for displaying usernames/plaintext.
+
+    These are now stored as plain UTF-8 text (no more latin-1 hex), so this is a
+    passthrough — kept (with its historical name) so existing
+    ``{{ value | jinja_hex_decode }}`` templates keep working without edits.
+    Non-UTF-8 binary values are stored as hashcat-style ``$HEX[...]`` and shown
+    as-is."""
+    return text
 
 
 def jinja_commafy(value):

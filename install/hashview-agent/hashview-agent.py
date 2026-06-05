@@ -413,7 +413,10 @@ def convert_speed(speed):
 
 def hashcatParser(filepath):
     status = {}
-    hashcat_output = open(filepath, 'r')
+    # hashcat's stdout can contain arbitrary non-UTF-8 bytes (recovered plaintext
+    # / candidate bytes). We only need the ASCII --status-json lines, so decode
+    # tolerantly (errors='replace') instead of crashing on a stray byte.
+    hashcat_output = open(filepath, 'r', encoding='utf-8', errors='replace')
     for line in hashcat_output:
         # We itterate through entire file with the last value taking precidence
         if line.startswith('{'):

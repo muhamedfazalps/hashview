@@ -84,13 +84,8 @@ def home():
         hash_type_names = {}
 
     def _hexdec(v):
-        # hashview stores usernames/plaintexts hex-encoded; decode safely.
-        if not v:
-            return ''
-        try:
-            return bytes.fromhex(v).decode('latin-1')
-        except (ValueError, TypeError):
-            return v
+        # usernames/plaintexts are stored as plain text now; return as-is.
+        return v or ''
 
     user_names = {u.id: ((u.first_name or '') + ' ' + (u.last_name or '')).strip() for u in users}
 

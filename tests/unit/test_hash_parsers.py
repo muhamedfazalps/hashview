@@ -15,7 +15,7 @@ conftest.
 
 import pytest
 
-from hashview.models import HashfileHashes, Hashes, Hashfiles, Users, db
+from hashview.models import Hashes, HashfileHashes, Hashfiles, Users, db
 from hashview.utils.utils import import_hashfilehashes
 
 
@@ -39,8 +39,9 @@ def _make_user_and_hashfile() -> int:
     return hashfile.id
 
 
-def _decode_username(stored_hex: str) -> str:
-    return bytes.fromhex(stored_hex).decode("latin-1")
+def _decode_username(stored: str) -> str:
+    # usernames are stored as plain UTF-8 text now (no more latin-1 hex)
+    return stored
 
 
 def _all_usernames(hashfile_id: int):
@@ -153,6 +154,28 @@ def test_hash_only_non_1000_preserves_case(app, tmp_path):
     )
     assert len(rows) == 1
     assert rows[0].ciphertext == "5F4DCC3B5AA765D61D8327DEB882CF99"
+
+
+@pytest.mark.security
+def test_user_hash_ntlm_lowercases_ciphertext(app, tmp_path):
+    """user_hash NTLM import must store the hash lowercased so it matches
+    hashcat's lowercase crack output. The crack-upload lookup is
+    ``sub_ciphertext == md5(ciphertext)`` and md5 is case-sensitive, so an
+    uppercase-stored hash would never be recorded as recovered."""
+    hashfile_id = _make_user_and_hashfile()
+    path = tmp_path / "userhash.txt"
+    # emoji username + UPPERCASE NTLM('password'); hashcat returns it lowercased
+    path.write_text("\U0001f63a:8846F7EAEE8FB117AD06BDD830B7586C\n", encoding="utf-8")
+
+    import_hashfilehashes(
+        hashfile_id=hashfile_id,
+        hashfile_path=str(path),
+        file_type="user_hash",
+        hash_type="1000",
+    )
+
+    row = Hashes.query.first()
+    assert row.ciphertext == "8846f7eaee8fb117ad06bdd830b7586c"   # stored lowercased
 
 
 @pytest.mark.security

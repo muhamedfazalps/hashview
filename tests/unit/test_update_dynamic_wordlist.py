@@ -18,8 +18,8 @@ import pytest
 
 from hashview.models import (
     Customers,
-    HashfileHashes,
     Hashes,
+    HashfileHashes,
     Users,
     Wordlists,
     db,
@@ -57,14 +57,13 @@ def _make_wordlist(app, tmp_path, name: str) -> Wordlists:
 
 
 def _write_hash(plaintext_bytes: bytes, hash_type: int = 1000, ciphertext: str = None):
-    """Insert a cracked hash row whose plaintext is the hex of the given bytes."""
-    plaintext_hex = plaintext_bytes.hex()
+    """Insert a cracked hash row whose plaintext is stored as plain text."""
     h = Hashes(
         sub_ciphertext="0" * 32,
         ciphertext=ciphertext or ("a" * 32),
         hash_type=hash_type,
         cracked=True,
-        plaintext=plaintext_hex,
+        plaintext=plaintext_bytes.decode("utf-8"),
     )
     db.session.add(h)
     db.session.commit()
@@ -89,9 +88,9 @@ def test_passwords_branch_writes_cracked_plaintexts(app, tmp_path):
 def test_usernames_branch_splits_domain_user(app, tmp_path):
     _make_user(app)
     wl = _make_wordlist(app, tmp_path, "(DYNAMIC) All Usernames")
-    # HashfileHashes stores username as hex of latin-1 bytes
+    # HashfileHashes stores username as plain text
     for raw in (b"alice", b"CORP\\bob", b"carol"):
-        hfh = HashfileHashes(hash_id=1, hashfile_id=1, username=raw.hex())
+        hfh = HashfileHashes(hash_id=1, hashfile_id=1, username=raw.decode("utf-8"))
         db.session.add(hfh)
     db.session.commit()
 

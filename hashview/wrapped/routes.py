@@ -46,9 +46,9 @@ def wrapped_list():
     longest_password_all_table = []
     for entry in longest_password_all_table_raw:
         dict_entry = {}
-        dict_entry['length'] = len(bytes.fromhex(entry.plaintext).decode('latin-1'))
+        dict_entry['length'] = len(entry.plaintext or '')
         dict_entry['recovered_at'] = entry.recovered_at
-        dict_entry['plaintext'] = bytes.fromhex(entry.plaintext).decode('latin-1')
+        dict_entry['plaintext'] = entry.plaintext
         dict_entry['email_address'] = entry.email_address
         longest_password_all_table.append(dict_entry)
 
@@ -64,8 +64,7 @@ def wrapped_list():
     )
 
     if longest_password_personal_raw:
-        longest_password_personal = bytes.fromhex(
-            longest_password_personal_raw.plaintext).decode('latin-1')
+        longest_password_personal = longest_password_personal_raw.plaintext
     else:
         longest_password_personal = ''
 
