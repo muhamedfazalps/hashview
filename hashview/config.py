@@ -13,12 +13,14 @@ class Config:
     # Server Config
     SERVER_NAME = file_config['SERVER']['SERVER_NAME']
 
-    # MYSQL Config
+    # MYSQL Config. charset=utf8mb4 so the connection can carry 4-byte UTF-8
+    # (emojis etc.) end-to-end — required now that usernames/plaintext are stored
+    # as text rather than hex.
     SQLALCHEMY_DATABASE_URI = (
         'mysql+mysqlconnector://'
         + file_config['database']['username'] + ':'
         + file_config['database']['password'] + '@'
-        + file_config['database']['host'] + '/hashview'
+        + file_config['database']['host'] + '/hashview?charset=utf8mb4'
     )
 
     # SMTP Config

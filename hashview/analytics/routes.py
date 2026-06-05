@@ -84,15 +84,15 @@ def get_analytics():
 
     for entry in fig2_cracked_hashes:
         flags = 0
-        if len(bytes.fromhex(entry[0]).decode('latin-1')) < 8:
+        if len(entry[0]) < 8:
             flags = -3 # set to negative 3 so that there's no way we can meet complexity
-        if re.search(r"[a-z]", bytes.fromhex(entry[0]).decode('latin-1')):
+        if re.search(r"[a-z]", entry[0]):
             flags = flags + 1
-        if re.search(r"[A-Z]", bytes.fromhex(entry[0]).decode('latin-1')):
+        if re.search(r"[A-Z]", entry[0]):
             flags = flags + 1
-        if re.search(r"[0-9]", bytes.fromhex(entry[0]).decode('latin-1')):
+        if re.search(r"[0-9]", entry[0]):
             flags = flags + 1
-        if re.search(r"[^0-9A-Za-z]", bytes.fromhex(entry[0]).decode('latin-1')):
+        if re.search(r"[^0-9A-Za-z]", entry[0]):
             flags = flags + 1
 
         if flags < 3:
@@ -189,7 +189,7 @@ def get_analytics():
     other = 0
 
     for entry in fig2_cracked_hashes:
-        tmp_plaintext = bytes.fromhex(entry[0]).decode('latin-1')
+        tmp_plaintext = entry[0]
         tmp_plaintext = re.sub(r"[A-Z]", 'U', tmp_plaintext)
         tmp_plaintext = re.sub(r"[a-z]", 'L', tmp_plaintext)
         tmp_plaintext = re.sub(r"[0-9]", 'D', tmp_plaintext)
@@ -282,10 +282,10 @@ def get_analytics():
     fig5_data = {}
 
     for entry in fig5_cracked_hashes:
-        if len(bytes.fromhex(entry[0]).decode('latin-1')) in fig5_data:
-            fig5_data[len(bytes.fromhex(entry[0]).decode('latin-1'))] += 1
+        if len(entry[0]) in fig5_data:
+            fig5_data[len(entry[0])] += 1
         else:
-            fig5_data[len(bytes.fromhex(entry[0]).decode('latin-1'))] = 1
+            fig5_data[len(entry[0])] = 1
 
     fig5_labels =[]
     fig5_values = []
@@ -313,11 +313,11 @@ def get_analytics():
 
     blank_label = 'Blank (unset)'
     for entry in fig6_cracked_hashes:
-        if len(bytes.fromhex(entry[0]).decode('latin-1')) > 0:
-            if bytes.fromhex(entry[0]).decode('latin-1') in fig6_data:
-                fig6_data[bytes.fromhex(entry[0]).decode('latin-1')] += 1
+        if len(entry[0]) > 0:
+            if entry[0] in fig6_data:
+                fig6_data[entry[0]] += 1
             else:
-                fig6_data[bytes.fromhex(entry[0]).decode('latin-1')] = 1
+                fig6_data[entry[0]] = 1
         else:
             if blank_label in fig6_data:
                 fig6_data[blank_label] += 1
@@ -341,7 +341,7 @@ def get_analytics():
     fig7_data = {}
     fig7_total = 0
     for entry in fig6_cracked_hashes:
-        tmp_plaintext = bytes.fromhex(entry[0]).decode('latin-1')
+        tmp_plaintext = entry[0]
         tmp_plaintext = re.sub(r"[A-Z]", 'U', tmp_plaintext)
         tmp_plaintext = re.sub(r"[a-z]", 'L', tmp_plaintext)
         tmp_plaintext = re.sub(r"[0-9]", 'D', tmp_plaintext)
@@ -381,14 +381,14 @@ def get_analytics():
     for entry in fig8_cracked_hashes:
         if entry[1] and entry[0]:
             # check if username has domain in it
-            if '\\' in bytes.fromhex(entry[1]).decode('latin-1'):
-                username = bytes.fromhex(entry[1]).decode('latin-1').split('\\')[1]
-            elif '*' in  bytes.fromhex(entry[1]).decode('latin-1'):
-                username = bytes.fromhex(entry[1]).decode('latin-1').split('*')[1]
+            if '\\' in entry[1]:
+                username = entry[1].split('\\')[1]
+            elif '*' in  entry[1]:
+                username = entry[1].split('*')[1]
             else:
-                username = bytes.fromhex(entry[1]).decode('latin-1')
-            if bytes.fromhex(entry[0]).decode('latin-1') == username:
-                fig8_table.append(bytes.fromhex(entry[0]).decode('latin-1'))
+                username = entry[1]
+            if entry[0] == username:
+                fig8_table.append(entry[0])
     
     # Figure 9 (Users that share the same Password. Note some users may not have had their password recoverd to show up in this list)
     if customer_id:
@@ -449,8 +449,8 @@ def get_analytics():
     fig9_table = []
     for entry in fig9_usernames:
         if entry is not None:
-            fig9_table.append(bytes.fromhex(entry).decode('latin-1'))
-        #print(f"Username: {bytes.fromhex(entry).decode('latin-1')}")
+            fig9_table.append(entry)
+        #print(f"Username: {entry}")
 
 
     return render_template('analytics.html.j2',
@@ -529,14 +529,14 @@ def analytics_download_hashes():
     if request.args.get('type') == 'found':
         for entry in cracked_hashes:
             if entry[1].username:
-                outfile.write(str(bytes.fromhex(entry[1].username).decode('latin-1')) + ":" + str(entry[0].ciphertext) + ':' + str(bytes.fromhex(entry[0].plaintext).decode('latin-1')) + "\n")
+                outfile.write(str(entry[1].username) + ":" + str(entry[0].ciphertext) + ':' + str(entry[0].plaintext) + "\n")
             else:
-                outfile.write(str(entry[0].ciphertext) + ':' + str(bytes.fromhex(entry[0].plaintext).decode('latin-1')) + "\n")
+                outfile.write(str(entry[0].ciphertext) + ':' + str(entry[0].plaintext) + "\n")
 
     if request.args.get('type') == 'left':
         for entry in uncracked_hashes:
             if entry[1].username:
-                outfile.write(str(bytes.fromhex(entry[1].username).decode('latin-1')) + ":" + str(entry[0].ciphertext) + "\n")
+                outfile.write(str(entry[1].username) + ":" + str(entry[0].ciphertext) + "\n")
             else:
                 outfile.write(str(entry[0].ciphertext) + "\n")
 
@@ -640,7 +640,7 @@ def analytics_download_fig9():
             if entry:
                 # Decode possible hex‑encoded usernames
                 try:
-                    decoded = bytes.fromhex(entry).decode('latin-1')
+                    decoded = entry
                 except Exception:
                     decoded = entry
                 outfile.write(f"{decoded}\n")
@@ -703,7 +703,7 @@ def analytics_download_fig8():
     for entry in fig8_cracked_hashes:
         if entry[1] and entry[0]:
             # Decode username (handle possible domain delimiters)
-            raw_username = bytes.fromhex(entry[1]).decode('latin-1')
+            raw_username = entry[1]
             if '\\' in raw_username:
                 username = raw_username.split('\\')[1]
             elif '*' in raw_username:
@@ -712,7 +712,7 @@ def analytics_download_fig8():
                 username = raw_username
 
             # Decode password
-            password = bytes.fromhex(entry[0]).decode('latin-1')
+            password = entry[0]
 
             if username == password:
                 fig8_usernames.append(username)

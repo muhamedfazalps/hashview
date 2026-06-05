@@ -4,8 +4,9 @@ import secrets
 from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
 
-from hashview.models import Rules, Settings, Tasks, Users, Wordlists
+from hashview.models import Hashes, HashfileHashes, Rules, Settings, Tasks, Users, Wordlists
 from hashview.utils.utils import (
+    bytes_to_text,
     compress_to_gz,
     get_filehash,
     get_filesize,
@@ -159,6 +160,70 @@ def compress_existing_wordlists_if_needed(db :SQLAlchemy):
         except Exception:
             db.session.rollback()
             logger.exception('Failed to compress wordlist %s; leaving it untouched.', getattr(wordlist, 'id', '?'))
+
+
+def _decode_hex_column(db, model, col_name, logger):
+    """Page through `model` by id, decoding the hex-stored `col_name` to text
+    (UTF-8, or $HEX[...] for non-UTF-8 bytes). Commits per page so a very large
+    table doesn't load into memory or hold one giant transaction. Values that
+    aren't valid hex (already text) are left untouched."""
+    col = getattr(model, col_name)
+    max_len = getattr(col.type, 'length', None)   # VARCHAR(n) limit, if any
+    last_id = 0
+    converted = 0
+    while True:
+        rows = (db.session.query(model)
+                .filter(model.id > last_id, col.isnot(None))
+                .order_by(model.id).limit(2000).all())
+        if not rows:
+            break
+        for row in rows:
+            last_id = row.id
+            value = getattr(row, col_name)
+            try:
+                decoded = bytes_to_text(bytes.fromhex(value))
+            except (ValueError, TypeError):
+                continue                      # already text / not hex -> leave it
+            if decoded == value:
+                continue
+            # A non-UTF-8 value becomes $HEX[...] (6 + 2*nbytes chars), which can
+            # outgrow the column. Leave the original hex rather than overflow the
+            # column (MySQL strict mode would 1406 and stall the whole one-time
+            # backfill in a retry loop) -- no crash, no data loss.
+            if max_len is not None and len(decoded) > max_len:
+                logger.warning('Leaving %s.%s id=%s hex-encoded: decoded value (%d chars) '
+                               'exceeds column limit %d.', model.__tablename__, col_name,
+                               row.id, len(decoded), max_len)
+                continue
+            setattr(row, col_name, decoded)
+            converted += 1
+        db.session.commit()
+    return converted
+
+
+def decode_legacy_hex_if_needed(db :SQLAlchemy):
+    """One-time conversion of legacy hex-encoded usernames + plaintext to text.
+
+    These columns used to hold latin-1 (usernames / manual NTLM) or raw-bytes
+    (agent hex_plain) hex; they're now stored as plain UTF-8 text ($HEX[...] for
+    non-UTF-8). This decodes every existing row once. Gated by
+    ``Settings.passwords_decoded`` (migration sets existing rows to False -> run;
+    fresh installs default True -> skip). The flag is set only after a full pass,
+    so a crash re-runs; the per-page commits make progress durable and the
+    not-valid-hex guard makes re-runs largely a no-op on already-decoded rows."""
+    from flask import current_app
+    logger = current_app.logger
+
+    settings = Settings.query.first()
+    if not settings or settings.passwords_decoded:
+        return
+
+    logger.info('Decoding legacy hex usernames/plaintext to text (one-time)...')
+    n_users = _decode_hex_column(db, HashfileHashes, 'username', logger)
+    n_plain = _decode_hex_column(db, Hashes, 'plaintext', logger)
+    settings.passwords_decoded = True
+    db.session.commit()
+    logger.info('Legacy hex decode complete: %s usernames, %s plaintext converted.', n_users, n_plain)
 
 
 # The canonical dynamic wordlists. Order matters only for the seed-file

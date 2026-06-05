@@ -128,6 +128,11 @@ class Settings(db.Model):
     pushover_enabled = db.Column(db.Boolean, nullable=False, default=True)
     slack_enabled = db.Column(db.Boolean, nullable=False, default=False)
     slack_bot_token = db.Column(db.String(255), nullable=True)
+    # One-time flag for the hex->UTF-8 backfill of legacy usernames/plaintext.
+    # Model default True so FRESH installs (new Settings row) skip the backfill;
+    # the migration adds it with server_default 0 so EXISTING rows get flagged
+    # for the one-time decode on next launch (see decode_legacy_hex_if_needed).
+    passwords_decoded = db.Column(db.Boolean, nullable=False, default=True)
 
 class Jobs(db.Model):
     """Class object to represent Jobs"""

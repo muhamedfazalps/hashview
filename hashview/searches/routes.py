@@ -40,10 +40,10 @@ def searches_list():
             hash_results = db.session.query(Hashes).filter(Hashes.ciphertext==searchForm.query.data).all()
             hashfile_results = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.ciphertext==searchForm.query.data).all()
         elif searchForm.search_type.data == 'user':
-            hashfile_results = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.username.like('%' + searchForm.query.data.encode('latin-1').hex() + '%')).all()
+            hashfile_results = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.username.like('%' + searchForm.query.data + '%')).all()
         elif searchForm.search_type.data == 'password':
-            hash_results = db.session.query(Hashes).filter(Hashes.plaintext == searchForm.query.data.encode('latin-1').hex()).all()
-            hashfile_results = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.plaintext == searchForm.query.data.encode('latin-1').hex()).all()
+            hash_results = db.session.query(Hashes).filter(Hashes.plaintext == searchForm.query.data).all()
+            hashfile_results = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.plaintext == searchForm.query.data).all()
         else:
             flash('Invalid search option.', 'warning')
             return redirect(url_for('searches.searches_list'))

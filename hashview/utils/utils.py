@@ -342,11 +342,43 @@ def import_hash_only(line, hash_type):
     db.session.commit()
     return new_hash.id
 
+def bytes_to_text(raw):
+    """Decode recovered bytes for storage/display: UTF-8 when valid, else the
+    lossless hashcat-style ``$HEX[<hex>]`` marker. Usernames + plaintext are
+    stored as the returned text (no more latin-1 hex), so all Unicode (emojis,
+    foreign scripts, combining marks) round-trips and arbitrary binary bytes are
+    still preserved exactly."""
+    if raw is None:
+        return None
+    try:
+        return raw.decode('utf-8')
+    except UnicodeDecodeError:
+        return '$HEX[' + raw.hex() + ']'
+
+def text_from_field(value):
+    """Normalise a str field read from a hashfile (opened with
+    ``errors='surrogateescape'``) into storage text: valid UTF-8 stays text;
+    bytes that aren't valid UTF-8 become ``$HEX[...]``. A no-op for plain text."""
+    if value is None:
+        return None
+    return bytes_to_text(value.encode('utf-8', 'surrogateescape'))
+
+def hexplain_to_text(hexplain):
+    """Decode hashcat's hex_plain field (``--outfile-format`` code 3) to storage
+    text. The agent always sends hex of the raw recovered bytes; fall back to
+    treating the value as already-text if it somehow isn't valid hex."""
+    s = (hexplain or '').strip()
+    try:
+        return bytes_to_text(bytes.fromhex(s))
+    except ValueError:
+        return s
+
 def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
     """Function to hashfile"""
 
-    # Open file
-    file = open(hashfile_path)
+    # Open file. errors='surrogateescape' so a non-UTF-8 hashfile never crashes
+    # on read; each stored field is normalised to text via text_from_field().
+    file = open(hashfile_path, encoding='utf-8', errors='surrogateescape')
     lines = file.readlines()
 
     # for line in file,
@@ -381,7 +413,13 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
                         hash_id = import_hash_only(line, hash_type)
                         username = line.split(':')[0]
                     else:
-                        hash_id = import_hash_only(line=line.split(':',1)[1].rstrip(), hash_type=hash_type)
+                        # hashcat emits hex hashes (e.g. NTLM) lowercased, so store
+                        # them lowercased too -- otherwise the md5(ciphertext) lookup
+                        # on crack upload misses (mirrors the hash_only path above).
+                        hash_value = line.split(':', 1)[1].rstrip()
+                        if hash_type in ('300', '1731', '1000'):
+                            hash_value = hash_value.lower()
+                        hash_id = import_hash_only(line=hash_value, hash_type=hash_type)
                         username = line.split(':')[0]
                 else:
                     return False
@@ -426,7 +464,7 @@ def import_hashfilehashes(hashfile_id, hashfile_path, file_type, hash_type):
             if username is None:
                 hashfilehashes = HashfileHashes(hash_id=hash_id, hashfile_id=hashfile_id)
             else:
-                hashfilehashes = HashfileHashes(hash_id=hash_id, username=username.encode('latin-1').hex(), hashfile_id=hashfile_id)
+                hashfilehashes = HashfileHashes(hash_id=hash_id, username=text_from_field(username), hashfile_id=hashfile_id)
             db.session.add(hashfilehashes)
             db.session.commit()
 
@@ -480,17 +518,20 @@ def update_dynamic_wordlist(wordlist_id, job_id=None):
         _generate_website_keywords(wordlist, job_id)
     else:
         # DB-derived dynamic wordlists: rewrite wordlist.path in place.
-        file = open(wordlist.path, 'w')
+        # Usernames/plaintext are stored as text now; write them directly
+        # (UTF-8). $HEX[...] values are valid hashcat wordlist entries too.
+        file = open(wordlist.path, 'w', encoding='utf-8')
         if 'Passwords' in wordlist.name:
             plains = Hashes.query.filter_by(cracked=True).distinct('plaintext').with_entities(Hashes.plaintext)
             for entry in plains:
-                file.write(str(bytes.fromhex(entry.plaintext).decode('latin-1')) + '\n')
+                if entry.plaintext is not None:
+                    file.write(entry.plaintext + '\n')
         elif 'Usernames' in wordlist.name:
             usernames = HashfileHashes.query.distinct('username')
             username_set = set()
             for entry in usernames:
                 if entry.username:
-                    username_string = str(bytes.fromhex(entry.username).decode('latin-1'))
+                    username_string = entry.username
                     if '\\' in username_string:
                         username_set.add(username_string.split('\\')[0])
                         username_set.add(username_string.split('\\')[1])

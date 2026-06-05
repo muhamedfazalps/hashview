@@ -25,13 +25,9 @@ hashfiles = Blueprint('hashfiles', __name__)
 
 
 def _decode_hex(value):
-    """Decode a hex-stored plaintext/username to its latin-1 string."""
-    if not value:
-        return ''
-    try:
-        return bytes.fromhex(value).decode('latin-1')
-    except (ValueError, TypeError):
-        return value
+    """Plaintext/username are stored as plain text now; return as-is.
+    (Kept so the download formatters can keep calling it.)"""
+    return value or ''
 
 
 # Download/export formats offered by the hashfile download modal.

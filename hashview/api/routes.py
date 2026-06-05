@@ -38,10 +38,12 @@ from hashview.utils.utils import (
     build_hashcat_command,
     compress_to_gz,
     get_md5_hash,
+    hexplain_to_text,
     import_hashfilehashes,
     ingest_static_wordlist_file,
     notify_admins,
     process_recovered_hash_notifications,
+    text_from_field,
     update_dynamic_wordlist,
     update_job_task_status,
     validate_hash_only_hashfile,
@@ -881,8 +883,6 @@ def v1_api_put_jobtask_crackfile_upload(task_id, hash_type):
     for entry in file_contents['file'].split('\n'):
         if ':' in entry:
             encoded_plaintext = entry.split(':')[-1]
-            #plaintext = bytes.fromhex(encoded_plaintext.rstrip())
-            plaintext = encoded_plaintext.rstrip().upper()
             elements = entry.split(':')
             # Remove cracked hash
             elements.pop()
@@ -894,8 +894,7 @@ def v1_api_put_jobtask_crackfile_upload(task_id, hash_type):
             record = Hashes.query.filter_by(hash_type=hash_type, sub_ciphertext=get_md5_hash(ciphertext), cracked='0').first()
             if record:
                 try:
-                    #record.plaintext = plaintext.decode('latin-1')
-                    record.plaintext = plaintext
+                    record.plaintext = hexplain_to_text(encoded_plaintext)
                     record.cracked = 1
                     #print('i should be updating the datetime')
                     record.recovered_at = datetime.today()
@@ -953,7 +952,6 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
     for entry in file_contents['file'].split('\n'):
         if ':' in entry:
             encoded_plaintext = entry.split(':')[-1]
-            plaintext = encoded_plaintext.rstrip().upper()
             elements = entry.split(':')
             # Remove cracked hash
             elements.pop()
@@ -972,8 +970,7 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
                 record = Hashes.query.filter_by(hash_type=hash_type, sub_ciphertext=get_md5_hash(ciphertext), cracked='0').first()
             if record:
                 try:
-                    #record.plaintext = plaintext.decode('latin-1')
-                    record.plaintext = plaintext
+                    record.plaintext = hexplain_to_text(encoded_plaintext)
                     record.cracked = 1
                     #print('i should be updating the datetime')
                     record.recovered_at = datetime.today()
@@ -1077,7 +1074,7 @@ def v1_api_search():
                 msg = {
                     'hash_type': cracked_hash.hash_type,
                     'hash': search_json['hash'],
-                    'plaintext': bytes.fromhex(cracked_hash.plaintext).decode('latin-1')
+                    'plaintext': cracked_hash.plaintext
                 }
                 message = {
                     'status': 200,
@@ -1176,13 +1173,16 @@ def v1_api_hashes_import(hash_type):
 
         # import contents from file
         try:
-            with open(file_path) as f:
+            with open(file_path, encoding='utf-8', errors='surrogateescape') as f:
                 for line in f:
-                    ciphertext = line.split(':')[0]
-                    plaintext = line.split(':')[1:]
+                    line = line.rstrip('\r\n')
+                    parts = line.split(':')
+                    ciphertext = parts[0]
+                    # everything after the first ':' is the plaintext (it may itself contain ':')
+                    plaintext = ':'.join(parts[1:])
 
-                    # encipher plaintext and compare cipher text
-                    pw_bytes = plaintext.encode('utf-16le')
+                    # encipher plaintext and compare cipher text (NTLM = MD4(UTF-16LE(pw)))
+                    pw_bytes = plaintext.encode('utf-16le', 'surrogatepass')
                     md4_hasher = hashlib.new('md4', pw_bytes)
                     digest = md4_hasher.digest()
 
@@ -1191,8 +1191,7 @@ def v1_api_hashes_import(hash_type):
                         record = Hashes.query.filter_by(hash_type=hash_type, sub_ciphertext=get_md5_hash(ciphertext), cracked='0').first()
                         if record:
                             try:
-                                encoded_plaintext = plaintext.encode('latin-1').hex()
-                                record.plaintext = encoded_plaintext 
+                                record.plaintext = text_from_field(plaintext)
                                 record.cracked = 1
                                 record.recovered_at = datetime.today()
                                 record.recovered_by = user.id
@@ -1201,7 +1200,7 @@ def v1_api_hashes_import(hash_type):
                                 return jsonify({
                                     'status': 500,
                                     'type': 'Error',
-                                    'msg': f'Failed to import following cracked hash {str(encoded_plaintext)}: {str(error)}'
+                                    'msg': f'Failed to import following cracked hash {str(ciphertext)}: {str(error)}'
                                 })  
                     else:
                         return jsonify({
