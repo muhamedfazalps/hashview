@@ -31,11 +31,6 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-    transition: transform 0.3s ease;
-}
-
-.card:hover {
-    transform: translateY(-5px);
 }
 
 /* Pulse animation for danger cards - fading border */

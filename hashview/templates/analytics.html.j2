@@ -3,545 +3,593 @@
 {% block title %}Analytics · Hashview{% endblock %}
 
 {% block head %}
-{# Self-hosted Chart.js 3.1.0 (offline-safe). NOTE: kept at v3 — analytics' chart JS and the
-   extendChart() doughnut monkeypatch target the v3 API; the vendored js/chart.min.js is v2.9.4
-   (used by the dashboard) and is NOT API-compatible here, hence the dedicated 3.1.0 file. #}
-<script src="{{ url_for('static', filename='js/chart-3.1.0.min.js') }}"></script>
 <style>
-    .download_btn { color: var(--text-mute); cursor: pointer; }
-    .download_btn:hover { color: var(--primary); }
-    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
-    @media (max-width: 900px) { .analytics-grid { grid-template-columns: 1fr; } }
-    .analytics-card .card-body { text-align: center; }
-    .analytics-card canvas { max-width: 100%; }
-    .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-bottom: 22px; }
-    .filter-bar .fb-group { display: flex; align-items: center; gap: 9px; }
-    .filter-bar .fb-label { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-mute); }
-    .filter-bar .select { width: auto; min-width: 190px; }
+/* "Export report" prints the page to PDF via the browser. These rules drop the
+   app chrome + interactive controls, keep the phosphor colours in the PDF, and
+   stop cards being split across pages. */
+@media print {
+    @page { margin: 12mm; }
+    html, body { background: var(--bg) !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .sidebar, .topbar, .no-print { display: none !important; }
+    /* The app shell pins .app/.main to 100vh with overflow:auto, so by default only
+       the first screen prints. Unpin them so the whole page flows across pages. */
+    html, body { height: auto !important; overflow: visible !important; }
+    .app { display: block !important; height: auto !important; }
+    .main { margin: 0 !important; height: auto !important; overflow: visible !important; position: static !important; }
+    .page { max-width: none !important; height: auto !important; padding: 0 !important; }
+    .card, .grid > div { break-inside: avoid; page-break-inside: avoid; }
+    .card-body { max-height: none !important; overflow: visible !important; }
+}
+/* each Shared Passwords row is a submit button that downloads its user list */
+.shared-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2);
+    cursor: pointer; font-family: inherit; text-align: left; }
+.shared-row:hover { border-color: var(--border-bright); background: var(--surface-3); }
 </style>
-<script>
-    var dict = { 1: "recovered_accounts", 2: "password_complexity", 3:"composition_makeup", 4:"passwords_count_len", 5:"top_10_passswords"};
-    var toggle = false;
-
-    // Phosphor theme defaults for Chart.js v3 (legend labels + axis ticks render light on dark).
-    Chart.defaults.color = '#d2ddca';
-
-    extendChart();
-
-    function extendChart() { // add text to the middle of all doughnut charts
-        var originalDraw = Chart.controllers.doughnut.prototype.draw;
-        Chart.controllers.doughnut.prototype.draw = function (ease) {
-            originalDraw.call(this, ease);
-
-            const ctx = this.chart.ctx
-            const chartArea = this.chart.chartArea
-
-            //Font style
-            const fontStyle = 'normal'
-            //matching chart headers
-            const fontFamily = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,
-            'Noto Sans',sans-serif,'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol','Noto Color Emoji'`
-            const fontSize = chartArea.right / 15
-            ctx.font = `${fontStyle} ${fontSize}px ${fontFamily}`
-            ctx.fillStyle = '#5ef08a' //Text color (phosphor green)
-
-            //Center text
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            var value = this.chart.options.percent ? this.chart.options.percent : "";
-            ctx.fillText(value, (chartArea.right + chartArea.left) / 2, (chartArea.bottom + chartArea.top) / 2)
-
-            //Set chart background color (phosphor surface) so PNG downloads aren't transparent
-            ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = '#0c0f0d';
-            ctx.fillRect(0, 0, this.chart.width, this.chart.height);
-        };
-    }
-
-    function chart_download(id) {
-            var chart = doughNut;
-            document.getElementById(dict[id]).onclick = function () {
-            //The title is not part of the graph canvas so it would not show up in the image download
-            //So we add a hidden title, and only show it when downloading the image.
-            chart.options.animation.duration = 0;
-            chart.options.plugins.title.display = true;
-            chart.update();
-            //Create a download link
-            var a = document.createElement('a');
-            a.href = chart.toBase64Image();
-            a.download = dict[id] + '.png';
-            a.click();
-            //Hide the title again
-            chart.options.plugins.title.display = false;
-            chart.update();
-            //Turn back on animations
-            chart.options.animation.duration = 1000;
-            chart.update();
-        };
-    }
-
-    function get_chart(id){
-        document.getElementById(dict[id]).click();
-    }
-
-    function chart_download_all(){
-        if(confirm("This will download all charts on the page")){
-            for(var i=1;i<6;i++){
-                get_chart(i);
-            }
-        }
-    }
-
-    function show_hide(){
-        if(toggle){
-            document.querySelectorAll('.download_btn').forEach(function(el) {
-                el.style.display = 'inline';
-            });
-            document.getElementById("toggle_btn").style.color = "var(--primary)";
-            toggle = false;
-        }
-        else{
-            document.querySelectorAll('.download_btn').forEach(function(el) {
-                el.style.display = 'none';
-            });
-            document.getElementById("toggle_btn").style.color = "var(--text-mute)";
-            toggle = true;
-        }
-    }
-</script>
 {% endblock head %}
 
 {% block content %}
+{# ---------------------------------------------------------------------------
+   Reusable bits (mirror the design's ui.jsx Card/BarRow + DonutStat helpers).
+   Every visual is hand-rolled SVG/CSS using the phosphor design tokens — no
+   chart library. CSS vars are placed in inline `style=` (not SVG presentation
+   attributes) so var() reliably resolves.
+--------------------------------------------------------------------------- #}
+{% set tones = {'primary':'var(--primary)','amber':'var(--amber)','cyan':'var(--cyan)','red':'var(--red)','green':'var(--green)','dim':'var(--text-dim)'} %}
+
+{% macro bar_row(label, value, max, tone='primary') %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:9px;">
+    <div class="mono" style="width:130px;font-size:12px;color:var(--text);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ label }}</div>
+    <div style="flex:1;height:18px;background:var(--inset);border-radius:4px;overflow:hidden;border:1px solid var(--border-soft);">
+        <div style="width:{{ (value / max * 100) if max else 0 }}%;height:100%;background:{{ tones[tone] }};opacity:.85;border-radius:3px;{% if tone == 'primary' %}box-shadow:var(--glow-sm);{% endif %}"></div>
+    </div>
+    <div class="mono" style="width:56px;font-size:11.5px;color:var(--text-dim);text-align:right;">{{ value | commafy }}</div>
+</div>
+{% endmacro %}
+
+{% macro donut_stat(value, total, label, color='var(--primary)') %}
+{% set pct = ((value / total * 100) | round | int) if total else 0 %}
+{% set circ = 289.027 %}
+<div style="display:flex;align-items:center;gap:18px;">
+    <svg width="116" height="116" viewBox="0 0 116 116" style="flex:none;">
+        <circle cx="58" cy="58" r="46" fill="none" stroke-width="13" style="stroke:var(--inset);"></circle>
+        <circle cx="58" cy="58" r="46" fill="none" stroke-width="13" stroke-linecap="butt" stroke-dasharray="{{ (pct / 100 * circ) | round(2) }} {{ circ }}" transform="rotate(-90 58 58)" style="stroke:{{ color }};transition:stroke-dasharray .6s ease;"></circle>
+        <text x="58" y="54" text-anchor="middle" font-size="22" font-weight="600" style="fill:{{ color }};font-family:var(--mono);">{{ pct }}%</text>
+        <text x="58" y="72" text-anchor="middle" font-size="8.5" letter-spacing="1" style="fill:var(--text-mute);font-family:var(--mono);">{{ label }}</text>
+    </svg>
+    <div style="font-family:var(--mono);font-size:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">
+            <span class="dot-led" style="background:{{ color }};box-shadow:0 0 6px {{ color }};"></span>
+            <span style="color:var(--text);">{{ value | commafy }} <span style="color:var(--text-mute);">recovered</span></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="dot-led idle"></span>
+            <span style="color:var(--text-dim);">{{ (total - value) | commafy }} <span style="color:var(--text-mute);">remaining</span></span>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro donut_reuse(reused, unique, count) %}
+{% set circ = 326.726 %}
+<div style="display:flex;align-items:center;gap:22px;">
+    <svg width="130" height="130" viewBox="0 0 130 130">
+        <circle cx="65" cy="65" r="52" fill="none" stroke-width="16" style="stroke:var(--inset);"></circle>
+        <circle cx="65" cy="65" r="52" fill="none" stroke-width="16" stroke-linecap="butt" stroke-dasharray="{{ (reused / 100 * circ) | round(2) }} {{ circ }}" transform="rotate(-90 65 65)" style="stroke:var(--amber);filter:drop-shadow(0 0 4px rgba(255,181,61,0.5));"></circle>
+        <text x="65" y="60" text-anchor="middle" font-size="22" font-weight="600" style="fill:var(--amber);font-family:var(--mono);">{{ reused }}%</text>
+        <text x="65" y="78" text-anchor="middle" font-size="9" style="fill:var(--text-mute);font-family:var(--mono);">REUSED</text>
+    </svg>
+    <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span class="dot-led" style="background:var(--amber);box-shadow:0 0 6px var(--amber);"></span>
+            <span class="mono" style="font-size:12.5px;color:var(--text);">{{ reused }}% reused passwords</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span class="dot-led idle"></span>
+            <span class="mono" style="font-size:12.5px;color:var(--text-dim);">{{ unique }}% unique</span>
+        </div>
+        <div class="mono" style="font-size:11.5px;color:var(--text-mute);">most-reused appears <span style="color:var(--red);">{{ count }}×</span></div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro stat_tile(label, value, ico) %}
+<div style="border:1px solid var(--border);border-radius:8px;padding:12px 10px;text-align:center;background:var(--surface-2);">
+    <span style="color:var(--primary);">{{ icon(ico, size=15) }}</span>
+    <div class="mono" style="font-size:19px;font-weight:600;color:var(--text);margin-top:6px;line-height:1;">{{ value }}</div>
+    <div class="mono" style="font-size:8.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mute);margin-top:5px;">{{ label }}</div>
+</div>
+{% endmacro %}
+
+{% macro empty_note(text='no recovered passwords in this scope yet') %}
+<div class="mono" style="padding:26px;text-align:center;color:var(--text-mute);font-size:12px;">{{ text }}</div>
+{% endmacro %}
+
+{% set empty = total_cracked == 0 %}
+{# scope query-string suffix preserved on every download link (URL contract) #}
+{% set scope_qs %}{% if customer_id %}&customer_id={{ customer_id }}{% endif %}{% if hashfile_id %}&hashfile_id={{ hashfile_id }}{% endif %}{% endset %}
+
+{# ---------- header ---------- #}
 <div class="page-head">
     <div>
         <h1 class="page-title">Analytics</h1>
-        <div class="page-sub">// password recovery statistics{% if customer_id %} · filtered{% endif %}</div>
+        <div class="page-sub">// password intelligence · scoped to {{ scope_name }}</div>
     </div>
-    <div style="display:flex; gap:8px;">
-        <button class="btn btn-sm" onclick="chart_download_all()">{{ icon('download', size=14) }} Download All</button>
-        <button class="icon-btn" id="toggle_btn" title="Show/Hide per-chart download icons" onclick="show_hide()">{{ icon('download', size=15) }}</button>
+    <button type="button" class="btn no-print" onclick="window.print()" title="Print / save the charts as a PDF">{{ icon('download', size=15) }} Export report</button>
+</div>
+
+{# ---------- filter row (customer + hashfile selects; no scope buttons) ---------- #}
+<div class="no-print" style="display:flex;align-items:flex-end;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
+    <div>
+        <label class="mono" style="display:block;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-mute);margin-bottom:6px;">Customer</label>
+        <div style="display:flex;align-items:center;gap:9px;">
+            <span style="color:var(--text-dim);">{{ icon('users', size=16) }}</span>
+            <select class="select" style="width:230px;" onchange="if(this.value){location.href=this.value}">
+                <option value="/analytics"{% if not customer_id %} selected{% endif %}>All Customers</option>
+                {% for customer in customers %}
+                <option value="/analytics?customer_id={{ customer.id }}"{% if customer_id and customer.id|string() == customer_id|string() %} selected{% endif %}>{{ customer.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <span style="color:var(--text-mute);margin-bottom:9px;">{{ icon('chevR', size=16) }}</span>
+    <div>
+        <label class="mono" style="display:block;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-mute);margin-bottom:6px;">
+            Hashfile{% if customer_id %} <span style="color:var(--text-faint);">· {{ scope_hashfiles_cnt }} for {{ customer_obj.name if customer_obj else 'customer' }}</span>{% endif %}
+        </label>
+        <div style="display:flex;align-items:center;gap:9px;">
+            <span style="color:var(--text-dim);">{{ icon('file', size=16) }}</span>
+            {% if customer_id %}
+            <select class="select" style="width:300px;" onchange="if(this.value){location.href=this.value}">
+                <option value="/analytics?customer_id={{ customer_id }}"{% if not hashfile_id %} selected{% endif %}>All Hashfiles</option>
+                {% for hashfile in hashfiles %}
+                    {% if hashfile.customer_id|string() == customer_id|string() %}
+                    <option value="/analytics?customer_id={{ customer_id }}&hashfile_id={{ hashfile.id }}"{% if hashfile_id and hashfile.id|string() == hashfile_id|string() %} selected{% endif %}>{{ hashfile.name }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+            {% else %}
+            <select class="select" style="width:300px;opacity:.4;" disabled><option>All Hashfiles</option></select>
+            {% endif %}
+        </div>
+    </div>
+    <span class="mono" style="font-size:11.5px;color:var(--text-mute);margin-bottom:9px;">
+        {% if scope_mode == 'file' %}{{ unique_hashes | commafy }} hashes{% else %}{{ scope_hashfiles_cnt | commafy }} hashfiles · {{ unique_hashes | commafy }} hashes{% endif %}
+    </span>
+</div>
+
+{# ---------- customer rollup (only when a customer is selected) ---------- #}
+{% if rollup %}
+<div style="display:flex;align-items:center;gap:14px;padding:10px 14px;margin-bottom:var(--gap);border:1px solid var(--border);border-radius:8px;background:var(--surface-2);">
+    <span class="mono" style="font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mute);">{{ customer_obj.name if customer_obj else 'customer' }} rollup</span>
+    <span class="mono" style="font-size:12px;color:var(--text-dim);"><b style="color:var(--text);">{{ rollup.files | commafy }}</b> hashfiles</span>
+    <span class="mono" style="font-size:12px;color:var(--text-dim);"><b style="color:var(--primary);text-shadow:var(--glow-text);">{{ rollup.cracked | commafy }}</b> / {{ rollup.total | commafy }} recovered</span>
+    <div class="progress" style="flex:1;max-width:260px;height:6px;">
+        <div class="seg-done" style="width:{{ (rollup.cracked / rollup.total * 100) if rollup.total else 0 }}%;"></div>
+    </div>
+    <span class="mono" style="font-size:12px;color:var(--text);">{{ (rollup.cracked / rollup.total * 100) | round | int if rollup.total else 0 }}%</span>
+</div>
+{% endif %}
+
+{# ---------- scope summary (above the recovery donuts) ---------- #}
+<div class="card" style="margin-bottom:var(--gap);">
+    <div class="card-head">
+        <span class="dot-led on"></span><h3>{% if scope_mode == 'file' %}Hashfile Summary{% elif scope_mode == 'customer' %}Customer Summary{% else %}All Data{% endif %}</h3>
+        <div class="no-print" style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+            <a class="btn btn-primary btn-sm{% if empty %} disabled" aria-disabled="true{% endif %}"{% if not empty %} href="/analytics/download?type=found{{ scope_qs }}"{% endif %} role="button">{{ icon('download', size=14) }} Download recovered ({{ unique_cracked | commafy }})</a>
+            <a class="btn btn-sm" href="/analytics/download?type=left{{ scope_qs }}" role="button">{{ icon('download', size=14) }} Download uncracked ({{ (unique_hashes - unique_cracked) | commafy }})</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+            {{ stat_tile('Accounts', accounts | commafy, 'users') }}
+            {{ stat_tile('Unique hashes', unique_hashes | commafy, 'hash') }}
+            {{ stat_tile('Recovered', unique_cracked | commafy, 'key') }}
+            {{ stat_tile('Total runtime', (runtime / 3600) | round(1) ~ 'h', 'clock') }}
+            {{ stat_tile('Jobs run', jobs_cnt | commafy, 'jobs') }}
+        </div>
     </div>
 </div>
 
-<div class="filter-bar">
-    <div class="fb-group">
-        <span class="fb-label">Customers</span>
-        <select class="select" onchange="if(this.value){location.href=this.value}">
-            <option value="/analytics"{% if not customer_id %} selected{% endif %}>All Customers</option>
-            {% for customer in customers %}
-            <option value="/analytics?customer_id={{ customer.id }}"{% if customer_id and customer.id|string() == customer_id|string() %} selected{% endif %}>{{ customer.name }}</option>
-            {% endfor %}
-        </select>
+{# ---------- recovery donuts ---------- #}
+<div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:var(--gap);">
+    <div class="card">
+        <div class="card-head"><span class="dot-led on"></span><h3>Hashes Recovered</h3></div>
+        <div class="card-body">{{ donut_stat(unique_cracked, unique_hashes, 'HASHES', 'var(--primary)') }}</div>
     </div>
-    <div class="fb-group">
-        <span class="fb-label">Hashfiles</span>
-        {% if customer_id is not none %}
-        <select class="select" onchange="if(this.value){location.href=this.value}">
-            <option value="/analytics?customer_id={{ customer_id }}"{% if not hashfile_id %} selected{% endif %}>All Hashfiles</option>
-            {% for hashfile in hashfiles %}
-                {% if hashfile.customer_id|string() == customer_id|string() %}
-                <option value="/analytics?customer_id={{ customer_id }}&hashfile_id={{ hashfile.id }}"{% if hashfile_id and hashfile.id|string() == hashfile_id|string() %} selected{% endif %}>{{ hashfile.name }}</option>
+    <div class="card">
+        <div class="card-head"><span class="dot-led on"></span><h3>Accounts Recovered</h3></div>
+        <div class="card-body">{{ donut_stat(accounts_cracked, accounts, 'ACCOUNTS', 'var(--cyan)') }}</div>
+    </div>
+</div>
+
+{# ---------- top passwords + reuse + charset ---------- #}
+<div class="grid" style="grid-template-columns:1.2fr 1fr;margin-bottom:var(--gap);align-items:start;">
+    <div class="card">
+        <div class="card-head"><span class="dot-led on"></span><h3>Top Recovered Passwords</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">by frequency</span></div>
+        <div class="card-body">
+            {% if empty %}{{ empty_note() }}{% else %}
+                {% set pw_max = top_passwords[0].n %}
+                {% for p in top_passwords %}{{ bar_row(p.pw, p.n, pw_max, 'primary' if loop.index0 < 3 else 'dim') }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="card">
+            <div class="card-head"><span class="dot-led {{ 'run' if not empty else 'idle' }}"></span><h3>Password Reuse</h3></div>
+            <div class="card-body">{% if empty %}{{ empty_note() }}{% else %}{{ donut_reuse(reused_pct, unique_pct, top_reuse_count) }}{% endif %}</div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h3>Charset Composition</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">char classes</span></div>
+            <div class="card-body">
+                {% if empty %}{{ empty_note() }}{% else %}
+                    {% set cs_max = class_buckets | map(attribute='n') | max %}
+                    {% for c in class_buckets %}{{ bar_row(c.label, c.n, cs_max, c.tone) }}{% endfor %}
                 {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---------- length distribution ---------- #}
+<div class="card" style="margin-bottom:var(--gap);">
+    <div class="card-head"><span class="dot-led on"></span><h3>Password Length Distribution</h3></div>
+    <div class="card-body">
+        {% if empty %}{{ empty_note() }}{% else %}
+        {% set len_max = length_dist | map(attribute='n') | max %}
+        <div style="display:flex;align-items:flex-end;gap:10px;height:180px;padding:0 4px;">
+            {% for l in length_dist %}
+            {% set weak = l.len < 8 %}
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:7px;">
+                <span class="mono" style="font-size:10.5px;color:var(--text-dim);">{{ l.n | commafy }}</span>
+                <div title="{{ l.len }} chars: {{ l.n }}" style="width:100%;max-width:46px;height:{{ (l.n / len_max * 100) if len_max else 0 }}%;background:{{ 'var(--red)' if weak else 'var(--primary)' }};opacity:{{ '0.7' if weak else '0.85' }};border-radius:4px 4px 0 0;{% if not weak %}box-shadow:var(--glow-sm);{% endif %}transition:height .6s ease;"></div>
+                <span class="mono" style="font-size:11px;color:{{ 'var(--red)' if weak else 'var(--text-mute)' }};">{{ l.len }}</span>
+            </div>
             {% endfor %}
-        </select>
-        {% else %}
-        <select class="select" disabled><option>N/A</option></select>
+        </div>
+        <div class="mono" style="font-size:11px;color:var(--text-mute);margin-top:14px;display:flex;gap:18px;justify-content:center;">
+            <span><span style="color:var(--red);">■</span> &lt; 8 chars (policy fail)</span>
+            <span><span style="color:var(--primary);">■</span> compliant length</span>
+        </div>
         {% endif %}
     </div>
 </div>
 
-<div class="analytics-grid">
-    <div class="card analytics-card">
-        <div class="card-head">
-            <h3>Recovered Accounts</h3>
-            <a id="recovered_accounts" class="download_btn" role="button" title="Download Chart" style="margin-left:auto;">{{ icon('download', size=15) }}</a>
-        </div>
-        <div class="card-body">
-            <canvas id="TotalCrackedAccountHashes" width="300" height="300"></canvas>
-            <script>
-                var vis1 = document.getElementById("TotalCrackedAccountHashes").getContext("2d");
-                var doughNut = new Chart(vis1, {
-                    type: 'doughnut',
-                    data: {
-                        labels: {{ fig1_labels | safe }},
-                        datasets: [{
-                            label: "my label",
-                            data: {{ fig1_values | safe }},
-                            backgroundColor: ['rgba(255, 95, 86, 0.5)', 'rgba(94, 240, 138, 0.5)']
-                        }]
-                    },
-                    options: {
-                        percent: {{fig1_percent | safe}}, // Custom variable to store the value in the middle of the chart
-                        responsive: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            title: {
-                                color: '#d2ddca',
-                                display: false,
-                                text: 'Recovered Accounts',
-                                font: { size: 18, family: 'Arial' },
-                                padding: { top: 10, bottom: 20 }
-                            }
-                        }
-                    }
-                });
-                chart_download(1);
-            </script>
-        </div>
-    </div>
-    <div class="card analytics-card">
-        <div class="card-head">
-            <h3>Password Complexity</h3>
-            <a id="password_complexity" class="download_btn" role="button" title="Download Chart" style="margin-left:auto;">{{ icon('download', size=15) }}</a>
-        </div>
-        <div class="card-body">
-            <canvas id="Complexity" width="300" height="300"></canvas>
-            <script>
-                var ctx = document.getElementById("Complexity").getContext("2d");
-                var doughNut = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: {{ fig2_labels | safe }},
-                        datasets: [{
-                            label: "my label",
-                            data: {{ fig2_values | safe }},
-                            backgroundColor: ['rgba(255, 95, 86, 0.5)', 'rgba(255, 181, 61, 0.5)', 'rgba(94, 240, 138, 0.5)']
-                        }]
-                    },
-                    options: {
-                        responsive: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            title: {
-                                color: '#d2ddca',
-                                display: false,
-                                text: 'Password Complexity',
-                                font: { size: 18, family: 'Arial' },
-                                padding: { top: 10, bottom: 10 }
-                            }
-                        }
-                    }
-                });
-                chart_download(2);
-            </script>
-        </div>
-    </div>
-    <div class="card analytics-card">
-        <div class="card-head">
-            <h3>Recovered Hashes</h3>
-            <a id="recovered_hashes" class="download_btn" role="button" title="Download Chart" style="margin-left:auto;">{{ icon('download', size=15) }}</a>
-        </div>
-        <div class="card-body">
-            <canvas id="TotalCrackedHashes2" width="300" height="300"></canvas>
-            <script>
-                var vis3 = document.getElementById("TotalCrackedHashes2").getContext("2d");
-                var doughNut = new Chart(vis3, {
-                    type: 'doughnut',
-                    data: {
-                        labels: {{ fig3_labels | safe }},
-                        datasets: [{
-                            label: "my label",
-                            data: {{ fig3_values | safe }},
-                            backgroundColor: ['rgba(255, 95, 86, 0.5)', 'rgba(94, 240, 138, 0.5)']
-                        }]
-                    },
-                    options: {
-                        percent: {{fig3_percent | safe}}, // Custom variable to store the value in the middle of the chart
-                        responsive: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            title: {
-                                color: '#d2ddca',
-                                display: false,
-                                text: 'Recovered Accounts',
-                                font: { size: 18, family: 'Arial' },
-                                padding: { top: 10, bottom: 20 }
-                            }
-                        }
-                    }
-                });
-                chart_download(3);
-            </script>
-        </div>
-    </div>
-    <div class="card analytics-card">
-        <div class="card-head">
-            <h3>Composition Makeup</h3>
-            <a id="composition_makeup" class="download_btn" role="button" title="Download Chart" style="margin-left:auto;">{{ icon('download', size=15) }}</a>
-        </div>
-        <div class="card-body">
-            <canvas id="CharSet" width="300" height="300"></canvas>
-            <script>
-                var ctx = document.getElementById("CharSet").getContext("2d");
-                var doughNut = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: {{ fig4_labels | safe }},
-                        datasets: [{
-                            label: "my label",
-                            data: {{ fig4_values | safe }},
-                            backgroundColor: ['rgba(255, 95, 86, 0.5)',
-                            'rgba(255, 181, 61, 0.5)',
-                            'rgba(224, 202, 33, 0.5)',
-                            'rgba(94, 240, 138, 0.5)',
-                            'rgba(124, 138, 118, 0.5)',]
-                        }]
-                    },
-                    options: {
-                        responsive: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            title: {
-                                color: '#d2ddca',
-                                display: false,
-                                text: 'Composition Makeup',
-                                font: { size: 18, family: 'Arial' },
-                                padding: { top: 10, bottom: 20 }
-                            }
-                        }
-                    }
-                });
-                chart_download(3);
-            </script>
-        </div>
-    </div>
-</div>
-
-<div class="card" style="margin-top:var(--gap);">
-    <div class="card-head"><h3>General Stats</h3></div>
+{# ---------- complexity compliance (interactive, driven by the server histogram) ---------- #}
+<div class="card" id="cx-card" style="margin-bottom:var(--gap);">
+    <div class="card-head"><span class="dot-led on" id="cx-led"></span><h3>Password Complexity Compliance</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">{{ complexity_total | commafy }} samples</span></div>
     <div class="card-body">
-        <table class="tbl">
-            <tbody>
-                {% if customer_id %}
-                <tr>
-                    <td>Total Accounts:</td>
-                    <td class="num">{{ total_accounts | commafy }}</td>
-                </tr>
-                {% endif %}
-                <tr>
-                    <td>Total Unique Hashes:</td>
-                    <td class="num">{{ total_unique_hashes | commafy }}</td>
-                </tr>
-                {% if customer_id %}
-                <tr>
-                    <td>Total Runtime:</td>
-                    <td class="num">
-                        {% if total_runtime > 604800 %}
-                            {{ (total_runtime/604800)|round|int }} week(s)<br>
-                        {% elif total_runtime > 86400 %}
-                            {{ (total_runtime/86400)|round|int }} day(s)<br>
-                        {% elif total_runtime > 3600 %}
-                            {{ (total_runtime/3600)|round|int }} hour(s)<br>
-                        {% elif total_runtime > 60 %}
-                            {{ (total_runtime/60)|round|int }} minute(s)<br>
-                        {% elif total_runtime < 60 %}
-                            < 1 minute<br>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endif %}
-                <tr>
-                    <td>Download Recovered:</td>
-                    <td>
-                        {% if customer_id %}
-                            {% if hashfile_id %}
-                                <a class="btn btn-primary btn-sm" href="/analytics/download?type=found&customer_id={{customer_id}}&hashfile_id={{hashfile_id}}" role="button">Cracked</a>
-                            {% else %}
-                                <a class="btn btn-primary btn-sm" href="/analytics/download?type=found&customer_id={{customer_id}}" role="button">Cracked</a>
-                            {% endif %}
-                        {% else %}
-                            <a class="btn btn-primary btn-sm" href="/analytics/download?type=found" role="button">Cracked</a>
-                        {% endif %}
-                    </td>
-                </tr>
-                <tr>
-                    <td>Download Unrecovered:</td>
-                    <td>
-                        {% if customer_id %}
-                            {% if hashfile_id %}
-                                <a class="btn btn-primary btn-sm" href="/analytics/download?type=left&customer_id={{customer_id}}&hashfile_id={{hashfile_id}}" role="button">Uncracked</a>
-                            {% else %}
-                                <a class="btn btn-primary btn-sm" href="/analytics/download?type=left&customer_id={{customer_id}}" role="button">Uncracked</a>
-                            {% endif %}
-                        {% else %}
-                            <a class="btn btn-primary btn-sm" href="/analytics/download?type=left" role="button">Uncracked</a>
-                        {% endif %}
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        {% if empty %}{{ empty_note('no recovered passwords to analyze') }}{% else %}
+        <div style="display:grid;grid-template-columns:180px 1fr;gap:22px;align-items:center;">
+            <div style="text-align:center;">
+                <div class="mono" id="cx-pct" style="font-size:44px;font-weight:600;color:var(--primary);text-shadow:var(--glow-text);line-height:1;">0.0<span style="font-size:22px;">%</span></div>
+                <div class="mono" id="cx-comply" style="font-size:11px;color:var(--text-dim);margin-top:8px;">0 of {{ complexity_total | commafy }} comply</div>
+                <div class="mono" id="cx-fail" style="font-size:10px;color:var(--text-mute);margin-top:3px;">0 fail policy</div>
+            </div>
+            <div>
+                <div style="margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span class="field-label" style="margin:0;">Minimum length</span>
+                        <span class="mono" id="cx-minlen-val" style="font-size:12px;color:var(--primary);">8</span>
+                    </div>
+                    <input type="range" class="hv-range" id="cx-minlen" min="4" max="16" step="1" value="8" style="width:100%;">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <span class="field-label" style="display:block;margin-bottom:7px;">Required character classes</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button type="button" class="cx-chip" data-bit="1">a-z</button>
+                        <button type="button" class="cx-chip" data-bit="2">A-Z</button>
+                        <button type="button" class="cx-chip" data-bit="4">0-9</button>
+                        <button type="button" class="cx-chip" data-bit="8">!@#$</button>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+                    <span class="field-label" style="margin:0;flex:none;">Must satisfy</span>
+                    <input type="range" class="hv-range" id="cx-minclasses" min="1" max="4" step="1" value="3" style="flex:1;">
+                    <span class="mono" id="cx-minclasses-val" style="font-size:12px;color:var(--primary);min-width:84px;">3 of 4 classes</span>
+                </div>
+                <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+                    <span class="switch"><input type="checkbox" id="cx-excludeuser" checked><span class="track"></span></span>
+                    <span style="font-size:12.5px;color:var(--text-dim);">Fail if password contains the username</span>
+                </label>
+                <div class="field-hint" style="margin-top:10px;">↳ Microsoft AD default: ≥8 chars, 3 of 4 classes, excludes username</div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
-<div class="card" style="margin-top:var(--gap);">
+{# ---------- pattern intelligence ---------- #}
+<div class="term-divider">pattern intelligence</div>
+<div class="grid" style="grid-template-columns:1fr 1fr;margin:14px 0 var(--gap);align-items:start;">
+    <div class="card">
+        <div class="card-head"><span class="dot-led on"></span><h3>Top Base Words</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">root word</span></div>
+        <div class="card-body">
+            {% if not top_base_words %}{{ empty_note('no base words to extract') }}{% else %}
+                {% set bw_max = top_base_words[0].n %}
+                {% for b in top_base_words %}{{ bar_row(b.pw, b.n, bw_max, 'primary') }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><h3>Common Themes</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">of {{ total_cracked | commafy }} cracked</span></div>
+        <div class="card-body">
+            {% if empty %}{{ empty_note() }}{% else %}
+                {% for t in themes %}{{ bar_row(t.label, t.n, total_cracked, t.tone) }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+<div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:var(--gap);align-items:start;">
+    <div class="card">
+        <div class="card-head"><h3>Year in Password</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">embedded 19xx/20xx</span></div>
+        <div class="card-body">
+            {% if not year_dist %}{{ empty_note('no years embedded in passwords') }}{% else %}
+                {% set yr_max = year_dist | map(attribute='n') | max %}
+                {% for y in year_dist %}{{ bar_row(y.year, y.n, yr_max, 'cyan') }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><h3>Password Endings</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">trailing token</span></div>
+        <div class="card-body">
+            {% if not suffixes %}{{ empty_note() }}{% else %}
+                {% set sf_max = suffixes[0].n %}
+                {% for s in suffixes %}{{ bar_row(s.token, s.n, sf_max, 'dim') }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+<div class="card" style="margin-bottom:var(--gap);">
+    <div class="card-head"><span class="dot-led on"></span><h3>How They Fell</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">attack that cracked the hash</span></div>
+    <div class="card-body">
+        {% if not fell %}{{ empty_note('no recovered hashes in this scope') }}{% else %}
+            {% set fl_max = fell[0].n %}
+            {% for f in fell %}{{ bar_row(f.label, f.n, fl_max, 'amber') }}{% endfor %}
+        {% endif %}
+    </div>
+</div>
+
+{# ---------- length x complexity heatmap ---------- #}
+<div class="card" style="margin-bottom:var(--gap);">
+    <div class="card-head"><h3>Length &times; Complexity</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">recovered passwords</span></div>
+    <div class="card-body">
+        {% if empty %}{{ empty_note() }}{% else %}
+        <div style="display:grid;grid-template-columns:auto repeat({{ heatmap_cols | length }}, 1fr);gap:4px;align-items:center;">
+            <div></div>
+            {% for col in heatmap_cols %}<div class="mono" style="font-size:10px;color:var(--text-mute);text-align:center;">{{ col }}</div>{% endfor %}
+            {% for row in heatmap_rows %}
+            <div class="mono" style="font-size:10px;color:var(--text-mute);text-align:right;padding-right:6px;white-space:nowrap;">{{ row.classes }} class{{ 'es' if row.classes > 1 else '' }}</div>
+            {% for cell in row.cells %}
+                {% set op = (0.08 + 0.85 * cell.n / heatmap_max) if heatmap_max else 0 %}
+                <div title="{{ cell.n }} password(s)" style="height:34px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:rgba(var(--primary-rgb),{{ op | round(3) }});border:1px solid var(--border-soft);">
+                    <span class="mono" style="font-size:11px;color:{{ 'var(--bg)' if op > 0.55 else 'var(--text-dim)' }};">{{ cell.n | commafy if cell.n else '' }}</span>
+                </div>
+            {% endfor %}
+            {% endfor %}
+        </div>
+        <div class="mono" style="font-size:10.5px;color:var(--text-mute);margin-top:12px;text-align:center;">columns = length · rows = character classes used · brighter = more passwords</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ---------- strength + rotation ---------- #}
+<div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:var(--gap);align-items:start;">
+    <div class="card">
+        <div class="card-head"><span class="dot-led on"></span><h3>Password Strength</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">heuristic estimate</span></div>
+        <div class="card-body">
+            {% if empty %}{{ empty_note() }}{% else %}
+                {% for s in strength_dist %}{{ bar_row(s.label, s.n, total_cracked, s.tone) }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head">
+            <span class="dot-led {{ 'run' if rotations else 'idle' }}"></span><h3>Password Rotation</h3>
+            <span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">{{ rotations | length }} stems</span>
+        </div>
+        <div class="card-body">
+            {% if not rotations %}{{ empty_note('no rotated / incremented variants found') }}{% else %}
+            <div style="display:flex;flex-direction:column;gap:7px;max-height:280px;overflow-y:auto;">
+                {% for r in rotations %}
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);">
+                    <span style="width:26px;height:26px;flex:none;border-radius:6px;display:grid;place-items:center;background:rgba(255,181,61,0.12);border:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:12px;font-weight:600;">{{ r.count }}</span>
+                    <span class="mono" style="font-size:12.5px;color:var(--text);flex:none;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.stem }}</span>
+                    <span class="mono" style="font-size:11px;color:var(--primary);text-shadow:var(--glow-text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.variants | join(', ') }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ---------- recovery over time ---------- #}
+<div class="card" style="margin-bottom:var(--gap);">
+    <div class="card-head"><span class="dot-led on"></span><h3>Recovery Over Time</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">cumulative cracked</span></div>
+    <div class="card-body">
+        {% if timeline | length == 0 %}
+            {{ empty_note('no recovery activity yet') }}
+        {% else %}
+            {% set n = timeline | length %}
+            {% set tlmax = timeline[-1].cum %}
+            {% set pts = [] %}
+            {% for p in timeline %}
+                {% set x = 46 + (loop.index0 / ((n - 1) if n > 1 else 1) * 818) %}
+                {% set y = 172 - (p.cum / tlmax * 158) %}
+                {% set _ = pts.append('%s,%s' % (x | round(1), y | round(1))) %}
+            {% endfor %}
+            <svg viewBox="0 0 880 200" width="100%" style="display:block;">
+                <defs><linearGradient id="tlFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" style="stop-color:var(--primary);stop-opacity:0.28;"></stop>
+                    <stop offset="100%" style="stop-color:var(--primary);stop-opacity:0;"></stop>
+                </linearGradient></defs>
+                {% for f in [0, 0.25, 0.5, 0.75, 1] %}
+                    {% set gy = (172 - f * 158) | round(1) %}
+                    {% set gv = (tlmax * f) | round | int %}
+                    <line x1="46" y1="{{ gy }}" x2="864" y2="{{ gy }}" style="stroke:var(--border);"></line>
+                    <text x="38" y="{{ gy + 3 }}" text-anchor="end" font-size="10" style="fill:var(--text-mute);font-family:var(--mono);">{{ (gv / 1000) | round(1) ~ 'k' if gv >= 1000 else gv }}</text>
+                {% endfor %}
+                {% for p in timeline %}
+                    {% set lx = 46 + (loop.index0 / ((n - 1) if n > 1 else 1) * 818) %}
+                    <text x="{{ lx | round(1) }}" y="192" text-anchor="middle" font-size="10" style="fill:var(--text-mute);font-family:var(--mono);">{{ p.label }}</text>
+                {% endfor %}
+                <polygon points="46,172 {{ pts | join(' ') }} {{ (46 + (818 if n > 1 else 0)) | round(1) }},172" fill="url(#tlFill)"></polygon>
+                <polyline points="{{ pts | join(' ') }}" fill="none" stroke-width="2.4" style="stroke:var(--primary);filter:drop-shadow(0 0 5px rgba(var(--primary-rgb),0.6));"></polyline>
+                {% for p in timeline %}
+                    {% set cx = 46 + (loop.index0 / ((n - 1) if n > 1 else 1) * 818) %}
+                    {% set cy = 172 - (p.cum / tlmax * 158) %}
+                    <circle cx="{{ cx | round(1) }}" cy="{{ cy | round(1) }}" r="3" stroke-width="2" style="fill:var(--bg);stroke:var(--primary);"></circle>
+                {% endfor %}
+            </svg>
+        {% endif %}
+    </div>
+</div>
+
+{# ---------- masks + shared ---------- #}
+<div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:var(--gap);align-items:start;">
+    <div class="card">
+        <div class="card-head"><h3>Top 10 Masks</h3><span class="mono" style="margin-left:auto;font-size:10.5px;color:var(--text-mute);">from recovered</span></div>
+        <div class="card-body">
+            {% if not masks %}{{ empty_note('no data') }}{% else %}
+                {% set mask_max = masks[0].n %}
+                {% for m in masks %}{{ bar_row(m.mask, m.n, mask_max, 'cyan') }}{% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head">
+            <span class="dot-led {{ 'run' if shared else 'idle' }}"></span><h3>Shared Passwords</h3>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+                <span class="mono" style="font-size:10.5px;color:var(--text-mute);">{{ shared | length }} groups</span>
+                {% if shared %}<a class="icon-btn no-print" title="Download a txt per group, zipped" href="/analytics/download/shared_zip?{{ scope_qs[1:] }}">{{ icon('download', size=15) }}</a>{% endif %}
+            </div>
+        </div>
+        <div class="card-body">
+            {% if not shared %}{{ empty_note('no shared passwords') }}{% else %}
+            <div style="display:flex;flex-direction:column;gap:7px;max-height:280px;overflow-y:auto;">
+                {% for s in shared %}
+                <form method="POST" action="/analytics/download/shared" style="margin:0;">
+                    <input type="hidden" name="plaintext" value="{{ s.plain_raw }}">
+                    <input type="hidden" name="customer_id" value="{{ customer_id or '' }}">
+                    <input type="hidden" name="hashfile_id" value="{{ hashfile_id or '' }}">
+                    <button type="submit" class="shared-row" title="Download the users who share this password">
+                        <span style="width:26px;height:26px;flex:none;border-radius:6px;display:grid;place-items:center;background:rgba(255,181,61,0.12);border:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:12px;font-weight:600;">{{ s.count }}</span>
+                        <span class="mono" style="font-size:12.5px;color:var(--primary);text-shadow:var(--glow-text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ s.plain }}</span>
+                        <span class="mono" style="font-size:10.5px;color:var(--text-mute);flex:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ s.users | join(', ') }}</span>
+                        <span class="no-print" style="flex:none;color:var(--text-mute);display:flex;">{{ icon('download', size=14) }}</span>
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ---------- username == password ---------- #}
+<div class="card" style="margin-bottom:var(--gap);">
     <div class="card-head">
-        <h3>Passwords Count by Length</h3>
-        <a id="passwords_count_len" class="download_btn" role="button" title="Download Chart" style="margin-left:auto;">{{ icon('download', size=15) }}</a>
+        <span class="dot-led {{ 'off' if user_eq_pass else 'idle' }}"></span><h3>Username = Password</h3>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+            <span class="badge {{ 'red' if user_eq_pass else 'dim' }}" style="font-size:9.5px;">{{ user_eq_pass | length }} accounts</span>
+            {% if user_eq_pass %}<a class="icon-btn no-print" title="Download usernames" href="/analytics/download/fig8?{{ scope_qs[1:] }}">{{ icon('download', size=15) }}</a>{% endif %}
+        </div>
     </div>
-    <div class="card-body">
-        <canvas id="PasswordsCountByLength" width="1000" height="300"></canvas>
-        <script>
-            var ctx = document.getElementById("PasswordsCountByLength").getContext("2d");
-            var doughNut = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: {{ fig5_labels | safe }},
-                    datasets: [{
-                        label: "Password Counts by Lengths",
-                        data: {{ fig5_values | safe }},
-                        backgroundColor: ['rgba(94, 240, 138, 0.5)']
-                    }]
-                },
-                plugins: [{
-                    beforeDraw: function(chart,args,options){
-                        const c = chart.ctx
-                        c.fillStyle = '#0c0f0d';
-                        c.fillRect(0, 0, chart.width, chart.height);
-                    }
-                }],
-                options: {
-                    responsive: true, //Resizes the chart canvas when its container does
-                    scales: {
-                        x: { ticks: { color: '#7c8a76' }, grid: { color: 'rgba(43,53,37,0.5)' } },
-                        y: { beginAtZero: true, ticks: { color: '#7c8a76' }, grid: { color: 'rgba(43,53,37,0.5)' } }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        title: {
-                            color: '#d2ddca',
-                            display: false,
-                            text: 'Passwords Count by Length',
-                            font: { size: 18, family: 'Arial' },
-                            padding: { top: 10, bottom: 20 }
-                        }
-                    }
-                }
-            });
-            chart_download(4);
-        </script>
-    </div>
-</div>
-
-<div class="card" style="margin-top:var(--gap);">
-    <div class="card-head">
-        <h3>Top 10 Passwords</h3>
-        <a id="top_10_passswords" class="download_btn" role="button" title="Download Chart" style="margin-left:auto;">{{ icon('download', size=15) }}</a>
-    </div>
-    <div class="card-body">
-        <canvas id="Top10Passwords" width="1000" height="300"></canvas>
-        <script>
-            var ctx = document.getElementById("Top10Passwords").getContext("2d");
-            var doughNut = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: {{ fig6_labels | safe }},
-                    datasets: [{
-                        label: "Top 10 Passwords",
-                        data: {{ fig6_values | safe }},
-                        backgroundColor: ['rgba(94, 240, 138, 0.5)']
-                    }]
-                },
-                plugins: [{
-                    beforeDraw: function(chart,args,options){
-                        const c = chart.ctx
-                        c.fillStyle = '#0c0f0d';
-                        c.fillRect(0, 0, chart.width, chart.height);
-                    }
-                }],
-                options: {
-                    responsive: true, //Resizes the chart canvas when its container does
-                    scales: {
-                        x: { ticks: { color: '#7c8a76' }, grid: { color: 'rgba(43,53,37,0.5)' } },
-                        y: { beginAtZero: true, ticks: { color: '#7c8a76' }, grid: { color: 'rgba(43,53,37,0.5)' } }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        title: {
-                            color: '#d2ddca',
-                            display: false,
-                            text: 'Top 10 Passwords',
-                            font: { size: 18, family: 'Arial' },
-                            padding: { top: 10, bottom: 20 }
-                        }
-                    }
-                }
-            });
-            chart_download(5);
-        </script>
-    </div>
-</div>
-
-<div class="card" style="margin-top:var(--gap);">
-    <div class="card-head"><h3>Top 10 Masks</h3></div>
-    <div class="card-body">
+    <div class="card-body" style="max-height:600px;overflow-y:auto;">
+        {% if not user_eq_pass %}{{ empty_note('none — no accounts use their username as the password') }}{% else %}
         <table class="tbl">
-            <thead>
-                <tr>
-                    <th>Mask</th>
-                    <th>Total</th>
-                    <th>Percentage</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Account</th><th>Password</th></tr></thead>
             <tbody>
-                {% for entry in fig7_values %}
+                {% for e in user_eq_pass %}
                 <tr>
-                    <td class="mono">{{entry}}</td>
-                    <td class="num">{{fig7_values[entry] | commafy}}</td>
-                    <td class="num">{{ (fig7_values[entry] / fig7_total * 100) | round(2) }}%</td>
+                    <td class="mono" style="color:var(--text);">{{ e.u }}</td>
+                    <td class="mono" style="color:var(--red);">{{ e.p }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-    </div>
-</div>
-
-<div class="card" style="margin-top:var(--gap);">
-    <div class="card-head">
-        <h3>Accounts Where The Password is The Same As The Username</h3>
-        <a id="fig8_download" class="download_btn" role="button" title="Download Table" style="margin-left:auto;"
-           onclick="window.location.href='{% if customer_id %}/analytics/download/fig8?customer_id={{customer_id}}{% if hashfile_id %}&hashfile_id={{hashfile_id}}{% endif %}{% elif hashfile_id %}/analytics/download/fig8?hashfile_id={{hashfile_id}}{% else %}/analytics/download/fig8{% endif %}'">{{ icon('download', size=15) }}</a>
-    </div>
-    <div class="card-body" style="max-height: 600px; overflow-y: auto;">
-        <table class="tbl">
-            <tbody>
-                <tr>
-                {% set pos = namespace(value=0) %}
-                {% for entry in fig8_table %}
-                    {% set pos.value = pos.value + 1 %}
-                    <td class="mono">{{entry}}</td>
-                    {% if pos.value % 3 == 0%}
-                        </tr>
-                        <tr>
-                    {% endif %}
-                {% endfor %}
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="card" style="margin-top:var(--gap);">
-    <div class="card-head">
-        <h3>Accounts that Share the Same Password or Password Hash</h3>
-        <a id="fig9_download" class="download_btn" role="button" title="Download Table" style="margin-left:auto;"
-           onclick="window.location.href='{% if customer_id %}/analytics/download/fig9?customer_id={{customer_id}}{% if hashfile_id %}&hashfile_id={{hashfile_id}}{% endif %}{% elif hashfile_id %}/analytics/download/fig9?hashfile_id={{hashfile_id}}{% else %}/analytics/download/fig9{% endif %}'">{{ icon('download', size=15) }}</a>
-    </div>
-    <div class="card-body" style="max-height: 600px; overflow-y: auto;">
-        <table class="tbl">
-            <tbody>
-                <tr>
-                {% set pos = namespace(value=0) %}
-                {% for entry in fig9_table %}
-                    {% set pos.value = pos.value + 1 %}
-                    <td class="mono">{{entry}}</td>
-                    {% if pos.value % 3 == 0%}
-                        </tr>
-                        <tr>
-                    {% endif %}
-                {% endfor %}
-                </tr>
-            </tbody>
-        </table>
+        {% endif %}
     </div>
 </div>
 {% endblock content %}
+
+{% block scripts %}
+{% if not empty %}
+<script>
+// Password Complexity Compliance — recompute live from the server histogram
+// (each bucket = [maxlen<=16, classMask 0-15 (lower1/upper2/digit4/special8],
+//  contains_username 0|1, count]). Summing buckets is O(buckets), so this stays
+// instant regardless of how many passwords were recovered.
+(function () {
+    var HIST = {{ complexity_hist | tojson }};
+    var TOTAL = {{ complexity_total }};
+    var state = { minLen: 8, minClasses: 3, excludeUser: true, use: { 1: true, 2: true, 4: true, 8: true } };
+
+    var pctEl = document.getElementById('cx-pct');
+    var complyEl = document.getElementById('cx-comply');
+    var failEl = document.getElementById('cx-fail');
+    var ledEl = document.getElementById('cx-led');
+    var minLenEl = document.getElementById('cx-minlen');
+    var minLenVal = document.getElementById('cx-minlen-val');
+    var minClsEl = document.getElementById('cx-minclasses');
+    var minClsVal = document.getElementById('cx-minclasses-val');
+    var exclEl = document.getElementById('cx-excludeuser');
+    var chips = Array.prototype.slice.call(document.querySelectorAll('.cx-chip'));
+    var BITS = [1, 2, 4, 8];
+
+    function fmt(n) { return n.toLocaleString('en-US'); }
+
+    function styleChip(chip) {
+        var on = state.use[+chip.getAttribute('data-bit')];
+        chip.style.padding = '5px 10px';
+        chip.style.borderRadius = '5px';
+        chip.style.fontFamily = 'var(--mono)';
+        chip.style.fontSize = '11px';
+        chip.style.cursor = 'pointer';
+        chip.style.border = '1px solid ' + (on ? 'var(--primary-deep)' : 'var(--border-bright)');
+        chip.style.background = on ? 'rgba(var(--primary-rgb),0.1)' : 'var(--surface-2)';
+        chip.style.color = on ? 'var(--primary)' : 'var(--text-mute)';
+    }
+
+    function recompute() {
+        var pass = 0;
+        for (var i = 0; i < HIST.length; i++) {
+            var len = HIST[i][0], mask = HIST[i][1], uname = HIST[i][2], n = HIST[i][3];
+            if (len < state.minLen) continue;
+            if (state.excludeUser && uname) continue;
+            var present = 0;
+            for (var b = 0; b < BITS.length; b++) {
+                if (state.use[BITS[b]] && (mask & BITS[b])) present++;
+            }
+            if (present >= state.minClasses) pass += n;
+        }
+        var pct = TOTAL ? pass / TOTAL * 100 : 0;
+        pctEl.innerHTML = pct.toFixed(1) + '<span style="font-size:22px;">%</span>';
+        pctEl.style.color = pct >= 50 ? 'var(--primary)' : 'var(--amber)';
+        complyEl.textContent = fmt(pass) + ' of ' + fmt(TOTAL) + ' comply';
+        failEl.textContent = fmt(TOTAL - pass) + ' fail policy';
+        ledEl.className = 'dot-led ' + (pct >= 50 ? 'on' : 'off');
+    }
+
+    minLenEl.addEventListener('input', function () {
+        state.minLen = +this.value; minLenVal.textContent = this.value; recompute();
+    });
+    minClsEl.addEventListener('input', function () {
+        state.minClasses = +this.value; minClsVal.textContent = this.value + ' of 4 classes'; recompute();
+    });
+    exclEl.addEventListener('change', function () { state.excludeUser = this.checked; recompute(); });
+    chips.forEach(function (chip) {
+        styleChip(chip);
+        chip.addEventListener('click', function () {
+            var bit = +chip.getAttribute('data-bit');
+            state.use[bit] = !state.use[bit];
+            styleChip(chip); recompute();
+        });
+    });
+    recompute();
+})();
+</script>
+{% endif %}
+{% endblock scripts %}

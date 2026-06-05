@@ -1,485 +1,438 @@
 """Flask routes to handle Analytics"""
-import operator
+import io
 import os
 import re
+import zipfile
+from collections import Counter, defaultdict
 
-from flask import Blueprint, redirect, render_template, request, send_from_directory
+from flask import Blueprint, redirect, render_template, request, send_file, send_from_directory
 from flask_login import login_required
 from sqlalchemy import func, select
 
-from hashview.models import Customers, Hashes, HashfileHashes, Hashfiles, db
-
-# TODO
-# This whole things is a mess
-# Each graph should be its own route
-
+from hashview.models import Customers, Hashes, HashfileHashes, Hashfiles, Jobs, Tasks, db
 
 analytics = Blueprint('analytics', __name__)
+
+
+# ---------------------------------------------------------------------------
+# Scope + analytics helpers
+#
+# /analytics has three scopes, chosen purely by the customer + hashfile query
+# args (there is no separate "scope" control):
+#   * (no args)                  -> all data (every customer)
+#   * customer_id                -> one customer (all of their hashfiles)
+#   * customer_id + hashfile_id  -> a single hashfile
+# These arg names are part of the URL contract that the jobs / hashfiles /
+# customer / job-completion-email links rely on, so they must not change.
+# ---------------------------------------------------------------------------
+
+BLANK_LABEL = 'Blank (unset)'
+
+
+def _scoped_hash_query(customer_id, hashfile_id, cracked=None):
+    """Hashes joined to their HashfileHashes (account) rows, narrowed to the
+    active scope. ``cracked`` optionally keeps only recovered (True) or
+    not-yet-recovered (False) hashes."""
+    query = db.session.query(Hashes).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id)
+    if hashfile_id:
+        query = query.filter(HashfileHashes.hashfile_id == hashfile_id)
+    elif customer_id:
+        query = (query.join(Hashfiles, HashfileHashes.hashfile_id == Hashfiles.id)
+                 .filter(Hashfiles.customer_id == customer_id))
+    if cracked is True:
+        query = query.filter(Hashes.cracked == 1)
+    elif cracked is False:
+        query = query.filter(Hashes.cracked == 0)
+    return query
+
+
+def _scoped_hashfiles(customer_id, hashfile_id):
+    """Hashfiles in the active scope (used for runtime + file counts)."""
+    query = db.session.query(Hashfiles)
+    if hashfile_id:
+        return query.filter(Hashfiles.id == hashfile_id)
+    if customer_id:
+        return query.filter(Hashfiles.customer_id == customer_id)
+    return query
+
+
+def _distinct_hash_count(customer_id, hashfile_id, cracked=None):
+    """Distinct hashes (de-duped across shared accounts) in the scope."""
+    return (_scoped_hash_query(customer_id, hashfile_id, cracked)
+            .with_entities(Hashes.id).distinct().count())
+
+
+def _local_part(username):
+    """DOMAIN\\user or *user -> bare user (netntlm / kerberos style names)."""
+    if not username:
+        return username
+    if '\\' in username:
+        return username.split('\\')[-1]
+    if '*' in username:
+        return username.split('*')[-1]
+    return username
+
+
+def _char_classes(plaintext):
+    """(has_lower, has_upper, has_digit, has_special) for a plaintext."""
+    return (
+        bool(re.search(r'[a-z]', plaintext)),
+        bool(re.search(r'[A-Z]', plaintext)),
+        bool(re.search(r'[0-9]', plaintext)),
+        bool(re.search(r'[^A-Za-z0-9]', plaintext)),
+    )
+
+
+def _mask(plaintext):
+    """hashcat-style ?l?u?d?s mask for a plaintext (one token per character)."""
+    out = []
+    for char in plaintext:
+        if 'a' <= char <= 'z':
+            out.append('?l')
+        elif 'A' <= char <= 'Z':
+            out.append('?u')
+        elif '0' <= char <= '9':
+            out.append('?d')
+        else:
+            out.append('?s')
+    return ''.join(out)
+
+
+# Pattern-intelligence vocab (substring match against the lowercased plaintext).
+SEASONS = ('spring', 'summer', 'autumn', 'winter', 'fall')
+MONTHS = ('january', 'february', 'march', 'april', 'may', 'june', 'july',
+          'august', 'september', 'october', 'november', 'december')
+KEYBOARD_WALKS = ('qwerty', 'qwertz', 'azerty', 'asdfgh', 'asdf', 'zxcvbn', 'zxcv',
+                  'qazwsx', '1qaz', '2wsx', '1q2w3e', 'qweasd', 'poiuy')
+YEAR_RE = re.compile(r'(?:19|20)\d{2}')
+# generic org-name tokens that would over-match if treated as "company name" hits
+_COMPANY_STOPWORDS = frozenset({'inc', 'llc', 'ltd', 'corp', 'the', 'and', 'group',
+                                'company', 'gmbh', 'holdings'})
+_ATTACK_LABELS = {0: 'Wordlist', 1: 'Combinator', 3: 'Mask / brute-force', 6: 'Hybrid', 7: 'Hybrid'}
+
+
+def _base_word(plaintext):
+    """Root word: strip leading/trailing non-letters, lowercase ('Summer2024!' -> 'summer')."""
+    core = re.sub(r'^[^A-Za-z]+', '', plaintext)
+    core = re.sub(r'[^A-Za-z]+$', '', core)
+    return core.lower()
+
+
+def _suffix(plaintext):
+    """Trailing run of non-letter characters users append ('Welcome1!' -> '1!')."""
+    match = re.search(r'[^A-Za-z]+$', plaintext)
+    return match.group(0) if match else '(ends with a letter)'
+
+
+def _company_tokens(customer_obj, customers):
+    """Significant name tokens to flag as 'company name' hits. Uses the scoped
+    customer when one is selected, else every customer (all-data scope)."""
+    names = [customer_obj.name] if customer_obj else [c.name for c in customers]
+    return {tok for name in names
+            for tok in re.split(r'[^a-z0-9]+', (name or '').lower())
+            if len(tok) >= 3 and tok not in _COMPANY_STOPWORDS}
+
+
+def _pattern_intelligence(corpus, company_tokens):
+    """Base words, common themes, embedded years and trailing tokens over the
+    recovered ``(plaintext, _username)`` corpus. Returns four bar_row-ready lists."""
+    base, suffixes, years = Counter(), Counter(), Counter()
+    themes = {'Company name': 0, 'Season': 0, 'Month': 0, 'Year (19xx/20xx)': 0, 'Keyboard walk': 0}
+    for plaintext, _username in corpus:
+        pword = plaintext or ''
+        if not pword:
+            continue
+        low = pword.lower()
+        word = _base_word(pword)
+        if len(word) >= 3:
+            base[word] += 1
+        suffixes[_suffix(pword)] += 1
+        found_years = YEAR_RE.findall(pword)
+        for year in found_years:
+            years[year] += 1
+        if company_tokens and any(tok in low for tok in company_tokens):
+            themes['Company name'] += 1
+        if any(season in low for season in SEASONS):
+            themes['Season'] += 1
+        if any(month in low for month in MONTHS):
+            themes['Month'] += 1
+        if found_years:
+            themes['Year (19xx/20xx)'] += 1
+        if any(walk in low for walk in KEYBOARD_WALKS):
+            themes['Keyboard walk'] += 1
+
+    tones = {'Company name': 'red', 'Season': 'amber', 'Month': 'amber',
+             'Year (19xx/20xx)': 'amber', 'Keyboard walk': 'red'}
+    return (
+        [{'pw': word, 'n': n} for word, n in base.most_common(10)],
+        [{'label': label, 'n': count, 'tone': tones[label]} for label, count in themes.items()],
+        [{'year': year, 'n': n} for year, n in years.most_common(10)],
+        [{'token': token, 'n': n} for token, n in suffixes.most_common(10)],
+    )
+
+
+def _attack_breakdown(customer_id, hashfile_id):
+    """Recovered (distinct) hashes grouped by the attack method that cracked them."""
+    rows = (_scoped_hash_query(customer_id, hashfile_id, cracked=True)
+            .with_entities(Hashes.id, Hashes.task_id).distinct().all())
+    method = {}
+    for task in Tasks.query.with_entities(Tasks.id, Tasks.hc_attackmode, Tasks.rule_id).all():
+        label = _ATTACK_LABELS.get(task.hc_attackmode, 'Other')
+        if task.hc_attackmode == 0 and task.rule_id:
+            label = 'Wordlist + rules'
+        method[task.id] = label
+    counts = Counter(method.get(task_id, 'Unknown') for _hash_id, task_id in rows)
+    return [{'label': label, 'n': n} for label, n in counts.most_common()]
+
+
+# Length-bucket columns for the length x complexity heatmap.
+_LEN_COLS = ('≤5', '6', '7', '8', '9', '10', '11', '12', '13-15', '16+')
+STRENGTH_LABELS = ('Very weak', 'Weak', 'Fair', 'Strong', 'Very strong')
+_STRENGTH_TONES = ('red', 'red', 'amber', 'primary', 'cyan')
+
+
+def _len_col(length):
+    """Column index into _LEN_COLS for a password length."""
+    if length <= 5:
+        return 0
+    if length <= 12:
+        return length - 5      # 6->1 ... 12->7
+    if length <= 15:
+        return 8
+    return 9
+
+
+def _strength_bucket(plaintext):
+    """Heuristic 0-4 password strength (zxcvbn-style buckets): rewards length and
+    character-class diversity, penalises keyboard walks, runs of repeats and short
+    passwords. A fast estimate (not the real zxcvbn library, which is too slow per
+    password for a whole corpus)."""
+    if not plaintext:
+        return 0
+    length = len(plaintext)
+    lower, upper, digit, special = _char_classes(plaintext)
+    classes = lower + upper + digit + special
+    score = 0
+    score += (length >= 8) + (length >= 12) + (length >= 16)
+    score += (classes >= 3) + (classes == 4)
+    low = plaintext.lower()
+    if any(walk in low for walk in KEYBOARD_WALKS):
+        score -= 2
+    if re.search(r'(.)\1\1', plaintext):          # 3+ identical chars in a row
+        score -= 1
+    if length < 8:
+        score -= 1
+    return max(0, min(4, score))
+
+
+def _structure_breakdowns(corpus):
+    """length x character-class heatmap, password-rotation clusters, and a
+    strength distribution over the recovered corpus -- computed in one pass."""
+    heat = defaultdict(int)              # (len_col, n_classes 1-4) -> count
+    stem_variants = defaultdict(set)     # rotation stem (lowercased) -> {full plaintext, ...}
+    strength = [0, 0, 0, 0, 0]
+    for plaintext, _username in corpus:
+        pword = plaintext or ''
+        if not pword:
+            continue
+        lower, upper, digit, special = _char_classes(pword)
+        n_classes = lower + upper + digit + special
+        if n_classes:
+            heat[(_len_col(len(pword)), n_classes)] += 1
+        stem = re.sub(r'[^A-Za-z]+$', '', pword).lower()    # strip trailing digits/symbols
+        if len(stem) >= 3:
+            stem_variants[stem].add(pword)
+        strength[_strength_bucket(pword)] += 1
+
+    heatmap_rows = [
+        {'classes': cls,
+         'cells': [{'n': heat.get((col, cls), 0)} for col in range(len(_LEN_COLS))]}
+        for cls in (4, 3, 2, 1)
+    ]
+    heatmap_max = max(heat.values()) if heat else 0
+    rotations = sorted(
+        ({'stem': stem, 'count': len(variants), 'variants': sorted(variants)}
+         for stem, variants in stem_variants.items() if len(variants) >= 2),
+        key=lambda item: item['count'], reverse=True)[:8]
+    strength_dist = [{'label': STRENGTH_LABELS[i], 'n': strength[i], 'tone': _STRENGTH_TONES[i]}
+                     for i in range(5)]
+    return heatmap_rows, list(_LEN_COLS), heatmap_max, rotations, strength_dist
 
 
 @analytics.route('/analytics', methods=['GET'])
 @login_required
 def get_analytics():
-    """Function to list Analytics Page"""
+    """Scope-aware analytics dashboard (all data / per-customer / per-hashfile)."""
 
-    if request.args.get("customer_id"):
-        customer_id = request.args["customer_id"]
-    else:
-        customer_id = None
-    if request.args.get("hashfile_id"):
-        hashfile_id = request.args["hashfile_id"]
-    else:
-        hashfile_id = None
+    customer_id = request.args.get('customer_id') or None
+    hashfile_id = request.args.get('hashfile_id') or None
 
-    hashfiles, customers = [], []
-    results =  db.session.query(Customers, Hashfiles).join(Hashfiles, Customers.id==Hashfiles.customer_id).order_by(Customers.name)
+    # Dropdown option lists: every customer that has a hashfile, and every
+    # hashfile (the template filters the hashfile list by the chosen customer).
+    customers, hashfiles = [], []
+    rows = (db.session.query(Customers, Hashfiles)
+            .join(Hashfiles, Customers.id == Hashfiles.customer_id)
+            .order_by(Customers.name))
+    for row in rows:
+        if row.Customers not in customers:
+            customers.append(row.Customers)
+        hashfiles.append(row.Hashfiles)
 
-    #Put all hashes in a list (hashfiles) and pull out all unique customers into a separate list (customers)
-    for rows in results:
-        customers.append(rows.Customers) if rows.Customers not in customers else customers
-        hashfiles.append(rows.Hashfiles)
+    customer_obj = Customers.query.get(customer_id) if customer_id else None
+    hashfile_obj = Hashfiles.query.get(hashfile_id) if hashfile_id else None
 
-    # Figure 1 (Cracked vs uncracked)
-    if customer_id:
-        # we have a customer
-        if hashfile_id: # with a hashfile
-            fig1_cracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile_id).count()
-            fig1_uncracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==hashfile_id).count()
-        else:
-            # just a customer, no specific hashfile
-            fig1_cracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '1').count()
-            fig1_uncracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '0').count()
-    else:
-        fig1_cracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').count()
-        fig1_uncracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='0').count()
+    # ---- one recovered (plaintext, username) corpus query feeds every
+    #      plaintext-derived chart below ----
+    corpus = (_scoped_hash_query(customer_id, hashfile_id, cracked=True)
+              .with_entities(Hashes.plaintext, HashfileHashes.username).all())
+    total_cracked = len(corpus)
 
-    fig1_data = [
-        ("Recovered: " + str(format_display(fig1_cracked_cnt)), fig1_cracked_cnt),
-        ("Unrecovered: " + str(format_display(fig1_uncracked_cnt)), fig1_uncracked_cnt)
+    freq = Counter()
+    shared_map = defaultdict(list)
+    length_counter = Counter()
+    mask_counter = Counter()
+    class_counts = [0, 0, 0, 0]          # index 0 -> 1 class ... index 3 -> 4 classes
+    user_eq_pass = []
+    hist = defaultdict(int)              # (len<=16, class_mask 0-15, contains_username) -> count
+
+    for plaintext, username in corpus:
+        pword = plaintext or ''
+        freq[pword] += 1
+        shared_map[pword].append(username)
+        length_counter[len(pword)] += 1
+        mask_counter[_mask(pword)] += 1
+
+        lower, upper, digit, special = _char_classes(pword)
+        n_classes = lower + upper + digit + special
+        if n_classes:
+            class_counts[n_classes - 1] += 1
+
+        local = _local_part(username) or ''
+        if pword and local and local.lower() == pword.lower():
+            user_eq_pass.append({'u': username, 'p': pword})
+
+        class_mask = (1 if lower else 0) | (2 if upper else 0) | (4 if digit else 0) | (8 if special else 0)
+        contains_user = 1 if (local and local.lower() in pword.lower()) else 0
+        hist[(min(len(pword), 16), class_mask, contains_user)] += 1
+
+    top_passwords = [{'pw': pw or BLANK_LABEL, 'n': n} for pw, n in freq.most_common(10)]
+    reused = sum(n for n in freq.values() if n > 1)
+    reused_pct = round(reused / total_cracked * 1000) / 10 if total_cracked else 0
+    unique_pct = round((100 - reused_pct) * 10) / 10 if total_cracked else 0
+    top_reuse_count = freq.most_common(1)[0][1] if freq else 0
+
+    shared = sorted(
+        ({'plain': pw or BLANK_LABEL, 'plain_raw': pw, 'count': len(users),
+          'users': [_local_part(user) for user in users if user]}
+         for pw, users in shared_map.items() if len(users) > 1),
+        key=lambda item: item['count'], reverse=True)
+
+    masks = [{'mask': mask, 'n': n} for mask, n in mask_counter.most_common(10)]
+    length_dist = [{'len': length, 'n': length_counter[length]} for length in sorted(length_counter)]
+    class_buckets = [
+        {'label': '1 class · weak', 'n': class_counts[0], 'tone': 'red'},
+        {'label': '2 classes', 'n': class_counts[1], 'tone': 'amber'},
+        {'label': '3 classes', 'n': class_counts[2], 'tone': 'primary'},
+        {'label': '4 classes · strong', 'n': class_counts[3], 'tone': 'cyan'},
     ]
+    complexity_hist = [[length, mask, user, n] for (length, mask, user), n in hist.items()]
 
-    fig1_labels = [row[0] for row in fig1_data]
-    fig1_values = [row[1] for row in fig1_data]
-    fig1_total = fig1_cracked_cnt + fig1_uncracked_cnt
+    # ---- pattern intelligence (base words / themes / years / endings) + crack method ----
+    top_base_words, themes, year_dist, suffixes = _pattern_intelligence(
+        corpus, _company_tokens(customer_obj, customers))
+    fell = _attack_breakdown(customer_id, hashfile_id)
+    heatmap_rows, heatmap_cols, heatmap_max, rotations, strength_dist = _structure_breakdowns(corpus)
 
-    # Cracked Percent
-    fig1_percent = 0 if (0 == fig1_total) else [str(round(((fig1_cracked_cnt / fig1_total)*100),1)) + '%']
+    # ---- scope totals (uncracked is derived in the template as total - cracked) ----
+    accounts = _scoped_hash_query(customer_id, hashfile_id).count()
+    accounts_cracked = _scoped_hash_query(customer_id, hashfile_id, cracked=True).count()
+    unique_hashes = _distinct_hash_count(customer_id, hashfile_id)
+    unique_cracked = _distinct_hash_count(customer_id, hashfile_id, cracked=True)
+    runtime = (_scoped_hashfiles(customer_id, hashfile_id)
+               .with_entities(func.coalesce(func.sum(Hashfiles.runtime), 0)).scalar()) or 0
+    scope_hashfiles_cnt = _scoped_hashfiles(customer_id, hashfile_id).count()
 
-    # Figure 2 (Cracked Complexity Breakdown)
-    if customer_id:
-        # we have a customer
-        if hashfile_id:
-            fig2_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile_id).with_entities(Hashes.plaintext).all()
-            fig2_uncracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==hashfile_id).count()
-        else:
-            # just a customer, no specific hashfile
-            fig2_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '1').with_entities(Hashes.plaintext).all()
-            fig2_uncracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '0').count()
+    jobs_query = db.session.query(Jobs)
+    if hashfile_id:
+        jobs_query = jobs_query.filter(Jobs.hashfile_id == hashfile_id)
+    elif customer_id:
+        jobs_query = jobs_query.filter(Jobs.customer_id == customer_id)
+    jobs_cnt = jobs_query.count()
+
+    # ---- recovery over time: cumulative distinct cracked hashes by day ----
+    recovered_rows = (_scoped_hash_query(customer_id, hashfile_id, cracked=True)
+                      .with_entities(Hashes.id, Hashes.recovered_at).distinct().all())
+    by_day = Counter()
+    for _hash_id, recovered_at in recovered_rows:
+        if recovered_at:
+            by_day[recovered_at.date()] += 1
+    timeline, running = [], 0
+    for day in sorted(by_day):
+        running += by_day[day]
+        timeline.append({'label': day.strftime('%m/%d'), 'cum': running})
+
+    # ---- customer rollup (shown whenever a customer is selected) ----
+    if customer_id and not hashfile_id:
+        rollup = {'files': scope_hashfiles_cnt, 'cracked': unique_cracked, 'total': unique_hashes}
+    elif customer_id:
+        rollup = {'files': _scoped_hashfiles(customer_id, None).count(),
+                  'cracked': _distinct_hash_count(customer_id, None, cracked=True),
+                  'total': _distinct_hash_count(customer_id, None)}
     else:
-        fig2_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').with_entities(Hashes.plaintext).all()
-        fig2_uncracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='0').count()
+        rollup = None
 
-    fig2_fails_complexity_cnt = 0
-    fig2_meets_complexity_cnt = 0
-
-    for entry in fig2_cracked_hashes:
-        flags = 0
-        if len(entry[0]) < 8:
-            flags = -3 # set to negative 3 so that there's no way we can meet complexity
-        if re.search(r"[a-z]", entry[0]):
-            flags = flags + 1
-        if re.search(r"[A-Z]", entry[0]):
-            flags = flags + 1
-        if re.search(r"[0-9]", entry[0]):
-            flags = flags + 1
-        if re.search(r"[^0-9A-Za-z]", entry[0]):
-            flags = flags + 1
-
-        if flags < 3:
-            fig2_fails_complexity_cnt = fig2_fails_complexity_cnt + 1
-        else:
-            fig2_meets_complexity_cnt = fig2_meets_complexity_cnt + 1
-
-    fig2_data = [
-        ("Fails Complexity: " + str(format_display(fig2_fails_complexity_cnt)), fig2_fails_complexity_cnt),
-        ("Meets Complexity: " + str(format_display(fig2_meets_complexity_cnt)), fig2_meets_complexity_cnt),
-        ("Unrecovered: " + str(format_display(fig2_uncracked_cnt)), fig2_uncracked_cnt)
-    ]
-
-    fig2_labels = [row[0] for row in fig2_data]
-    fig2_values = [row[1] for row in fig2_data]
-
-    # Figure 3 Recovered Hashes
-    if customer_id:
-        # we have a customer
-        if hashfile_id: # with a hashfile
-            fig3_cracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile_id).distinct(Hashes.plaintext).count()
-            fig3_uncracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==hashfile_id).distinct(Hashes.ciphertext).count()
-        else:
-            # just a customer, no specific hashfile
-            fig3_cracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '1').distinct(Hashes.plaintext).count()
-            fig3_uncracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '0').distinct(Hashes.ciphertext).count()
+    if hashfile_id:
+        scope_mode = 'file'
+        scope_name = hashfile_obj.name if hashfile_obj else 'hashfile'
+    elif customer_id:
+        scope_mode = 'customer'
+        scope_name = '%s · all %d hashfiles' % (
+            customer_obj.name if customer_obj else 'customer', scope_hashfiles_cnt)
     else:
-        fig3_cracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').distinct(Hashes.plaintext).count()
-        fig3_uncracked_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='0').distinct(Hashes.ciphertext).count()
+        scope_mode = 'all'
+        scope_name = 'all data'
 
-    fig3_data = [
-        ("Recovered: " + str(format_display(fig3_cracked_cnt)), fig3_cracked_cnt),
-        ("Unrecovered: " + str(format_display(fig3_uncracked_cnt)), fig3_uncracked_cnt)
-    ]
-
-    fig3_labels = [row[0] for row in fig3_data]
-    fig3_values = [row[1] for row in fig3_data]
-    fig3_total = fig3_cracked_cnt + fig3_uncracked_cnt
-
-    # Cracked Percent
-    fig3_percent = 0 if (0 == fig3_total) else [str(round(((fig3_cracked_cnt / fig3_total)*100),1)) + '%']
-
-    # General Stats Table
-    total_runtime = 0
-    total_accounts = 0
-    total_unique_hashes = 0
-    if customer_id:
-        # we have a customer
-        if hashfile_id:
-            hashfile = Hashfiles.query.get(hashfile_id)
-            total_runtime = hashfile.runtime
-            total_accounts = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile_id).count()
-            total_unique_hashes = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(HashfileHashes.hashfile_id==hashfile_id).distinct('ciphertext').count()
-        else:
-            # just a customer, no specific hashfile
-            hashfiles = Hashfiles.query.filter_by(customer_id=customer_id).all()
-            for hashfile in hashfiles:
-                total_runtime = total_runtime + hashfile.runtime
-            total_accounts = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).count()
-            total_unique_hashes = db.session.query(Hashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).distinct('ciphertext').count()
-    else:
-        hashfiles = Hashfiles.query.all()
-        for hashfile in hashfiles:
-            total_runtime = total_runtime + hashfile.runtime
-        total_accounts = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).count()
-        total_unique_hashes = db.session.query(Hashes).count()
-
-    total_accounts = format_display(total_accounts)
-    total_unique_hashes = format_display(total_unique_hashes)
-
-    # Figure 4 (Charset Breakdown)
-    # Reusing fig2_cracked_hashes data
-
-    blank = 0
-
-    numeric = 0
-    loweralpha = 0
-    upperalpha = 0
-    special = 0
-
-    mixedalpha = 0
-    mixedalphanum = 0
-    loweralphanum = 0
-    upperalphanum = 0
-    loweralphaspecial = 0
-    upperalphaspecial = 0
-    specialnum = 0
-
-    mixedalphaspecial = 0
-    upperalphaspecialnum = 0
-    loweralphaspecialnum = 0
-    mixedalphaspecialnum = 0
-
-    other = 0
-
-    for entry in fig2_cracked_hashes:
-        tmp_plaintext = entry[0]
-        tmp_plaintext = re.sub(r"[A-Z]", 'U', tmp_plaintext)
-        tmp_plaintext = re.sub(r"[a-z]", 'L', tmp_plaintext)
-        tmp_plaintext = re.sub(r"[0-9]", 'D', tmp_plaintext)
-        tmp_plaintext = re.sub(r"[^0-9A-Za-z]", 'S', tmp_plaintext)
-
-        if len(tmp_plaintext) == 0:
-            blank += 1
-        elif not re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            numeric += 1
-        elif not re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            loweralpha += 1
-        elif re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            upperalpha += 1
-        elif not re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            special += 1
-        elif re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            mixedalpha += 1
-        elif re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            mixedalphanum += 1
-        elif not re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            loweralphanum += 1
-        elif re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and not re.search("S", tmp_plaintext):
-            upperalphanum += 1
-        elif not re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            loweralphaspecial += 1
-        elif re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            upperalphaspecial += 1
-        elif not re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            specialnum += 1
-        elif re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and not re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            mixedalphaspecial += 1
-        elif re.search("U", tmp_plaintext) and not re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            upperalphaspecialnum += 1
-        elif not re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            loweralphaspecialnum += 1
-        elif re.search("U", tmp_plaintext) and re.search("L", tmp_plaintext) and re.search("D", tmp_plaintext) and re.search("S", tmp_plaintext):
-            mixedalphaspecialnum += 1
-        else:
-            other += 1
-
-    fig4_labels = []
-    fig4_values = []
-
-    # We only want the top 4 with the 5th being other
-    fig4_dict = {
-        "Blank (unset): " + str(format_display(blank)): blank,
-        "Numeric Only: " + str(format_display(numeric)) : numeric,
-        "LowerAlpha Only: " + str(format_display(loweralpha)): loweralpha,
-        "UpperAlpha Only: " + str(format_display(upperalpha)): upperalpha,
-        "Special Only: " + str(format_display(special)): special,
-        "MixedAlpha: " + str(format_display(mixedalpha)): mixedalpha,
-        "MixedAlphaNumeric: " +str(format_display(mixedalphanum)): mixedalphanum,
-        "LowerAlphaNumeric: " + str(format_display(loweralphanum)): loweralphanum,
-        "LowerAlphaSpecial: " + str(format_display(loweralphaspecial)): loweralphaspecial,
-        "UpperAlphaSpecial: " + str(format_display(upperalphaspecial)): upperalphaspecial,
-        "SpecialNumeric: " + str(format_display(specialnum)): specialnum,
-        "MixedAlphaSpecial: " + str(format_display(mixedalphaspecial)): mixedalphaspecial,
-        "UpperAlphaSpecialNumeric: " + str(format_display(upperalphaspecialnum)): upperalphaspecialnum,
-        "LowerAlphaSpecialNumeric: " + str(format_display(loweralphaspecialnum)): loweralphaspecialnum,
-        "MixedAlphaSpecialNumeric: " + str(format_display(mixedalphaspecialnum)): mixedalphaspecialnum,
-        "Other: " + str(format_display(other)): other,
-        }
-
-    fig4_array_sorted = dict(sorted(fig4_dict.items(), key=operator.itemgetter(1),reverse=True))
-
-    limit = 0
-    fig4_other = 0
-    for key in fig4_array_sorted:
-        if limit <= 3:
-            fig4_labels.append(key)
-            fig4_values.append(fig4_array_sorted[key])
-            limit += 1
-        else:
-            fig4_other += fig4_array_sorted[key]
-
-    fig4_labels.append('Other: ' + str(fig4_other))
-    fig4_values.append(fig4_other)
-
-    # Figure 5 (Passwords by Length)
-    if customer_id:
-        # we have a customer
-        if hashfile_id:
-            fig5_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile_id).with_entities(Hashes.plaintext).all()
-        else:
-            # just a customer, no specific hashfile
-            fig5_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '1').with_entities(Hashes.plaintext).all()
-    else:
-        fig5_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').with_entities(Hashes.plaintext).all()
-
-    fig5_data = {}
-
-    for entry in fig5_cracked_hashes:
-        if len(entry[0]) in fig5_data:
-            fig5_data[len(entry[0])] += 1
-        else:
-            fig5_data[len(entry[0])] = 1
-
-    fig5_labels =[]
-    fig5_values = []
-
-    # Sort by length and limit to 20
-    for entry in sorted(fig5_data):
-        if len(fig5_labels) < 20:
-            fig5_labels.append(entry)
-            fig5_values.append(fig5_data[entry])
-        else:
-            break
-
-    # Figure 6 (Top 10 Passwords)
-    if customer_id:
-        # we have a customer
-        if hashfile_id:
-            fig6_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile_id).with_entities(Hashes.plaintext).all()
-        else:
-            # just a customer, no specific hashfile
-            fig6_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '1').with_entities(Hashes.plaintext).all()
-    else:
-        fig6_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').with_entities(Hashes.plaintext).all()
-
-    fig6_data = {}
-
-    blank_label = 'Blank (unset)'
-    for entry in fig6_cracked_hashes:
-        if len(entry[0]) > 0:
-            if entry[0] in fig6_data:
-                fig6_data[entry[0]] += 1
-            else:
-                fig6_data[entry[0]] = 1
-        else:
-            if blank_label in fig6_data:
-                fig6_data[blank_label] += 1
-            else:
-                fig6_data[blank_label] = 1
-
-    fig6_labels = []
-    fig6_values = []
-
-    # Sort by Highest and Limit to 10
-    for entry in sorted(fig6_data, key=fig6_data.__getitem__, reverse=True):
-        if len (fig6_labels) < 10:
-            fig6_labels.append(entry)
-            fig6_values.append(fig6_data[entry])
-        else:
-            break
-
-    # Figure 7 (Top 10 Masks)
-    # Using Fig 5 data for this
-    fig7_values = {}
-    fig7_data = {}
-    fig7_total = 0
-    for entry in fig6_cracked_hashes:
-        tmp_plaintext = entry[0]
-        tmp_plaintext = re.sub(r"[A-Z]", 'U', tmp_plaintext)
-        tmp_plaintext = re.sub(r"[a-z]", 'L', tmp_plaintext)
-        tmp_plaintext = re.sub(r"[0-9]", 'D', tmp_plaintext)
-        tmp_plaintext = re.sub(r"[^0-9A-Za-z]", 'S', tmp_plaintext)
-        # Shhh... i know this is ugly
-        tmp_plaintext = re.sub(r"U", '?u', tmp_plaintext)
-        tmp_plaintext = re.sub(r"L", '?l', tmp_plaintext)
-        tmp_plaintext = re.sub(r"D", '?d', tmp_plaintext)
-        tmp_plaintext = re.sub(r"S", '?s', tmp_plaintext)
-
-        if tmp_plaintext not in fig7_data:
-            fig7_data[tmp_plaintext] = 1
-        else:
-            fig7_data[tmp_plaintext] += 1
-        fig7_total +=1
-
-    # Sort by Highest and Limit to 10
-    for entry in sorted(fig7_data, key=fig7_data.__getitem__, reverse=True):
-        if len (fig7_values) < 10:
-            fig7_values[entry] = fig7_data[entry]
-        else:
-            break
-
-    # Figure 8 (Users where Passwords are the same as the username)
-
-    if customer_id:
-        # we have a customer
-        if hashfile_id:
-            fig8_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile_id).with_entities(Hashes.plaintext, HashfileHashes.username).all()
-        else:
-            # just a customer, no specific hashfile
-            fig8_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.customer_id == customer_id).filter(Hashes.cracked == '1').with_entities(Hashes.plaintext, HashfileHashes.username).all()
-    else:
-        fig8_cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').with_entities(Hashes.plaintext, HashfileHashes.username).all()
-
-    fig8_table = []
-    for entry in fig8_cracked_hashes:
-        if entry[1] and entry[0]:
-            # check if username has domain in it
-            if '\\' in entry[1]:
-                username = entry[1].split('\\')[1]
-            elif '*' in  entry[1]:
-                username = entry[1].split('*')[1]
-            else:
-                username = entry[1]
-            if entry[0] == username:
-                fig8_table.append(entry[0])
-    
-    # Figure 9 (Users that share the same Password. Note some users may not have had their password recoverd to show up in this list)
-    if customer_id:
-        # we have a customer & hashfile
-        if hashfile_id:
-            fig9_hashes_ids = db.session.query(HashfileHashes) \
-                .where(HashfileHashes.hashfile_id == hashfile_id) \
-                .group_by(HashfileHashes.hash_id) \
-                .having(func.count() > 1) \
-                .with_entities(HashfileHashes.hash_id) \
-                .subquery()
-            
-            fig9_usernames = (
-            db.session.execute(
-                select(HashfileHashes.username)
-                    .where(HashfileHashes.hashfile_id == hashfile_id)
-                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
-                    .distinct()
-            )
-            .scalars()
-            .all()
-        )
-        else:
-            # just a customer, no specific hashfile
-            fig9_hashes_ids = db.session.query(HashfileHashes) \
-                .group_by(HashfileHashes.hash_id) \
-                .having(func.count() > 1) \
-                .with_entities(HashfileHashes.hash_id) \
-                .subquery()
-            
-            fig9_usernames = (
-            db.session.execute(
-                select(HashfileHashes.username).join(Hashfiles, HashfileHashes.hashfile_id == Hashfiles.id)
-                    .where(Hashfiles.customer_id == customer_id)
-                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
-                    .distinct()
-            )
-            .scalars()
-            .all()
-        )
-    else:
-        fig9_hashes_ids = db.session.query(HashfileHashes).with_entities(HashfileHashes.username, HashfileHashes.hash_id) \
-            .group_by(HashfileHashes.hash_id) \
-            .having(func.count() > 1) \
-            .with_entities(HashfileHashes.hash_id) \
-            .subquery()  
-        
-        fig9_usernames = (
-            db.session.execute(
-                select(HashfileHashes.username)
-                    .where(HashfileHashes.hash_id.in_(fig9_hashes_ids))
-                    .distinct()
-            )
-            .scalars()
-            .all()
-        )
-
-    fig9_table = []
-    for entry in fig9_usernames:
-        if entry is not None:
-            fig9_table.append(entry)
-        #print(f"Username: {entry}")
-
-
-    return render_template('analytics.html.j2',
-                            title='analytics',
-                            fig1_labels=fig1_labels,
-                            fig1_values=fig1_values,
-                            fig1_percent=fig1_percent,
-                            fig2_labels=fig2_labels,
-                            fig2_values=fig2_values,
-                            fig3_labels=fig3_labels,
-                            fig3_values=fig3_values,
-                            fig3_percent=fig3_percent,
-                            fig4_labels=fig4_labels,
-                            fig4_values=fig4_values,
-                            fig5_labels=fig5_labels,
-                            fig5_values=fig5_values,
-                            fig6_labels=fig6_labels,
-                            fig6_values=fig6_values,
-                            fig7_values=fig7_values,
-                            fig7_total=fig7_total,
-                            fig8_table=fig8_table,
-                            fig9_table=fig9_table,
-                            customers=customers,
-                            hashfiles=hashfiles,
-                            hashfile_id=hashfile_id,
-                            customer_id=customer_id,
-                            total_runtime=total_runtime,
-                            total_accounts=total_accounts,
-                            total_unique_hashes=total_unique_hashes)
+    return render_template(
+        'analytics.html.j2',
+        title='analytics',
+        customers=customers,
+        hashfiles=hashfiles,
+        customer_id=customer_id,
+        hashfile_id=hashfile_id,
+        customer_obj=customer_obj,
+        scope_mode=scope_mode,
+        scope_name=scope_name,
+        rollup=rollup,
+        accounts=accounts,
+        accounts_cracked=accounts_cracked,
+        unique_hashes=unique_hashes,
+        unique_cracked=unique_cracked,
+        runtime=runtime,
+        jobs_cnt=jobs_cnt,
+        scope_hashfiles_cnt=scope_hashfiles_cnt,
+        total_cracked=total_cracked,
+        top_passwords=top_passwords,
+        reused_pct=reused_pct,
+        unique_pct=unique_pct,
+        top_reuse_count=top_reuse_count,
+        shared=shared,
+        masks=masks,
+        length_dist=length_dist,
+        class_buckets=class_buckets,
+        user_eq_pass=user_eq_pass,
+        timeline=timeline,
+        complexity_hist=complexity_hist,
+        complexity_total=total_cracked,
+        top_base_words=top_base_words,
+        themes=themes,
+        year_dist=year_dist,
+        suffixes=suffixes,
+        fell=fell,
+        heatmap_rows=heatmap_rows,
+        heatmap_cols=heatmap_cols,
+        heatmap_max=heatmap_max,
+        rotations=rotations,
+        strength_dist=strength_dist)
 
 # serve a list of cracks
 @analytics.route('/analytics/download', methods=['GET'])
@@ -725,5 +678,63 @@ def analytics_download_fig8():
 
     return send_from_directory('control/tmp', filename, as_attachment=True)
 
-def format_display(number): # add commas to the number after every thousand places
-    return f"{number:,}"
+
+# --- Shared-password downloads (per-group txt and an all-groups zip) ---------
+
+def _safe_name(plaintext):
+    """A filesystem-safe stub for a plaintext, used in download filenames."""
+    stub = re.sub(r'[^A-Za-z0-9]+', '_', plaintext or '').strip('_')[:32]
+    return stub or 'blank'
+
+
+def _shared_txt(plaintext, users):
+    """The text file served for one shared-password group."""
+    label = plaintext if plaintext else '(blank password)'
+    header = 'The following users were found to share the same password: ' + label
+    return header + '\n\n' + '\n'.join(users) + '\n'
+
+
+def _shared_groups(customer_id, hashfile_id):
+    """{plaintext: [usernames]} for recovered passwords shared by >1 account in scope."""
+    rows = (_scoped_hash_query(customer_id, hashfile_id, cracked=True)
+            .with_entities(Hashes.plaintext, HashfileHashes.username).all())
+    groups = defaultdict(list)
+    for plaintext, username in rows:
+        if username:
+            groups[plaintext or ''].append(username)
+    return {pword: users for pword, users in groups.items() if len(users) > 1}
+
+
+@analytics.route('/analytics/download/shared', methods=['POST'])
+@login_required
+def analytics_download_shared():
+    """Users who share one specific recovered password. POST so the plaintext
+    travels in the body, not the URL / access logs."""
+    plaintext = request.form.get('plaintext', '')
+    customer_id = request.form.get('customer_id') or None
+    hashfile_id = request.form.get('hashfile_id') or None
+    rows = (_scoped_hash_query(customer_id, hashfile_id, cracked=True)
+            .filter(Hashes.plaintext == plaintext)
+            .with_entities(HashfileHashes.username).all())
+    users = sorted({username for (username,) in rows if username})
+    buf = io.BytesIO(_shared_txt(plaintext, users).encode('utf-8'))
+    return send_file(buf, mimetype='text/plain', as_attachment=True,
+                     download_name='shared_' + _safe_name(plaintext) + '.txt')
+
+
+@analytics.route('/analytics/download/shared_zip', methods=['GET'])
+@login_required
+def analytics_download_shared_zip():
+    """One text file per shared-password group, zipped together."""
+    customer_id = request.args.get('customer_id') or None
+    hashfile_id = request.args.get('hashfile_id') or None
+    groups = sorted(_shared_groups(customer_id, hashfile_id).items(),
+                    key=lambda item: len(item[1]), reverse=True)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for index, (plaintext, users) in enumerate(groups, start=1):
+            name = 'shared_%02d_%s.txt' % (index, _safe_name(plaintext))
+            archive.writestr(name, _shared_txt(plaintext, sorted(set(users))))
+    buf.seek(0)
+    return send_file(buf, mimetype='application/zip', as_attachment=True,
+                     download_name='shared_passwords.zip')

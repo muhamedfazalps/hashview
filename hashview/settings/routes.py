@@ -18,7 +18,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 import hashview
-from hashview.models import Settings, db
+from hashview.models import Hashes, Settings, db
 from hashview.settings.forms import DatabaseBackupForm, HashviewSettingsForm
 from hashview.utils.backup import (
     BackupError,
@@ -186,6 +186,29 @@ def clear_temp_folder():
     if current_user.admin:
         for file in os.scandir('hashview/control/tmp/'):
             os.remove(file.path)
+        flash('Temp folder cleared.', 'success')
         return redirect(url_for('settings.settings_list'))
 
     abort(403)
+
+
+@settings.route('/settings/purge_cracked', methods=['POST'])
+@login_required
+def purge_cracked():
+    """Permanently wipe all recovered plaintext: reset every cracked hash back to
+    its uncracked state (clears plaintext + recovery metadata, keeps the hashes)."""
+    if not current_user.admin:
+        abort(403)
+    count = Hashes.query.filter(Hashes.cracked == 1).update(
+        {
+            Hashes.plaintext: None,
+            Hashes.cracked: 0,
+            Hashes.recovered_at: None,
+            Hashes.task_id: None,
+            Hashes.recovered_by: None,
+        },
+        synchronize_session=False,
+    )
+    db.session.commit()
+    flash(f'Purged {count:,} recovered password(s) — those hashes are now uncracked.', 'success')
+    return redirect(url_for('settings.settings_list'))
