@@ -229,9 +229,11 @@
             <div class="card" style="margin-top:var(--gap); border-color:var(--red-dim);">
                 <div class="card-body">
                     <div style="display:flex; align-items:center; gap:8px; color:var(--red); font-weight:600; margin-bottom:8px;">{{ icon('ban', size=15) }} Danger zone</div>
-                    <div class="field-hint" style="margin-bottom:14px;">Permanently wipe all recovered plaintext from the database. This cannot be undone.</div>
-                    <button type="button" class="btn btn-danger" onclick="hvSettingsPlaceholder(this)">{{ icon('trash', size=15) }} Purge all cracked passwords</button>
-                    <span class="mono hv-placeholder-note" style="display:none; margin-left:12px; color:var(--text-mute); font-size:11.5px;">Not yet implemented.</span>
+                    <div class="field-hint" style="margin-bottom:14px;">Permanently wipe all recovered plaintext from the database — every cracked hash is reset to uncracked (the hashes themselves are kept). This cannot be undone.</div>
+                    <form method="POST" action="{{ url_for('settings.purge_cracked') }}" style="margin:0;"
+                          onsubmit="return confirm('Permanently wipe ALL recovered plaintext from the database? Every cracked hash will be reset to uncracked. This cannot be undone.');">
+                        <button type="submit" class="btn btn-danger">{{ icon('trash', size=15) }} Purge all cracked passwords</button>
+                    </form>
                 </div>
             </div>
         </div>
