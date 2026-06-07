@@ -3,6 +3,7 @@ import os
 import socket
 import uuid
 import json
+import logging
 import secrets
 import hashlib
 import sys
@@ -12,7 +13,6 @@ import signal
 import builtins
 import time
 import subprocess
-from contextlib import suppress
 from threading import Thread
 from datetime import datetime, timedelta
 
@@ -20,6 +20,16 @@ from datetime import datetime, timedelta
 parser = argparse.ArgumentParser()
 parser.add_argument("--debug", action="store_true", help="increase output verbosity")
 args = parser.parse_args()
+
+# Standardised console output for everything the agent logs during operation.
+# --debug raises the level to DEBUG to surface the verbose per-file / per-status
+# detail; without it the console stays at INFO (milestones + problems only).
+logging.basicConfig(
+    level=logging.DEBUG if args.debug else logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+LOG = logging.getLogger('hashview-agent')
 
 # Build Config
 
@@ -108,21 +118,19 @@ from agent.api import api
 def run_command(command):
     try:
         cmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #cmd = subprocess.Popen(["python", file],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        output, error = cmd.communicate()
+        _output, error = cmd.communicate()
 
-        if(error):
-            print(error)
+        if error:
+            LOG.error('Command stderr: %s', error.decode('utf-8', 'replace').strip())
             if 'hashfile is empty or corrupt' not in str(error):
                 if 'Terminated' in str(error):
                     sys.exit()
                 else:
                     api.sendError(str(error))
                     os.kill(os.getpid(), signal.SIGINT)
-    except OSError as e: 
-        print("inside exception", e)
+    except OSError as e:
+        LOG.error('Command failed to execute: %s', e)
         api.sendError(str(e))
-        #sys.exit()
         os.kill(os.getpid(), signal.SIGINT)
 
 def send_heartbeat(agent_status, hc_status):
@@ -130,7 +138,7 @@ def send_heartbeat(agent_status, hc_status):
 
 def getHashcatPid():
     if sys.platform == 'win32':
-        print('Hashview-Agent doesn\'t currecntly work on windows. PR\'s welcome :)')
+        LOG.error("Hashview-Agent does not currently run on Windows. PRs welcome :)")
         sys.exit()
     else:
         for proc in psutil.process_iter():
@@ -149,9 +157,15 @@ def sync_rules():
     """
     Synchronise local rule files with the server using JSON manifests.
     """
-    print('Syncing local rules with server.')
-    response = api.rules_list()
-    server_entries = json.loads(response)
+    LOG.info('Syncing rules with server.')
+    # Guard the manifest fetch: on a network/server error api.rules_list() yields
+    # no parseable list. Bail out WITHOUT pruning so a transient failure can never
+    # wipe the local rules.
+    try:
+        server_entries = json.loads(api.rules_list())
+    except (TypeError, ValueError, KeyError) as err:
+        LOG.warning('Could not fetch the rules manifest; skipping rules sync and cleanup: %s', err)
+        return
     new_manifest = {}
 
     for entry in server_entries:
@@ -164,7 +178,7 @@ def sync_rules():
         if local_entry:
             # Existing entry – verify checksum
             if local_entry['checksum'] != remote_checksum:
-                print('Checksum mismatch for rule', rule_id)
+                LOG.debug('Rule %s changed on the server; re-downloading.', rule_id)
                 old_path = os.path.join('control/rules', local_entry['filename'])
                 if os.path.exists(old_path):
                     os.remove(old_path)
@@ -184,20 +198,20 @@ def sync_rules():
                     for block in iter(lambda: f.read(4096), b''):
                         sha256.update(block)
                 local_checksum = sha256.hexdigest()
-                print('Local:', local_checksum, 'Remote:', remote_checksum)
+                LOG.debug('Rule checksum local=%s remote=%s', local_checksum, remote_checksum)
 
                 if local_checksum == remote_checksum:
                     dest = os.path.join('control/rules', filename)
                     run_command(f'mv {tmp_file} {dest}')
                     new_manifest[rule_id] = {'checksum': local_checksum, 'filename': filename}
                 else:
-                    print('Checksum verification failed for rule', rule_id)
+                    LOG.warning('Checksum verification failed for rule %s; discarding download.', rule_id)
                     os.remove(tmp_file)
             else:
                 new_manifest[rule_id] = local_entry
         else:
             # New rule – download
-            print('Downloading new rule', rule_id)
+            LOG.info('Downloading new rule %s.', rule_id)
             random_hex = secrets.token_hex(8)
             compressed = api.get_rules_file(entry['id'])
             tmp_gz = os.path.join('control/tmp', f'{random_hex}.gz')
@@ -212,22 +226,28 @@ def sync_rules():
                 for block in iter(lambda: f.read(4096), b''):
                     sha256.update(block)
             local_checksum = sha256.hexdigest()
-            print('Local:', local_checksum, 'Remote:', remote_checksum)
+            LOG.debug('Rule checksum local=%s remote=%s', local_checksum, remote_checksum)
 
             if local_checksum == remote_checksum:
                 dest = os.path.join('control/rules', filename)
                 run_command(f'mv {tmp_file} {dest}')
                 new_manifest[rule_id] = {'checksum': local_checksum, 'filename': filename}
             else:
-                print('Checksum verification failed for new rule', rule_id)
+                LOG.warning('Checksum verification failed for new rule %s; discarding download.', rule_id)
                 os.remove(tmp_file)
 
     if new_manifest != rules_manifest.data:
         rules_manifest.data = new_manifest
         rules_manifest.save()
-        print('Rules manifest updated.')
+        LOG.info('Rules manifest updated.')
     else:
-        print('Rules manifest unchanged.')
+        LOG.debug('Rules manifest unchanged.')
+
+    # Sync complete: drop any local rule files no longer in the manifest. Skip on
+    # an empty manifest so a momentary empty server response can't wipe the cache.
+    if new_manifest:
+        _prune_orphan_files('control/rules',
+                            {e['filename'] for e in new_manifest.values() if e.get('filename')})
 
 def _gz_name(basename):
     """Mirror of the server's utils.ensure_gz: ensure a trailing '.gz'.
@@ -248,6 +268,36 @@ def _sha256_file(path):
     return sha256.hexdigest()
 
 
+def _prune_orphan_files(directory, keep_filenames):
+    """Delete files in `directory` that the just-completed sync did NOT record in
+    its manifest (`keep_filenames`). This removes wordlists/rules that were
+    deleted server-side (or left over from a previous version) so the agent's
+    folders mirror the server manifest.
+
+    Safety: only ever called after a SUCCESSFUL manifest fetch (see the guards in
+    sync_rules/sync_wordlists), so a network/server error can't trigger a wipe.
+    Dotfiles (e.g. .gitkeep / .gitignore) and subdirectories are always left
+    alone, and each removal is isolated so one failure can't abort the pass.
+    """
+    if not os.path.isdir(directory):
+        return
+    removed = 0
+    for name in os.listdir(directory):
+        if name.startswith('.') or name in keep_filenames:
+            continue
+        path = os.path.join(directory, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+            removed += 1
+            LOG.debug('Removed stale file not in manifest: %s', path)
+        except OSError as err:
+            LOG.warning('Could not remove stale file %s: %s', path, err)
+    if removed:
+        LOG.info('Pruned %d stale file(s) from %s.', removed, directory)
+
+
 def sync_wordlists():
     """
     Synchronise local wordlist files with the server using JSON manifests.
@@ -264,21 +314,27 @@ def sync_wordlists():
         a version marker (it only changes when the dynamic list is regenerated
         via /v1/updateWordlist), which keeps this loop-free.
     """
-    print('Syncing local wordlists with server.')
+    LOG.info('Syncing wordlists with server.')
 
     # Transition guard: older agents stored decompressed wordlists under their
     # plain (non-.gz) filename. If any manifest entry is from that era, reset
     # the manifest so everything is re-downloaded once as .gz. The orphaned
     # plaintext files are harmless (build_hashcat_command now references .gz).
     if any(not e.get('filename', '').endswith('.gz') for e in wordlists_manifest.data.values()):
-        print('Detected pre-gzip wordlist manifest; resetting for one-time re-download.')
+        LOG.info('Detected a pre-gzip wordlist manifest; resetting for a one-time re-download.')
         wordlists_manifest.data = {}
 
     os.makedirs('control/wordlists', exist_ok=True)
     os.makedirs('control/tmp', exist_ok=True)
 
-    response = api.getWordlists()
-    server_entries = json.loads(response)
+    # Guard the manifest fetch: on a network/server error api.getWordlists()
+    # yields no parseable list. Bail out WITHOUT pruning so a transient failure
+    # can never wipe the local wordlists.
+    try:
+        server_entries = json.loads(api.getWordlists())
+    except (TypeError, ValueError, KeyError) as err:
+        LOG.warning('Could not fetch the wordlists manifest; skipping wordlist sync and cleanup: %s', err)
+        return
     new_manifest = {}
 
     for entry in server_entries:
@@ -293,10 +349,13 @@ def sync_wordlists():
             new_manifest[wl_id] = local_entry
             continue
 
-        print('Downloading wordlist', wl_id)
+        LOG.info('Downloading wordlist %s.', wl_id)
         compressed = api.get_wordlists_file(entry['id'])
         if not compressed:
-            print('No data received for wordlist', wl_id, '- skipping.')
+            LOG.warning('No data received for wordlist %s; keeping any existing copy.', wl_id)
+            # Keep this entry so the still-valid local file isn't pruned as an orphan.
+            if local_entry:
+                new_manifest[wl_id] = local_entry
             continue
 
         tmp_gz = os.path.join('control/tmp', secrets.token_hex(8) + '.gz')
@@ -309,9 +368,12 @@ def sync_wordlists():
         if wl_type == 'static':
             local_checksum = _sha256_file(tmp_gz)
             if local_checksum != remote_checksum:
-                print('Checksum verification failed for wordlist', wl_id,
-                      '(local:', local_checksum, 'remote:', remote_checksum, ')')
+                LOG.warning('Checksum verification failed for wordlist %s (local=%s remote=%s); discarding.',
+                            wl_id, local_checksum, remote_checksum)
                 os.remove(tmp_gz)
+                # Keep this entry so the still-valid local file isn't pruned as an orphan.
+                if local_entry:
+                    new_manifest[wl_id] = local_entry
                 continue
 
         # Remove any previous file for this entry, then move the new .gz in.
@@ -327,9 +389,17 @@ def sync_wordlists():
     if new_manifest != wordlists_manifest.data:
         wordlists_manifest.data = new_manifest
         wordlists_manifest.save()
-        print('Wordlists manifest updated.')
+        LOG.info('Wordlists manifest updated.')
     else:
-        print('Wordlists manifest unchanged.')
+        LOG.debug('Wordlists manifest unchanged.')
+
+    # Sync complete: drop any local wordlist files no longer in the manifest. Skip
+    # when the manifest is empty (e.g. a momentary empty server response) so we
+    # never wipe the whole cache; a genuinely-empty server is cleaned up on the
+    # next sync that returns at least one entry.
+    if new_manifest:
+        _prune_orphan_files('control/wordlists',
+                            {e['filename'] for e in new_manifest.values() if e.get('filename')})
 
 def jobTasks(job_task_id):
     return api.jobTasks(job_task_id)
@@ -416,25 +486,26 @@ def hashcatParser(filepath):
     # hashcat's stdout can contain arbitrary non-UTF-8 bytes (recovered plaintext
     # / candidate bytes). We only need the ASCII --status-json lines, so decode
     # tolerantly (errors='replace') instead of crashing on a stray byte.
-    hashcat_output = open(filepath, 'r', encoding='utf-8', errors='replace')
-    for line in hashcat_output:
-        # We itterate through entire file with the last value taking precidence
-        if line.startswith('{'):
-            # found json object
-            json_data = json.loads(line)
-            #status['Time_Started'] = json_data['time_start']
-            status['Time_Estimated'] = "(" + time_difference(json_data['estimated_stop'])+ ")"
-            status['Recovered'] = str(json_data['recovered_hashes'][0]) + "/" + str(json_data['recovered_hashes'][1])
-            speed = 0
-            devices = json_data['devices']
-            for device in devices:
-                speed = speed + device['speed']
-            status['Speed #'] = convert_speed(speed)
+    with open(filepath, 'r', encoding='utf-8', errors='replace') as hashcat_output:
+        for line in hashcat_output:
+            # Iterate the whole file; the last valid status line wins. We read this
+            # while hashcat is still writing it (via tee), so a line can be partial
+            # or malformed -- skip those rather than aborting the status poll.
+            if not line.startswith('{'):
+                continue
+            try:
+                json_data = json.loads(line)
+                status['Time_Estimated'] = "(" + time_difference(json_data['estimated_stop']) + ")"
+                status['Recovered'] = (str(json_data['recovered_hashes'][0]) + "/"
+                                       + str(json_data['recovered_hashes'][1]))
+                status['Speed #'] = convert_speed(sum(d['speed'] for d in json_data['devices']))
+            except (ValueError, KeyError, IndexError, TypeError) as err:
+                LOG.debug('Skipping unparseable hashcat status line: %s', err)
     return status
 
 def killHashcat(pid):
     if sys.platform == 'win32':
-        print('Hashcat-agent is not supported on windows. But pull requests are welcome')
+        LOG.warning('Killing hashcat is not supported on Windows.')
     else:
         os.kill(int(pid), signal.SIGTERM)
         #p = psutil.Process(pid)
@@ -452,162 +523,160 @@ def updateJobTask(job_task_id, task_status):
     return api.updateJobTask(job_task_id, task_status)    
 
 def data_retention_cleanup():
+    """Remove temp / output / hash files older than the server's retention period."""
     try:
-        response = api.server_settings()
-        server_settings = json.loads(response)
+        server_settings = json.loads(api.server_settings())
     except (KeyError, ValueError, TypeError):
-        print('[INFO] hashview-agent.py->data_retention_cleanup() Skipping cleanup: '
-              'server returned an unauthorized or unexpected response (agent may not be approved yet).')
+        LOG.info('Data-retention cleanup skipped: server returned an unauthorized or '
+                 'unexpected response (agent may not be approved yet).')
         return
 
     if not server_settings or 'retention_period' not in server_settings[0]:
-        print('[INFO] hashview-agent.py->data_retention_cleanup() Skipping cleanup: '
-              'no retention_period in server settings.')
+        LOG.info('Data-retention cleanup skipped: no retention_period in server settings.')
         return
 
-    # if a value is set then we process
-    if server_settings[0]['retention_period'] != 0:
-        
-        # Check and remove old files from tmp
-        for file in os.listdir('control/tmp'):
-            if os.stat('control/tmp/' + file).st_mtime < time.time() - server_settings[0]['retention_period'] * 86400 and file != '.gitignore':
-                os.remove('control/tmp/' + file)
-                print('[DEBUG] hashview-agent.py->data_retention_cleanup() Removed: control/tmp/' + file)        
+    retention_days = server_settings[0]['retention_period']
+    if retention_days == 0:        # 0 means "keep forever"
+        return
 
-        # check and remove files from outfiles
-        for file in os.listdir('control/outfiles'):
-            if file == '.gitignore':
-                print('Found Git Ignore!')
-            if os.stat('control/outfiles/' + file).st_mtime < time.time() - server_settings[0]['retention_period'] * 86400 and file != '.gitignore':
-                os.remove('control/outfiles/' + file)
-                print('[DEBUG] hashview-agent.py->data_retention_cleanup() Removed: control/outfiles/' + file) 
+    cutoff = time.time() - retention_days * 86400
+    for directory in ('control/tmp', 'control/outfiles', 'control/hashes'):
+        for name in os.listdir(directory):
+            if name == '.gitignore':
+                continue
+            path = os.path.join(directory, name)
+            if os.stat(path).st_mtime < cutoff:
+                os.remove(path)
+                LOG.debug('Data-retention removed: %s', path)
 
-        # check and remove hashfiles
-        for file in os.listdir('control/hashes'):
-            if file == '.gitignore':
-                print('Found Git Ignore!')
-            if os.stat('control/hashes/' + file).st_mtime < time.time() - server_settings[0]['retention_period'] * 86400 and file != '.gitignore':
-                os.remove('control/hashes/' + file)
-                print('[DEBUG] hashview-agent.py->data_retention_cleanup() Removed: control/hashes/' + file)         
+
+# ---------------------------------------------------------------------------
+# Main agent loop
+# ---------------------------------------------------------------------------
+
+HEARTBEAT_INTERVAL = 10        # seconds between idle/working heartbeats
+STATUS_POLL_INTERVAL = 15      # seconds between hashcat status polls; matches the
+                               # server-built crack command's --status-timer
+
+
+def maybe_update_dynamic_wordlist(task):
+    """If this task's wordlist is dynamic, ask the server to regenerate it, then
+    re-sync. /vX/wordlists/<id> is reserved for downloads, so we scan the list to
+    find the task's wordlist rather than fetching it directly."""
+    try:
+        server_wordlists = json.loads(getWordlists())
+    except (TypeError, ValueError, KeyError) as err:
+        LOG.warning('Could not fetch wordlists for the dynamic-update check; skipping it: %s', err)
+        return
+    for wordlist in server_wordlists:
+        if wordlist['id'] == task['wl_id'] and wordlist['type'] == 'dynamic':
+            LOG.info('Task uses a dynamic wordlist; requesting a server-side update.')
+            if updateDynamicWordlists(wordlist['id'])['msg'] != 'OK':
+                LOG.warning('Dynamic wordlist update failed for wordlist %s.', wordlist['id'])
+            else:
+                LOG.info('Dynamic wordlist update complete.')
+            sync_wordlists()
+            return
+
+
+def upload_cracks(job, job_task):
+    """Upload the hashcat crack file for this job task, if any cracks exist yet."""
+    crack_file = 'control/outfiles/hc_cracked_' + str(job['id']) + '_' + str(job_task['task_id']) + '.txt'
+    if not os.path.exists(crack_file):
+        LOG.debug('No results yet for job task %s; nothing to upload.', job_task['id'])
+        return
+    if getHashType(job['hashfile_id'])['msg'] != 'OK':
+        return
+    if uploadCrackFile(crack_file, str(job_task['id']))['msg'] == 'OK':
+        LOG.info('Uploaded recovered hashes to the server.')
+
+
+def monitor_hashcat(thread, job, job_task):
+    """While hashcat runs: heartbeat status to the server, honour cancels, and
+    stream recovered hashes up as they appear."""
+    output_file = 'control/outfiles/hcoutput_' + str(job['id']) + '_' + str(job_task['id']) + '.txt'
+    while thread.is_alive():
+        time.sleep(STATUS_POLL_INTERVAL)
+        hc_status = hashcatParser(output_file)
+        if hc_status:
+            LOG.info('hashcat running — recovered %s, %s, eta %s',
+                     hc_status.get('Recovered', '?'),
+                     hc_status.get('Speed #', '?'),
+                     hc_status.get('Time_Estimated', '?'))
+        if send_heartbeat('Working', hc_status)['msg'] == 'Canceled':
+            LOG.info('Server canceled this task; stopping hashcat.')
+            pid = getHashcatPid()
+            if pid:
+                killHashcat(pid)
+        upload_cracks(job, job_task)
+
+
+def run_assigned_task(job_task_id):
+    """Run a single task the server has assigned to this agent."""
+    LOG.info('Assigned job task %s.', job_task_id)
+
+    # Make sure our local rules + wordlists match the server before running.
+    sync_rules()
+    sync_wordlists()
+
+    job_task = jobTasks(job_task_id)
+    # Defensive: the server occasionally misses flipping this to Running.
+    updateJobTask(job_task['id'], 'Running')
+    maybe_update_dynamic_wordlist(tasks(job_task['task_id']))
+
+    job = jobs(job_task['job_id'])
+    # Hashfile name is generated to match what the job task command expects.
+    download_hashfile(job['id'], job_task['task_id'], job['hashfile_id'])
+
+    cmd = (replaceHashcatBinPath(job_task['command'])
+           + ' --status-json | tee control/outfiles/hcoutput_'
+           + str(job['id']) + '_' + str(job_task['id']) + '.txt')
+    LOG.debug('hashcat command: %s', cmd)
+
+    LOG.info('Running hashcat for job task %s...', job_task['id'])
+    thread = Thread(target=run_hashcat, args=(cmd,))
+    thread.start()
+    monitor_hashcat(thread, job, job_task)
+    LOG.info('hashcat completed for job task %s; uploading final results.', job_task['id'])
+
+    upload_cracks(job, job_task)
+
+    if updateJobTask(job_task['id'], 'Completed')['msg'] == 'OK':
+        LOG.info('Job task %s set to Completed.', job_task['id'])
+
+
+def handle_heartbeat():
+    """One heartbeat cycle: report this agent's status and act on the reply."""
+    if getHashcatPid():
+        # A hashcat run is already in flight (e.g. it outlived an agent restart).
+        if send_heartbeat('Working', 'somevalue')['msg'] == 'Canceled':
+            LOG.info('Server canceled the running task.')
+        return
+
+    response = send_heartbeat('Idle', '')
+    if response['msg'] == 'Go Away':
+        LOG.warning('This agent is not authorized on the server. Ask a Hashview admin to approve it.')
+    elif response['msg'] == 'START':
+        run_assigned_task(response['job_task_id'])
+
+
+def main():
+    from agent import config            # noqa: F401 - imported for its config side effects
+    builtins.state = 'debug' if args.debug else 'normal'
+    LOG.info('Hashview agent started (polling every %ss).', HEARTBEAT_INTERVAL)
+
+    while True:
+        try:
+            data_retention_cleanup()
+            handle_heartbeat()
+        except (KeyboardInterrupt, SystemExit):
+            raise                        # let hashcat's SIGINT / explicit exits stop the agent
+        except Exception:
+            # A single bad cycle (network blip, malformed response, transient I/O)
+            # must never take the agent down -- log it and try again next cycle.
+            LOG.exception('Unhandled error during agent cycle; continuing.')
+        time.sleep(HEARTBEAT_INTERVAL)
+
 
 if __name__ == '__main__':
-    from agent import config
-
-    if args.debug:
-        builtins.state = 'debug'
-    else:
-        builtins.state = 'normal'
-    
-    # Main loop
-    while (1):
-        agent_status = ''
-
-        # Check data retention
-        data_retention_cleanup()
-
-        # Check if we're currently working on a task
-        if getHashcatPid():
-            agent_status = 'Working'
-            response = send_heartbeat(agent_status, 'somevalue')
-            if response['msg'] == 'Canceled':
-                print("[*] Looks like we've been canceled.")
-        else:
-            agent_status = 'Idle'
-            # Send Heartbeat
-            response = send_heartbeat(agent_status, '')
-            if response['msg'] == 'Go Away':
-                print("[*] Agent is unauthorized to connect to this server. Please contact Hashview Admin to grant its access.")
-            if response['msg'] == 'START':
-                # We've been assigned a task
-                # First we'll sync our rules
-                sync_rules()
-                # And our wordlists
-                sync_wordlists()
-                print("[*] We've been assigned Task Id: " + str(response['job_task_id']))
-                job_task = jobTasks(response['job_task_id'])
-
-                # Shouldnt be necessary, but server side sometimes doesnt get set
-                updateJobTask(job_task['id'], 'Running')
-                # Get the task so that we can get dictionary to find out if its dynamic, so that we can trigger an update 
-                # we do a loop of all wordlists (instead of pulling directly) because the /vX/wordlists/<id> is reserved for downloading wordlists
-                task = tasks(job_task['task_id'])
-
-                wordlists_list = getWordlists()
-                for wordlist in json.loads(wordlists_list):
-                    if wordlist['id'] == task['wl_id']:
-                        if wordlist['type'] == 'dynamic':
-                            print('[*] Task is using a dynamic wordlist. Initiating update')
-                            update_response = updateDynamicWordlists(wordlist['id'])
-                
-                            if update_response['msg'] != 'OK':
-                                print('[!] Something broke during the updateing of the dynamic wordlist: ' + str(wordlist['id']))
-                            else:
-                                print('[*] Update Complete')
-                            sync_wordlists()
-
-
-                # Get Job, so that we can get our hashfile
-                job = jobs(job_task['job_id'])
-
-                # Download our hashfile. File name will be generated to match that of whats expected by the jobtask cmd.
-                download_hashfile(job['id'], job_task['task_id'], job['hashfile_id'])
-
-                cmd = replaceHashcatBinPath(job_task['command']) + ' --status-json | tee control/outfiles/hcoutput_' + str(job['id']) + '_' + str(job_task['id']) + '.txt'
-                print(cmd)
-
-                # run in thread
-                thread = Thread(target=run_hashcat, args=(cmd,))
-                thread.start()
-                
-                while thread.is_alive():
-                    # we sleep 15 seconds because by default, the build crack cmd on hashview server tells hashcat to display output every 15 seconds.
-                    time.sleep(15)
-                    agent_status = 'Working'
-                    hc_status = hashcatParser('control/outfiles/hcoutput_' + str(job['id']) + '_' + str(job_task['id']) + '.txt')
-
-                    response = send_heartbeat(agent_status, hc_status)
-                    if response['msg'] == 'Canceled':
-                        print('[*] We\'ve been canceled')
-                        pid = getHashcatPid()
-                        if pid:
-                            killHashcat(pid)
-                            
-                    # upload cracks
-                    crack_file = 'control/outfiles/hc_cracked_' + str(job['id']) + '_' + str(job_task['task_id']) + '.txt'
-                    if os.path.exists(crack_file):
-                        getHashTypeResponse = getHashType(job['hashfile_id'])
-                        if getHashTypeResponse['msg'] == 'OK':
-                            #uploadCrackFileResponse = uploadCrackFile(crack_file, getHashTypeResponse['hash_type'], str(job_task['task_id']))
-                            uploadCrackFileResponse = uploadCrackFile(crack_file, str(job_task['id']))
-                            if uploadCrackFileResponse['msg'] == 'OK':
-                                print('[*] Upload Success!')
-                    else:
-                        print('[*] No Results. Skipping upload.')
-
-
-                print('[*] Done working')
-
-                # upload cracks
-                crack_file = 'control/outfiles/hc_cracked_' + str(job['id']) + '_' + str(job_task['task_id']) + '.txt'
-                if os.path.exists(crack_file):
-                    getHashTypeResponse = getHashType(job['hashfile_id'])
-                    if getHashTypeResponse['msg'] == 'OK':
-                        #uploadCrackFileResponse = uploadCrackFile(crack_file, getHashTypeResponse['hash_type'], str(job_task['task_id']))
-                        uploadCrackFileResponse = uploadCrackFile(crack_file, str(job_task['id']))
-                        if uploadCrackFileResponse['msg'] == 'OK':
-                            print('[*] Upload Success!')
-                else:
-                    print('[*] No Results. Skipping upload.')
-
-                # Set status to complete
-                updateJobTaskResponse = updateJobTask(job_task['id'], 'Completed')
-                try:
-                    if updateJobTaskResponse['msg'] == 'OK':
-                        print('[*] Task Successfully Set to Completed')
-                    with suppress(Exception):
-                        pass
-                finally:
-                    pass
-
-        print('[*] Sleeping')
-        time.sleep(10)
+    main()
