@@ -32,6 +32,7 @@ from hashview.models import (
     Wordlists,
     db,
 )
+from hashview.utils.audit import log_event
 from hashview.utils.utils import (
     build_hashcat_command,
     compress_to_gz,
@@ -344,6 +345,7 @@ def v1_api_add_customer():
         db.session.add(customer_entry)
         db.session.commit()
 
+        log_event('customer.create', target=f'customer:{customer_entry.id} {customer_entry.name!r}')
         message = {
             'status': 200,
             'type': 'message',
@@ -461,6 +463,8 @@ def v1_api_add_rule(rule_name):
     db.session.add(rule)
     db.session.commit()
 
+    log_event('rule.create', actor=(user.email_address, user.id),
+              target=f'rule:{rule.id} {rule.name!r}')
     message = {
         'status': 200,
         'type': 'message',
@@ -589,6 +593,8 @@ def v1_api_add_wordlist(wordlist_name):
     db.session.add(wordlist_entry)
     db.session.commit()
 
+    log_event('wordlist.create', actor=(user.email_address, user.id),
+              target=f'wordlist:{wordlist_entry.id} {wordlist_entry.name!r}')
     message = {
         'status': 200,
         'type': 'message',
@@ -661,6 +667,7 @@ def v1_api_delete_job(job_id):
     # Mirror the web UI's jobs_delete cleanup: jobtasks and job notifications
     # go with the job. Like the web UI, this deliberately has no status guard —
     # a Queued/Running job can be deleted too.
+    job_target = f'job:{job.id} {job.name!r}'
     try:
         JobTasks.query.filter_by(job_id=job_id).delete()
         JobNotifications.query.filter_by(job_id=job_id).delete()
@@ -673,6 +680,7 @@ def v1_api_delete_job(job_id):
             'msg': f'Failed to delete job: {e}'
         })
 
+    log_event('job.delete', actor=(user.email_address, user.id), target=job_target)
     message = {
         'status': 200,
         'type': 'message',
@@ -768,6 +776,8 @@ def v1_api_post_add_job():
                         owner_id=user.id, job_id=job_entry.id, method=method))
         db.session.commit()
 
+        log_event('job.create', actor=(user.email_address, user.id),
+                  target=f'job:{job_entry.id} {job_entry.name!r}')
         message = {
             'status': 200,
             'type': 'message',
@@ -931,6 +941,8 @@ def v1_api_add_task():
             'msg': f'Failed to add task: {e}'
         })
 
+    log_event('task.create', actor=(user.email_address, user.id),
+              target=f'task:{task.id} {task.name!r}')
     message = {
         'status': 200,
         'type': 'message',
@@ -1069,7 +1081,10 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
                 })   
 
             cracked_hashfiles_hashes_cnt = db.session.query(Hashes).join(HashfileHashes, Hashes.id == HashfileHashes.hash_id).filter(Hashes.cracked == '1').filter(HashfileHashes.hashfile_id==hashfile.id).count()
-                
+
+            log_event('hashfile.create', actor=(user.email_address, user.id),
+                      target=f'hashfile:{hashfile.id} {hashfile.name!r}',
+                      detail=f'hashes={hashfile_hashes_cnt} instacracked={cracked_hashfiles_hashes_cnt}')
             # Return the insta crack result
             return jsonify({
                 'status': 200,

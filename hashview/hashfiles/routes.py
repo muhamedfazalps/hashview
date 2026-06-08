@@ -20,6 +20,7 @@ from hashview.models import (
     Users,
     db,
 )
+from hashview.utils.audit import log_event
 
 hashfiles = Blueprint('hashfiles', __name__)
 
@@ -141,14 +142,16 @@ def hashfiles_delete(hashfile_id):
                 flash('Error: Hashfile currently associated with a job.', 'danger')
                 return redirect(url_for('hashfiles.hashfiles_list'))
             else:
+                hashfile_target = f'hashfile:{hashfile.id} {hashfile.name!r}'
                 # Remove hashifle hash
                 deleted_count = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).delete(synchronize_session=False)
                 print(f"[DEBUG] Deleted {deleted_count} Hashfile Hashes entries for hashfile ID {hashfile.id}")
                 db.session.commit()
 
-                # # remove hashfile 
+                # # remove hashfile
                 db.session.delete(hashfile)
                 db.session.commit()
+                log_event('hashfile.delete', target=hashfile_target)
 
                 # Remove all uncracked hashes not associated to a hashfile hash.
                 deleted_count = Hashes.query.filter(

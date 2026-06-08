@@ -15,6 +15,7 @@ from werkzeug.utils import secure_filename
 
 from hashview.models import Hashes, Jobs, JobTasks, Rules, Tasks, Users, Wordlists, db
 from hashview.rules.forms import RulesForm
+from hashview.utils.audit import log_event
 from hashview.utils.utils import get_filehash, get_linecount, save_file
 
 rules = Blueprint('rules', __name__)
@@ -105,6 +106,7 @@ def rules_add():
                             checksum=get_filehash(rules_path))
             db.session.add(rule)
             db.session.commit()
+            log_event('rule.create', target=f'rule:{rule.id} {rule.name!r}')
             flash('Rules File created!', 'success')
             return redirect(url_for('rules.rules_list'))
     return render_template('rules_add.html.j2', title='Rules Add', form=form)
@@ -135,6 +137,7 @@ def rules_view(rule_id):
             rule.size = get_linecount(rule.path)
             rule.checksum = get_filehash(rule.path)
             db.session.commit()
+            log_event('rule.edit', target=f'rule:{rule.id} {rule.name!r}')
             flash('Rule file updated.', 'success')
         except Exception as e:
             flash(f'Error saving file: {e}', 'danger')
@@ -171,8 +174,10 @@ def rules_delete(rule_id):
         if tasks:
             flash('Rules is currently used in a task and can not be delete.', 'danger')
         else:
+            rule_target = f'rule:{rule.id} {rule.name!r}'
             db.session.delete(rule)
             db.session.commit()
+            log_event('rule.delete', target=rule_target)
         flash('Rule file has been deleted!', 'success')
     else:
         flash('Unauthorized action!', 'danger')

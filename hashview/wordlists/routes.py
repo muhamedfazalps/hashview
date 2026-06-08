@@ -17,6 +17,7 @@ from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from hashview.models import Hashes, JobTasks, Rules, Tasks, Users, Wordlists, db
+from hashview.utils.audit import log_event
 from hashview.utils.utils import ingest_static_wordlist_file, update_dynamic_wordlist
 from hashview.wordlists.forms import WordlistsForm
 
@@ -126,6 +127,7 @@ def wordlists_add():
                     os.remove(tmp_path)
             db.session.add(wordlist)
             db.session.commit()
+            log_event('wordlist.create', target=f'wordlist:{wordlist.id} {wordlist.name!r}')
             flash('Wordlist created!', 'success')
             if is_ajax:
                 # Flash above is shown after the modal reloads the page.
@@ -167,8 +169,10 @@ def wordlists_delete(wordlist_id):
         # DB-first so a failed unlink only orphans a file rather than leaving
         # a row that points at a missing file; the unlink is best-effort.
         wordlist_path = wordlist.path
+        wordlist_target = f'wordlist:{wordlist.id} {wordlist.name!r}'
         db.session.delete(wordlist)
         db.session.commit()
+        log_event('wordlist.delete', target=wordlist_target)
 
         if wordlist_path and os.path.exists(wordlist_path):
             try:

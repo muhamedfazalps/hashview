@@ -39,6 +39,7 @@ from hashview.models import (
     Wordlists,
     db,
 )
+from hashview.utils.audit import log_event
 from hashview.utils.utils import (
     build_hashcat_command,
     import_hashfilehashes,
@@ -226,6 +227,7 @@ def jobs_add():
                     limit_recovered = jobs_form.limit_recovered.data)
         db.session.add(job)
         db.session.commit()
+        log_event('job.create', target=f'job:{job.id} {job.name!r}')
         return redirect(str(job.id)+"/assigned_hashfile/")
     return render_template('jobs_add.html.j2', title='Jobs', jobs=jobs, customers=customers, jobsForm=jobs_form, settings=settings)
 
@@ -371,6 +373,9 @@ def jobs_assigned_hashfile(job_id):
 
                     job.hashfile_id = hashfile.id
                     db.session.commit()
+                    log_event('hashfile.create',
+                              target=f'hashfile:{hashfile.id} {hashfile.name!r}',
+                              detail=f'hashes={hashfile_hashes_cnt}')
 
                 if is_ajax:
                     return jsonify({
@@ -742,11 +747,13 @@ def jobs_delete(job_id):
 
     job = Jobs.query.get(job_id)
     if current_user.admin or job.owner_id == current_user.id:
+        job_target = f'job:{job.id} {job.name!r}'   # capture before delete (instance expires post-commit)
         JobTasks.query.filter_by(job_id=job_id).delete()
         JobNotifications.query.filter_by(job_id=job_id).delete()
 
         db.session.delete(job)
         db.session.commit()
+        log_event('job.delete', target=job_target)
         flash('Job has been deleted!', 'success')
         return redirect(url_for('jobs.jobs_list'))
 

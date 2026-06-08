@@ -14,6 +14,7 @@ from hashview.models import (
     Jobs,
     db,
 )
+from hashview.utils.audit import log_event
 
 
 def _hash_type_names():
@@ -83,8 +84,10 @@ def customers_add():
     """Create a new customer (from the Add customer modal)."""
     form = CustomersForm()
     if form.validate_on_submit():
-        db.session.add(Customers(name=form.name.data))
+        customer = Customers(name=form.name.data)
+        db.session.add(customer)
         db.session.commit()
+        log_event('customer.create', target=f'customer:{customer.id} {customer.name!r}')
         flash(f'Customer {form.name.data} added!', 'success')
     else:
         msg = 'Could not add customer.'
@@ -110,6 +113,7 @@ def customers_edit():
         return redirect(url_for('customers.customers_list'))
     customer.name = name
     db.session.commit()
+    log_event('customer.edit', target=f'customer:{customer.id} {customer.name!r}')
     flash('Customer updated!', 'success')
     return redirect(url_for('customers.customers_list'))
 
@@ -153,6 +157,7 @@ def customers_info(customer_id):
 def customers_delete(customer_id):
     """Function to delete a customer"""
     customer = Customers.query.get_or_404(customer_id)
+    customer_target = f'customer:{customer.id} {customer.name!r}'
     if current_user.admin:
         # Check if jobs are present
         jobs = Jobs.query.filter_by(customer_id=customer_id).all()
@@ -175,6 +180,7 @@ def customers_delete(customer_id):
                 db.session.delete(hashfile)
         db.session.delete(customer)
         db.session.commit()
+        log_event('customer.delete', target=customer_target)
         flash('Customer has been deleted!', 'success')
     else:
         flash('Permission Denied', 'danger')

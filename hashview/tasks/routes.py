@@ -16,6 +16,7 @@ from hashview.models import (
     db,
 )
 from hashview.tasks.forms import TasksForm
+from hashview.utils.audit import log_event
 
 tasks = Blueprint('tasks', __name__)
 
@@ -160,6 +161,9 @@ def tasks_add():
         
 
         # What attack mode are we dealing with
+        # (set below by whichever attack-mode branch runs; stays None for the
+        #  unsupported-mode else branch so we only audit an actual create)
+        task = None
         # Straight Dictionary with optional rules
         if tasksForm.hc_attackmode.data == 0:
             task = Tasks(   name=tasksForm.name.data,
@@ -235,6 +239,8 @@ def tasks_add():
             flash(f'Task {tasksForm.name.data} created!', 'success')            
         else:
             flash('Attack Mode not supported... yet...', 'danger')
+        if task is not None:
+            log_event('task.create', target=f'task:{task.id} {task.name!r}')
         return redirect(url_for('tasks.tasks_list'))
     return render_template('tasks_add.html.j2', title='Tasks Add', tasksForm=tasksForm)
 
@@ -337,6 +343,8 @@ def task_edit(task_id):
                 flash(f'Task {tasksForm.name.data} updated!', 'success')
             else:
                 flash('Attack Mode not supported... yet...', 'danger')
+            if tasksForm.hc_attackmode.data in (0, 1, 3, 6, 7):
+                log_event('task.edit', target=f'task:{task.id} {task.name!r}')
             return redirect(url_for('tasks.tasks_list'))
         else:
             tasksForm.name.data = task.name
@@ -374,8 +382,10 @@ def tasks_delete(task_id):
                 flash('Can not delete. The Task is associated to one or more Task Groups.', 'danger')
                 return redirect(url_for('tasks.tasks_list'))
 
+        task_target = f'task:{task.id} {task.name!r}'
         db.session.delete(task)
         db.session.commit()
+        log_event('task.delete', target=task_target)
         flash('Task has been deleted!', 'success')
         return redirect(url_for('tasks.tasks_list'))
     else:

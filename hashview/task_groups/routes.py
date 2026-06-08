@@ -6,6 +6,7 @@ from flask_login import current_user, login_required
 
 from hashview.models import Hashes, TaskGroups, Tasks, Users, db
 from hashview.task_groups.forms import TaskGroupsForm
+from hashview.utils.audit import log_event
 
 task_groups = Blueprint('task_groups', __name__)
 
@@ -69,12 +70,14 @@ def task_groups_add():
             task_group = TaskGroups(name=task_group_form.name.data, owner_id=current_user.id, tasks=str(ordered))
             db.session.add(task_group)
             db.session.commit()
+            log_event('task_group.create', target=f'task_group:{task_group.id} {task_group.name!r}')
             flash(f'Task group {task_group_form.name.data} created!', 'success')
             return redirect(url_for('task_groups.task_groups_list'))
         # Legacy flow: create an empty group then go to the assign-tasks page.
         task_group = TaskGroups(name=task_group_form.name.data, owner_id=current_user.id, tasks=str([]))
         db.session.add(task_group)
         db.session.commit()
+        log_event('task_group.create', target=f'task_group:{task_group.id} {task_group.name!r}')
         flash(f'Task {task_group_form.name.data} created!', 'success')
         return redirect("assigned_tasks/"+str(task_group.id))
     return render_template('task_groups_add.html.j2', title='Tasks Add', tasks=tasks, task_group_form=task_group_form)
@@ -99,6 +102,7 @@ def task_groups_edit():
         task_group.name = task_group_form.name.data
         task_group.tasks = str(ordered)
         db.session.commit()
+        log_event('task_group.edit', target=f'task_group:{task_group.id} {task_group.name!r}')
         flash(f'Task group {task_group_form.name.data} updated!', 'success')
     else:
         flash('Could not update task group.', 'danger')
@@ -203,8 +207,10 @@ def task_groups_delete(task_group_id):
 
     task_group = TaskGroups.query.get(task_group_id)
     if current_user.admin or task_group.owner_id == current_user.id:
+        task_group_target = f'task_group:{task_group.id} {task_group.name!r}'
         db.session.delete(task_group)
         db.session.commit()
+        log_event('task_group.delete', target=task_group_target)
         flash('Task Group has been deleted!', 'success')
         return redirect(url_for('task_groups.task_groups_list'))
 
