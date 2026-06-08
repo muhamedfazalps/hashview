@@ -239,6 +239,12 @@ def create_app(testing=False, config_overrides=None):
     from hashview.utils.audit import configure_audit_logging
     configure_audit_logging(app)
 
+    # Drop folder for importing large wordlists copied onto the server (scp); the
+    # Wordlists page lists + imports its contents. Created here so it exists for
+    # users to scp into before first use.
+    import os as _os
+    _os.makedirs(_os.path.join(app.root_path, 'control', 'wordlists_import'), exist_ok=True)
+
     if not testing:
         from hashview.config import Config
         app.config.from_object(Config)

@@ -1,6 +1,7 @@
 """Flask routes to handle Wordlists"""
 import os
 import secrets
+import threading
 
 from flask import (
     Blueprint,
@@ -19,6 +20,7 @@ from werkzeug.utils import secure_filename
 from hashview.models import Hashes, JobTasks, Rules, Tasks, Users, Wordlists, db
 from hashview.utils.audit import log_event
 from hashview.utils.utils import ingest_static_wordlist_file, update_dynamic_wordlist
+from hashview.utils.wordlist_import import list_importable, run_import_async
 from hashview.wordlists.forms import WordlistsForm
 
 wordlists = Blueprint('wordlists', __name__)
@@ -93,7 +95,38 @@ def wordlists_list():
                            wordlists=wordlists, tasks=tasks, users=users,
                            wl_used_tasks=wl_used_tasks, wl_hits=wl_hits,
                            wl_task_count=wl_task_count, wl_job_count=wl_job_count,
-                           wl_owner=wl_owner, wordlistsForm=WordlistsForm())
+                           wl_owner=wl_owner, wordlistsForm=WordlistsForm(),
+                           import_files=list_importable(current_app))
+
+
+@wordlists.route("/wordlists/import", methods=['POST'])
+@login_required
+def wordlists_import():
+    """Import selected wordlists that were scp'd into control/wordlists_import/.
+
+    Runs in a background thread (the ingest of a multi-GB file is minutes of
+    decompress/recompress and must not block the request). The imported
+    wordlist is owned by the user who triggered the import."""
+    # Only offer files that are present, pending, and quiescent (a file still
+    # uploading is excluded both here and re-checked inside run_import).
+    available = {f['name'] for f in list_importable(current_app)
+                 if f['status'] == 'pending' and not f['uploading']}
+    if request.form.get('all'):
+        selected = available
+    else:
+        selected = {os.path.basename(s) for s in request.form.getlist('files')}
+    to_import = sorted(available & selected)
+
+    if not to_import:
+        flash('Nothing to import — selected files are missing or still uploading.', 'warning')
+        return redirect(url_for('wordlists.wordlists_list'))
+
+    app = current_app._get_current_object()
+    owner_id = current_user.id
+    threading.Thread(target=run_import_async, args=(app, to_import, owner_id), daemon=True).start()
+    flash(f'Import started for {len(to_import)} file(s) — they will appear in the list once '
+          'processing finishes.', 'success')
+    return redirect(url_for('wordlists.wordlists_list'))
 
 @wordlists.route("/wordlists/add", methods=['GET', 'POST'])
 @login_required

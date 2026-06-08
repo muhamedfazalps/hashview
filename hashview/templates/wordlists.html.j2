@@ -15,6 +15,53 @@
     <button type="button" class="btn btn-primary" onclick="document.getElementById('upload-wordlist-modal').showModal()">{{ icon('upload', size=15) }} Upload Wordlist</button>
 </div>
 
+{# ---- Import from server: large wordlists scp'd into control/wordlists_import/ ---- #}
+{% if import_files %}
+<form method="POST" action="{{ url_for('wordlists.wordlists_import') }}" style="margin:0 0 var(--gap);">
+    <div class="card">
+        <div class="card-head">
+            <h3>Import from server</h3>
+            <span class="field-hint" style="margin-top:0;">Files copied into <span class="mono">control/wordlists_import/</span> (scp/rsync). Importing compresses and adds them like an upload; the original is removed on success.</span>
+            <span style="margin-left:auto; display:inline-flex; gap:8px;">
+                <button type="submit" class="btn btn-sm">{{ icon('download', size=14) }} Import selected</button>
+                <button type="submit" name="all" value="1" class="btn btn-sm">{{ icon('download', size=14) }} Import all</button>
+            </span>
+        </div>
+        <table class="tbl" style="table-layout:fixed;">
+            <colgroup><col style="width:40px;"><col><col style="width:120px;"><col style="width:140px;"></colgroup>
+            <thead>
+                <tr><th></th><th>File</th><th>Size</th><th class="center">Status</th></tr>
+            </thead>
+            <tbody>
+                {% for f in import_files %}
+                <tr>
+                    <td class="center">
+                        {% if f.status == 'pending' and not f.uploading %}
+                        <input type="checkbox" name="files" value="{{ f.name }}">
+                        {% endif %}
+                    </td>
+                    <td style="font-weight:500;">
+                        <span style="display:inline-flex; align-items:center; gap:9px;">
+                            <span style="color:var(--text-mute); display:inline-flex;">{{ icon('book', size=16) }}</span>{{ f.name }}
+                        </span>
+                    </td>
+                    <td class="mono" style="color:var(--text-mute);font-size:11.5px;">{{ f.size }}</td>
+                    <td class="center">
+                        {% if f.uploading %}<span class="badge dim">uploading…</span>
+                        {% elif f.status == 'importing' %}<span class="badge cyan">importing…</span>
+                        {% elif f.status == 'failed' %}<span class="badge red">failed</span>
+                        {% else %}<span class="badge amber">pending</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+{% else %}
+<div class="field-hint" style="margin:0 0 var(--gap);">{{ icon('info', size=13) }} For very large wordlists, <span class="mono">scp</span> them to <span class="mono">control/wordlists_import/</span> on the server — they'll appear here to import.</div>
+{% endif %}
+
 <div class="card">
     <div class="card-head">
         <h3>Static Wordlists</h3>
