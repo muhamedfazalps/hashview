@@ -21,9 +21,11 @@ class Users(db.Model, UserMixin):
     """Class object to represent Users"""
 
     id                = db.Column(db.Integer,    nullable=False, primary_key=True)
-    first_name        = db.Column(db.String(20), nullable=False)
-    last_name         = db.Column(db.String(20), nullable=False)
-    email_address     = db.Column(db.String(50), nullable=False, unique=True)
+    # Widened (20->64 / 50->255) so JIT-provisioned Entra identities (display
+    # names, UPN-style emails) fit. See add_azure_sso migration.
+    first_name        = db.Column(db.String(64), nullable=False)
+    last_name         = db.Column(db.String(64), nullable=False)
+    email_address     = db.Column(db.String(255), nullable=False, unique=True)
     password          = db.Column(db.String(60), nullable=False)
     admin             = db.Column(db.Boolean,    nullable=False, default=False)
     pushover_app_id   = db.Column(db.String(50), nullable=True)
@@ -31,6 +33,11 @@ class Users(db.Model, UserMixin):
     slack_id          = db.Column(db.String(50), nullable=True)   # per-user Slack Member ID (U…)
     last_login_utc    = db.Column(db.DateTime,   nullable=True,  default=datetime.utcnow)
     api_key           = db.Column(db.String(60), nullable=True)
+    # Auth provenance: 'local' (password) or 'azure' (Entra ID SSO). The setup
+    # admin (id=1) is always 'local'. azure_oid is the stable Entra object id,
+    # backfilled on first SSO login (matching falls back to email_address).
+    auth_source       = db.Column(db.String(10), nullable=False, default='local')
+    azure_oid         = db.Column(db.String(64), nullable=True)
     wordlists         = db.relationship('Wordlists',  backref='tbd',   lazy=True)
     rules             = db.relationship('Rules',      backref='owner', lazy=True)
     jobs              = db.relationship('Jobs',       backref='owner', lazy=True)
@@ -133,6 +140,18 @@ class Settings(db.Model):
     # the migration adds it with server_default 0 so EXISTING rows get flagged
     # for the one-time decode on next launch (see decode_legacy_hex_if_needed).
     passwords_decoded = db.Column(db.Boolean, nullable=False, default=True)
+    # Authentication method (Settings -> Authentication). 'local' (username +
+    # password, the default / pre-existing behaviour) or 'azure' (Microsoft
+    # Entra ID OIDC SSO). In azure mode the local password form is a break-glass
+    # for the setup admin (id=1) only; everyone else signs in via Microsoft.
+    # The azure_* fields hold the App Registration config; azure_client_secret
+    # is write-only in the UI and is excluded from API serialization.
+    auth_method = db.Column(db.String(10), nullable=False, default='local')
+    azure_tenant_id = db.Column(db.String(64), nullable=True)
+    azure_client_id = db.Column(db.String(64), nullable=True)
+    azure_client_secret = db.Column(db.String(512), nullable=True)
+    azure_redirect_uri = db.Column(db.String(512), nullable=True)
+    azure_allowed_groups = db.Column(db.String(1024), nullable=True)  # comma-separated group Object IDs
 
 class Jobs(db.Model):
     """Class object to represent Jobs"""

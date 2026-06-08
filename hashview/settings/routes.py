@@ -83,8 +83,30 @@ def settings_list():
             settings.pushover_enabled = hashview_form.pushover_enabled.data
             settings.slack_enabled = hashview_form.slack_enabled.data
             settings.slack_bot_token = hashview_form.slack_bot_token.data
+            # --- Authentication (local / Azure Entra ID SSO) ---
+            # Only assign when the POST carried a valid choice; otherwise keep
+            # the stored value (a partial save must not silently flip modes).
+            if hashview_form.auth_method.data in ('local', 'azure'):
+                settings.auth_method = hashview_form.auth_method.data
+            settings.azure_tenant_id = hashview_form.azure_tenant_id.data or None
+            settings.azure_client_id = hashview_form.azure_client_id.data or None
+            settings.azure_redirect_uri = hashview_form.azure_redirect_uri.data or None
+            settings.azure_allowed_groups = hashview_form.azure_allowed_groups.data or None
+            # Write-only secret: only overwrite when a new value was actually typed,
+            # so re-saving the page doesn't blank the stored secret.
+            if hashview_form.azure_client_secret.data:
+                settings.azure_client_secret = hashview_form.azure_client_secret.data
+            # Never lock everyone out: if azure is selected but the config is
+            # incomplete, keep auth local and warn (the id=1 break-glass + the
+            # local form stay available).
+            if settings.auth_method == 'azure' and not (
+                    settings.azure_tenant_id and settings.azure_client_id and settings.azure_client_secret):
+                settings.auth_method = 'local'
+                flash('Azure mode needs a tenant ID, client ID, and client secret. '
+                      'Other settings saved; authentication stays Local until the Azure config is complete.', 'warning')
+            else:
+                flash('Updated Hashview settings!', 'success')
             db.session.commit()
-            flash('Updated Hashview settings!', 'success')
             return redirect(url_for('settings.settings_list'))
         elif request.method == 'GET':
             hashview_form.retention_period.data = settings.retention_period
@@ -100,11 +122,20 @@ def settings_list():
             hashview_form.pushover_enabled.data = settings.pushover_enabled
             hashview_form.slack_enabled.data = settings.slack_enabled
             hashview_form.slack_bot_token.data = settings.slack_bot_token
+            hashview_form.auth_method.data = settings.auth_method
+            hashview_form.azure_tenant_id.data = settings.azure_tenant_id
+            hashview_form.azure_client_id.data = settings.azure_client_id
+            hashview_form.azure_redirect_uri.data = settings.azure_redirect_uri
+            hashview_form.azure_allowed_groups.data = settings.azure_allowed_groups
+            # azure_client_secret is write-only — never echo it back to the page.
 
         try:
             database_version = db.session.execute('SELECT version_num FROM alembic_version LIMIT 1;').scalar()
         except Exception:
             database_version = 'error'
+
+        # The exact HTTPS callback to register in the Azure App Registration.
+        default_azure_redirect = url_for('auth.azure_callback', _external=True, _scheme='https')
 
         return render_template(
             'settings.html.j2',
@@ -116,6 +147,8 @@ def settings_list():
             audit_logs_size     = audit_logs_size,
             application_version = hashview.__version__,
             database_version    = database_version,
+            default_azure_redirect = default_azure_redirect,
+            azure_secret_set    = bool(settings.azure_client_secret),
         )
 
     abort(403)

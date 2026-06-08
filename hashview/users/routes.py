@@ -27,6 +27,7 @@ from hashview.models import (
     Hashfiles,
     Jobs,
     Rules,
+    Settings,
     TaskGroups,
     Tasks,
     Users,
@@ -68,12 +69,25 @@ def load_user(user_id):
 users = Blueprint('users', __name__)
 
 
+def _azure_enabled():
+    """True when the install is in Azure SSO mode with complete config — drives
+    the login page (Microsoft button) and the break-glass gate below. Missing /
+    unreadable Settings (e.g. first-run, pre-migration) is treated as local."""
+    try:
+        s = Settings.query.first()
+        return bool(s and s.auth_method == 'azure'
+                    and s.azure_tenant_id and s.azure_client_id and s.azure_client_secret)
+    except Exception:
+        return False
+
+
 @users.route("/login", methods=['GET'])
 def login_get():
     """Function to present login page"""
 
     form = LoginForm()
-    return render_template('login.html.j2', title='Login', form=form)
+    return render_template('login.html.j2', title='Login', form=form,
+                           azure_enabled=_azure_enabled())
 
 @users.route("/login", methods=['POST'])
 def login_post():
@@ -81,7 +95,8 @@ def login_post():
 
     def failed():
         flash('Login Unsuccessful. Please check email and password', 'danger')
-        return render_template('login.html.j2', title='Login', form=form)
+        return render_template('login.html.j2', title='Login', form=form,
+                               azure_enabled=_azure_enabled())
 
     form = LoginForm()
     if not form.validate_on_submit():
@@ -102,6 +117,17 @@ def login_post():
         log_event('user.login_failed', outcome='failure', actor=(None, None),
                   detail=f'invalid password for email={form.email.data}')
         return failed()
+
+    # Break-glass gate: in Azure SSO mode the password form is reserved for the
+    # setup admin (id=1). Everyone else must sign in with Microsoft. Checked
+    # AFTER the password verifies so this branch can't be used to enumerate
+    # which non-admin accounts exist.
+    if user.id != 1 and _azure_enabled():
+        current_app.logger.info('Password login blocked in azure mode for non-admin id=%s.', user.id)
+        log_event('user.login_failed', outcome='failure', actor=(user.email_address, user.id),
+                  detail='password login disabled in azure mode (non break-glass)')
+        flash('Password sign-in is disabled. Please sign in with Microsoft.', 'warning')
+        return redirect(url_for('users.login_get'))
 
     login_user(user, remember=form.remember.data)
     user.last_login_utc = datetime.utcnow()

@@ -271,6 +271,7 @@ def create_app(testing=False, config_overrides=None):
     from hashview.analytics.routes import analytics
     from hashview.api.routes import api
     from hashview.api_docs.routes import api_docs
+    from hashview.auth.routes import auth as auth_blueprint
     from hashview.customers.routes import customers
     from hashview.hashfiles.routes import hashfiles
     from hashview.jobs.routes import jobs
@@ -290,6 +291,7 @@ def create_app(testing=False, config_overrides=None):
     app.register_blueprint(agents)
     app.register_blueprint(api)
     app.register_blueprint(api_docs)
+    app.register_blueprint(auth_blueprint)
     app.register_blueprint(customers)
     app.register_blueprint(hashfiles)
     app.register_blueprint(jobs)
