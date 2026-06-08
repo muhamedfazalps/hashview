@@ -3,6 +3,8 @@ from flask_wtf import FlaskForm
 from wtforms import (
     BooleanField,
     IntegerField,
+    PasswordField,
+    SelectField,
     StringField,
     SubmitField,
     ValidationError,
@@ -28,6 +30,22 @@ class HashviewSettingsForm(FlaskForm):
     pushover_enabled = BooleanField('Enable Pushover notifications.')
     slack_enabled = BooleanField('Enable Slack notifications.')
     slack_bot_token = StringField('Slack bot token (xoxb-…)')
+    # Authentication — local (default) or Microsoft Entra ID SSO. No DataRequired
+    # on the azure fields: local mode must validate with them blank. The route
+    # enforces completeness when azure is selected. The client secret is a
+    # write-only PasswordField (rendered blank; only overwrites when re-typed).
+    # validate_choice=False so a POST that omits this field (e.g. an older form
+    # or a partial save) still validates; the route only assigns it when it's a
+    # valid choice, otherwise the stored value is preserved.
+    auth_method = SelectField('Authentication method',
+                              choices=[('local', 'Local (username & password)'),
+                                       ('azure', 'Microsoft Entra ID (SSO)')],
+                              default='local', validate_choice=False)
+    azure_tenant_id = StringField('Directory (tenant) ID')
+    azure_client_id = StringField('Application (client) ID')
+    azure_client_secret = PasswordField('Client secret', render_kw={'autocomplete': 'new-password'})
+    azure_redirect_uri = StringField('Redirect URI')
+    azure_allowed_groups = StringField('Allowed group Object IDs (comma-separated)')
     submit = SubmitField('Update')
 
     def validate_rention_period(self, retention_period):

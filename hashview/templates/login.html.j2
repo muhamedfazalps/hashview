@@ -1,10 +1,34 @@
 {% extends "layout.html.j2" %}
 {% from "macros.html.j2" import phos_field %}
+{% from "icons.html.j2" import icon %}
 {% block title %}Log In · Hashview{% endblock %}
 {% block content_anon %}
 <div class="card">
     <div class="card-body">
         <div class="auth-title">Log In</div>
+
+        {% if azure_enabled %}
+        {# Azure SSO mode: Microsoft is the primary path; the password form is a
+           break-glass for the setup admin (server-side gated to id=1). #}
+        <a class="btn btn-primary btn-block" href="{{ url_for('auth.azure_login', next=request.args.get('next')) }}">
+            {{ icon('key', size=15) }} Sign in with Microsoft
+        </a>
+        <div class="auth-foot" style="margin-top:14px;">
+            <a class="auth-link" href="#" onclick="document.getElementById('hv-admin-login').style.display='block'; this.parentElement.style.display='none'; return false;">Administrator sign-in</a>
+        </div>
+        <div id="hv-admin-login" style="display:none; margin-top:14px;">
+            <form method="POST" action="">
+                {{ form.hidden_tag() }}
+                {{ phos_field(form.email) }}
+                {{ phos_field(form.password) }}
+                <label class="check-row">
+                    {{ form.remember() }} <span>{{ form.remember.label.text }}</span>
+                </label>
+                {{ form.submit(class="btn btn-block") }}
+            </form>
+        </div>
+        {% else %}
+        {# Local mode (default / pre-existing behaviour): password for everyone. #}
         <form method="POST" action="">
             {{ form.hidden_tag() }}
             {{ phos_field(form.email) }}
@@ -17,6 +41,7 @@
         <div class="auth-foot">
             <a class="auth-link" href="{{ url_for('users.reset_request') }}">Forgot password?</a>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

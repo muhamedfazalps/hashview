@@ -66,13 +66,25 @@ api = Blueprint('api', __name__)
 # Ideally this will get replaced (along with the agent code) some time later
 #
 
+# Column names that must NEVER be serialized to an API/agent response,
+# regardless of which model is being dumped — secrets + credential material.
+# (/v1/admin/settings is reachable by any authorized user OR agent, so a stored
+# secret would otherwise leak to every agent.)
+_ENCODER_DENYLIST = frozenset({
+    'password', 'api_key',
+    'azure_client_secret', 'slack_bot_token',
+})
+
 class AlchemyEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj.__class__, DeclarativeMeta):
             # an SQLAlchemy class
             fields = {}
-            for field in [x for x in dir(obj) if not x.startswith('_') and x != 'metadata']:
+            for field in [x for x in dir(obj)
+                          if not x.startswith('_')
+                          and x != 'metadata'
+                          and x not in _ENCODER_DENYLIST]:
                 data = obj.__getattribute__(field)
                 try:
                     json.dumps(data) # this will fail on non-encodable values, like other classes

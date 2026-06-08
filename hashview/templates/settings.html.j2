@@ -7,6 +7,14 @@
 .set-tab:hover { color:var(--text); background:var(--surface-2); }
 .set-tab.active { color:var(--primary); background:rgba(var(--primary-rgb),0.08); border-color:var(--primary-dim); }
 .set-tab .ico { width:16px; height:16px; flex:none; }
+/* Authentication-backend selector (segmented cards, replaces the dropdown). */
+.auth-opt { flex:1; display:flex; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface-2); color:var(--text-dim); cursor:pointer; text-align:left; font-family:var(--sans); }
+.auth-opt:hover { border-color:var(--primary-dim); }
+.auth-opt.selected { border-color:var(--primary); background:rgba(var(--primary-rgb),0.08); }
+.auth-opt .auth-opt-title { color:var(--text); font-weight:500; display:flex; align-items:center; gap:8px; }
+.auth-opt .auth-opt-desc { color:var(--text-mute); font-size:12px; margin-top:3px; }
+.auth-opt .auth-radio { width:16px; height:16px; flex:none; margin-left:auto; border-radius:50%; border:2px solid var(--border-bright); }
+.auth-opt.selected .auth-radio { border-color:var(--primary); background:radial-gradient(circle, var(--primary) 0 3.5px, transparent 4.5px); }
 </style>
 <script>
     function hvShowSettingsTab(name) {
@@ -38,8 +46,32 @@
             el.setAttribute('aria-disabled', on ? 'false' : 'true');
         });
     }
+    // Segmented auth-backend selector: set the hidden input, move the
+    // selected highlight, and re-sync the Azure fields' grey-out.
+    function hvSetAuthMethod(val) {
+        var inp = document.getElementById('auth_method');
+        if (inp) inp.value = val;
+        document.querySelectorAll('.auth-opt').forEach(function (b) {
+            b.classList.toggle('selected', b.getAttribute('data-value') === val);
+        });
+        hvSyncAzure();
+    }
+    // Grey out the Azure fields when method=local (readonly, not disabled, so
+    // values still POST — mirrors hvSyncNotif).
+    function hvSyncAzure() {
+        var sel = document.getElementById('auth_method');
+        var box = document.getElementById('azure-fields');
+        if (!sel || !box) return;
+        var on = sel.value === 'azure';
+        box.style.opacity = on ? '' : '0.4';
+        box.style.pointerEvents = on ? '' : 'none';
+        box.querySelectorAll('input, textarea, select').forEach(function (el) {
+            if (on) { el.removeAttribute('readonly'); } else { el.setAttribute('readonly', 'readonly'); }
+        });
+    }
     document.addEventListener('DOMContentLoaded', function () {
         ['email', 'push', 'slack'].forEach(hvSyncNotif);
+        hvSyncAzure();
     });
 </script>
 
@@ -48,7 +80,7 @@
         <h1 class="page-title">Settings</h1>
         <div class="page-sub">// instance configuration</div>
     </div>
-    <button type="submit" form="hv-general-form" class="btn btn-primary">{{ icon('check', size=15) }} Save changes</button>
+    <button type="submit" form="hv-general-form" class="btn btn-primary">{{ icon('save', size=15) }} Save changes</button>
 </div>
 
 <div style="display:flex; gap:var(--gap); align-items:flex-start;">
@@ -56,6 +88,7 @@
     <div class="card" style="flex:none; width:210px; padding:8px;">
         <button type="button" class="set-tab hv-settings-tab active" data-tab="general" onclick="hvShowSettingsTab('general')">{{ icon('settings', size=16) }}<span>General</span></button>
         <button type="button" class="set-tab hv-settings-tab" data-tab="notifications" onclick="hvShowSettingsTab('notifications')">{{ icon('bell', size=16) }}<span>Notifications</span></button>
+        <button type="button" class="set-tab hv-settings-tab" data-tab="authentication" onclick="hvShowSettingsTab('authentication')">{{ icon('key', size=16) }}<span>Authentication</span></button>
         <button type="button" class="set-tab hv-settings-tab" data-tab="data" onclick="hvShowSettingsTab('data')">{{ icon('file', size=16) }}<span>Data management</span></button>
         <button type="button" class="set-tab hv-settings-tab" data-tab="info" onclick="hvShowSettingsTab('info')">{{ icon('info', size=16) }}<span>Information</span></button>
     </div>
@@ -191,6 +224,68 @@
                                     <span class="field-hint">Create a Slack app, add the <span class="mono">chat:write</span> + <span class="mono">im:write</span> bot scopes, install it to your workspace, and paste the Bot User OAuth Token here.</span>
                                     {% for e in HashviewForm.slack_bot_token.errors %}<div class="invalid-feedback" style="display:block;">{{ e }}</div>{% endfor %}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# ---- Authentication (local / Microsoft Entra ID SSO) ---- #}
+            <div class="hv-settings-pane" data-pane="authentication" style="display:none;">
+                <div class="card">
+                    <div class="card-body">
+                        <span class="field-hint" style="margin-top:0; display:block; margin-bottom:18px;">Choose how users sign in to the web UI. <b>Local</b> uses Hashview usernames &amp; passwords. <b>Microsoft Entra ID</b> redirects users to Microsoft to sign in (SSO); the <b>setup admin remains a local break-glass login</b> regardless. Agents and API keys are unaffected.</span>
+
+                        {# Segmented card selector (backed by a hidden input so the form
+                           still POSTs auth_method). Replaces the old <select>. #}
+                        {% set _am = HashviewForm.auth_method.data or 'local' %}
+                        <input type="hidden" name="auth_method" id="auth_method" value="{{ _am }}">
+                        <div class="field">
+                            <label class="field-label">Authentication method</label>
+                            <div style="display:flex; gap:12px;">
+                                <button type="button" class="auth-opt{{ ' selected' if _am == 'local' else '' }}" data-value="local" onclick="hvSetAuthMethod('local')">
+                                    <div>
+                                        <div class="auth-opt-title">{{ icon('key', size=15) }} Local authentication</div>
+                                        <div class="auth-opt-desc">Username &amp; password stored and verified by Hashview.</div>
+                                    </div>
+                                    <span class="auth-radio"></span>
+                                </button>
+                                <button type="button" class="auth-opt{{ ' selected' if _am == 'azure' else '' }}" data-value="azure" onclick="hvSetAuthMethod('azure')">
+                                    <div>
+                                        <div class="auth-opt-title">{{ icon('shield', size=15) }} Microsoft Entra ID</div>
+                                        <div class="auth-opt-desc">Single sign-on via Azure AD (OIDC). Recommended.</div>
+                                    </div>
+                                    <span class="auth-radio"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="azure-fields" style="margin-top:6px;">
+                            <div style="height:1px; background:var(--border-soft); margin:14px 0 18px;"></div>
+                            <div class="field-hint" style="margin-bottom:14px;">Register a <b>Web</b> app in <span class="mono">portal.azure.com → Entra ID → App registrations</span>. Add the redirect URI below, create a client secret, and (for group gating) add the <span class="mono">groups</span> claim under Token configuration.</div>
+
+                            <div class="field">
+                                <label class="field-label" for="set-azure-tenant">Directory (tenant) ID</label>
+                                {{ HashviewForm.azure_tenant_id(class="input mono", id="set-azure-tenant", placeholder="00000000-0000-0000-0000-000000000000", autocomplete="off") }}
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="set-azure-client">Application (client) ID</label>
+                                {{ HashviewForm.azure_client_id(class="input mono", id="set-azure-client", placeholder="00000000-0000-0000-0000-000000000000", autocomplete="off") }}
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="set-azure-secret">Client secret</label>
+                                {{ HashviewForm.azure_client_secret(class="input mono", id="set-azure-secret", placeholder=('•••••••••• (unchanged — leave blank to keep)' if azure_secret_set else 'paste client secret value'), autocomplete="new-password") }}
+                                <span class="field-hint">Write-only — the stored secret is never shown or sent to the browser. Leave blank to keep the current value.</span>
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="set-azure-redirect">Redirect URI</label>
+                                {{ HashviewForm.azure_redirect_uri(class="input mono", id="set-azure-redirect", placeholder=default_azure_redirect, autocomplete="off") }}
+                                <span class="field-hint">Register this <b>exact HTTPS</b> URL in the App Registration → Redirect URIs (Web). Leave blank to use: <span class="mono">{{ default_azure_redirect }}</span></span>
+                            </div>
+                            <div class="field" style="margin-bottom:0;">
+                                <label class="field-label" for="set-azure-groups">Allowed group Object IDs</label>
+                                {{ HashviewForm.azure_allowed_groups(class="input mono", id="set-azure-groups", placeholder="groupId1,groupId2 (blank = any tenant user)", autocomplete="off") }}
+                                <span class="field-hint">Comma-separated security-group Object IDs. When set, only members of these groups may sign in (and be auto-provisioned). Blank allows any authenticated tenant user.</span>
                             </div>
                         </div>
                     </div>
