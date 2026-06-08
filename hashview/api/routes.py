@@ -1,5 +1,3 @@
-import binascii
-import hashlib
 import json
 import os
 import secrets
@@ -37,11 +35,16 @@ from hashview.models import (
 from hashview.utils.utils import (
     build_hashcat_command,
     compress_to_gz,
+    decompress_gz,
+    get_filehash,
+    get_linecount,
     get_md5_hash,
     hexplain_to_text,
     import_hashfilehashes,
     ingest_static_wordlist_file,
+    is_gzip,
     notify_admins,
+    ntlm_hash_hex,
     process_recovered_hash_notifications,
     text_from_field,
     update_dynamic_wordlist,
@@ -376,13 +379,95 @@ def v1_api_get_rules_download(rules_id):
 
     update_heartbeat(request.cookies.get('uuid'))
     rules = Rules.query.get(rules_id)
-    rules_name = rules.path.split('/')[-1]
-    cmd = "gzip -9 -k -c hashview/control/rules/" + rules_name + " > hashview/control/tmp/" + rules_name + ".gz"
+    if rules is None:
+        return jsonify({'status': 404, 'type': 'Error', 'msg': 'Rule not found'}), 404
 
-    # What command injection?!
-    # TODO
-    os.system(cmd)
-    return send_from_directory('control/tmp', rules_name + '.gz', mimetype = 'application/octet-stream')
+    # Rules are stored plaintext at rest; compress into control/tmp and serve
+    # that. No shell; pure-Python streamed gzip -9 (same pattern as the
+    # dynamic-wordlist download above). The random tmp name avoids predictable
+    # paths and collisions between concurrent downloads.
+    rules_dir = os.path.join(current_app.root_path, 'control/rules')
+    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
+    src_path = os.path.join(rules_dir, os.path.basename(rules.path))
+    if not os.path.exists(src_path):
+        return jsonify({'status': 404, 'type': 'Error', 'msg': 'Rule file missing on disk'}), 404
+
+    tmp_gz = os.path.join(tmp_dir, secrets.token_hex(8) + '.gz')
+    compress_to_gz(src_path, tmp_gz, 9)
+    return send_from_directory(tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
+
+# Create new rule
+@api.route('/v1/rules/add/<rule_name>', methods=['POST'])
+def v1_api_add_rule(rule_name):
+    # User-upload action (resolves the caller to a Users row by api_key), so
+    # it's user-only — the agent only GETs rules, it never POSTs here.
+    if not is_authorized(user=True, agent=False, request=request):
+        return redirect("/v1/not_authorized")
+
+    # Read the body as BYTES (not as_text) so an uploaded gzip rule file isn't
+    # corrupted by text decoding. The body may be plain text or a gzip file.
+    raw_content = request.get_data()
+    if not raw_content:
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Missing rule content in request body'
+        })
+
+    # Resolve user from api_key cookie
+    user_uuid = request.cookies.get('uuid')
+    user = Users.query.filter_by(api_key=user_uuid).first()
+    if not user:
+        return jsonify({
+            'status': 403,
+            'type': 'Error',
+            'msg': 'User not found'
+        })
+
+    # Unlike wordlists, rules are stored PLAINTEXT at rest (control/rules/),
+    # so a gzip body is decompressed before landing. The <hex>.txt naming
+    # matches the web UI's save_file() convention.
+    tmp_path = os.path.abspath(os.path.join(current_app.root_path, 'control/tmp', secrets.token_hex(8)))
+    final_path = os.path.join(current_app.root_path, 'control/rules', secrets.token_hex(8) + '.txt')
+    try:
+        with open(tmp_path, 'wb') as f:
+            f.write(raw_content)
+        if is_gzip(tmp_path):
+            # Raises on a malformed gzip stream, which doubles as validation
+            decompress_gz(tmp_path, final_path)
+        else:
+            os.rename(tmp_path, final_path)
+    except Exception as e:
+        if os.path.exists(final_path):
+            os.remove(final_path)
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': f'Failed to process rule (not valid text or gzip?): {e}'
+        })
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    # Same metadata helpers as the web UI upload (rules_add): size/checksum
+    # are computed over the plaintext file.
+    rule = Rules(
+        name=rule_name,
+        owner_id=user.id,
+        path=final_path,
+        size=get_linecount(final_path),
+        checksum=get_filehash(final_path)
+    )
+    db.session.add(rule)
+    db.session.commit()
+
+    message = {
+        'status': 200,
+        'type': 'message',
+        'msg': 'Rule added',
+        'rule_id': rule.id
+    }
+    return jsonify(message)
 
 # Provide wordlist info (really should be plural)
 @api.route('/v1/wordlists', methods=['GET'])
@@ -547,6 +632,55 @@ def v1_api_get_job(job_id):
     }
     return jsonify(message)
 
+# Delete a job
+@api.route('/v1/jobs/<int:job_id>', methods=['DELETE'])
+def v1_api_delete_job(job_id):
+    if not is_authorized(user=True, agent=False, request=request):
+        return redirect("/v1/not_authorized")
+
+    uuid = request.cookies.get('uuid')
+    user = Users.query.filter_by(api_key=uuid).first()
+    if not user:
+        return jsonify({
+            'status': 403,
+            'type': 'Error',
+            'msg': 'User not found'
+        })
+
+    job = Jobs.query.get(job_id)
+    if job is None:
+        return jsonify({'status': 404, 'type': 'Error', 'msg': 'Job not found'}), 404
+
+    if not (user.admin or job.owner_id == user.id):
+        return jsonify({
+            'status': 403,
+            'type': 'Error',
+            'msg': 'You do not have rights to delete this job'
+        })
+
+    # Mirror the web UI's jobs_delete cleanup: jobtasks and job notifications
+    # go with the job. Like the web UI, this deliberately has no status guard —
+    # a Queued/Running job can be deleted too.
+    try:
+        JobTasks.query.filter_by(job_id=job_id).delete()
+        JobNotifications.query.filter_by(job_id=job_id).delete()
+        db.session.delete(job)
+        db.session.commit()
+    except Exception as e:
+        return jsonify({
+            'status': 500,
+            'type': 'Error',
+            'msg': f'Failed to delete job: {e}'
+        })
+
+    message = {
+        'status': 200,
+        'type': 'message',
+        'msg': 'Job deleted',
+        'job_id': job_id
+    }
+    return jsonify(message)
+
 # Create a new job
 @api.route('/v1/jobs/add', methods=['POST'])
 def v1_api_post_add_job():
@@ -615,13 +749,23 @@ def v1_api_post_add_job():
                     db.session.add(job_task)
                     db.session.commit()      
 
-        # job notification
-        job_notification = JobNotifications(
-            job_id=job_entry.id,
-            notify_email=job_data.get('notify_email', False),
-            notify_pushover=job_data.get('notify_pushover', False)
-        )
-        db.session.add(job_notification)
+        # Job notifications: one row per (job, owner, channel), using the same
+        # method tokens as the web UI ('email'/'push'/'slack'), de-duped the
+        # same way. (The old code passed notify_email/notify_pushover kwargs
+        # that don't exist on JobNotifications and omitted the required
+        # owner_id, so every jobs/add 500'd here after committing the job.)
+        notify_map = [
+            ('email', job_data.get('notify_email', False)),
+            ('push', job_data.get('notify_pushover', False)),
+            ('slack', job_data.get('notify_slack', False)),
+        ]
+        for method, requested in notify_map:
+            if requested:
+                exists = JobNotifications.query.filter_by(
+                    job_id=job_entry.id, owner_id=user.id, method=method).first()
+                if not exists:
+                    db.session.add(JobNotifications(
+                        owner_id=user.id, job_id=job_entry.id, method=method))
         db.session.commit()
 
         message = {
@@ -695,6 +839,103 @@ def v1_api_get_task(task_id):
     message = {
         'status': 200,
         'task': json.dumps(task, cls=AlchemyEncoder)
+    }
+    return jsonify(message)
+
+# Create a new task (Wordlist + optional rule, i.e. hashcat attack mode 0)
+@api.route('/v1/tasks/add', methods=['POST'])
+def v1_api_add_task():
+    if not is_authorized(user=True, agent=False, request=request):
+        return redirect("/v1/not_authorized")
+
+    uuid = request.cookies.get('uuid')
+    user = Users.query.filter_by(api_key=uuid).first()
+    if not user:
+        return jsonify({
+            'status': 403,
+            'type': 'Error',
+            'msg': 'User not found'
+        })
+
+    # Expect JSON body: {"name": ..., "wl_id": ..., "rule_id": <optional>}
+    task_data = request.get_json(silent=True)
+    if not task_data:
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Missing task data in request body'
+        })
+
+    name = str(task_data.get('name') or '').strip()
+    if not name:
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Task name is required'
+        })
+    if Tasks.query.filter_by(name=name).first():
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'A task with that name already exists'
+        })
+
+    wl_id = task_data.get('wl_id')
+    if wl_id is None or not str(wl_id).isdigit():
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'wl_id is required and must be a wordlist id'
+        })
+    if not Wordlists.query.get(int(wl_id)):
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Invalid wl_id'
+        })
+
+    # rule_id is optional: absent/'None'/'' means a plain dictionary attack
+    # (same as the web UI's 'None' rule choice).
+    rule_id = task_data.get('rule_id')
+    if rule_id in (None, 'None', ''):
+        rule_id = None
+    else:
+        if not str(rule_id).isdigit():
+            return jsonify({
+                'status': 400,
+                'type': 'Error',
+                'msg': 'rule_id must be a rule id'
+            })
+        rule_id = int(rule_id)
+        if not Rules.query.get(rule_id):
+            return jsonify({
+                'status': 400,
+                'type': 'Error',
+                'msg': 'Invalid rule_id'
+            })
+
+    try:
+        task = Tasks(
+            name=name,
+            owner_id=user.id,
+            wl_id=int(wl_id),
+            rule_id=rule_id,
+            hc_attackmode=0
+        )
+        db.session.add(task)
+        db.session.commit()
+    except Exception as e:
+        return jsonify({
+            'status': 500,
+            'type': 'Error',
+            'msg': f'Failed to add task: {e}'
+        })
+
+    message = {
+        'status': 200,
+        'type': 'message',
+        'msg': 'Task added',
+        'task_id': task.id
     }
     return jsonify(message)
 
@@ -863,6 +1104,64 @@ def v1_api_get_hashfile(hashfile_id):
     file_object.close()
 
     return send_from_directory('control/tmp/', random_hex)
+
+# List hashfiles containing at least one hash of the given hash type.
+# No collision with /v1/hashfiles/<int:hashfile_id>: the static 'hash_type/'
+# segment wins over the int converter in Flask routing.
+@api.route('/v1/hashfiles/hash_type/<int:hash_type>', methods=['GET'])
+def v1_api_get_hashfiles_by_hash_type(hash_type):
+    if not is_authorized(user=True, agent=False, request=request):
+        return redirect("/v1/not_authorized")
+
+    uuid = request.cookies.get('uuid')
+    user = Users.query.filter_by(api_key=uuid).first()
+    if not user:
+        return jsonify({
+            'status': 403,
+            'type': 'Error',
+            'msg': 'User not found'
+        })
+
+    # hash_type lives on Hashes (per-hash), not on Hashfiles: a file can hold
+    # mixed types, so match via the HashfileHashes junction and scope the
+    # counts to THIS hash_type within each file.
+    matching_ids = [row[0] for row in
+                    db.session.query(HashfileHashes.hashfile_id)
+                    .join(Hashes, Hashes.id == HashfileHashes.hash_id)
+                    .filter(Hashes.hash_type == hash_type)
+                    .distinct().all()]
+
+    results = []
+    for hashfile_id in matching_ids:
+        hashfile = Hashfiles.query.get(hashfile_id)
+        if hashfile is None:
+            continue
+        base = db.session.query(Hashes.id) \
+            .join(HashfileHashes, HashfileHashes.hash_id == Hashes.id) \
+            .filter(HashfileHashes.hashfile_id == hashfile_id) \
+            .filter(Hashes.hash_type == hash_type)
+        total = base.count()
+        cracked = base.filter(Hashes.cracked == '1').count()
+        results.append({
+            'id': hashfile.id,
+            'name': hashfile.name,
+            'customer_id': hashfile.customer_id,
+            'owner_id': hashfile.owner_id,
+            'uploaded_at': hashfile.uploaded_at.isoformat() if hashfile.uploaded_at else None,
+            'hash_type': hash_type,
+            'total_hashes': total,
+            'cracked_hashes': cracked,
+        })
+
+    # Structured list (not AlchemyEncoder) because the count fields are
+    # derived, not model columns. An empty list with status 200 is the valid
+    # "no hashfiles of this type" answer.
+    message = {
+        'status': 200,
+        'type': 'message',
+        'hashfiles': results
+    }
+    return jsonify(message)
 
 # Upload Cracked Hashes
 # old and probably unused
@@ -1131,9 +1430,12 @@ def v1_api_error():
 @api.route('/v1/hashes/import/<int:hash_type>', methods=['POST'])
 def v1_api_hashes_import(hash_type):
     if not is_authorized(user=True, agent=False, request=request):
-        return redirect("/v1/not_authorized")    
-    
-    if hash_type == '1000':
+        return redirect("/v1/not_authorized")
+
+    # The route converter yields an int; comparing to the string '1000' made
+    # this branch unreachable (every request fell through to 'Unsupported
+    # Hashtype'). Compare as int so NTLM import actually runs.
+    if hash_type == 1000:
     
         # Expect raw plain‑text body (Content‑Type: text/plain)
         raw_content = request.get_data(as_text=True)
@@ -1181,12 +1483,10 @@ def v1_api_hashes_import(hash_type):
                     # everything after the first ':' is the plaintext (it may itself contain ':')
                     plaintext = ':'.join(parts[1:])
 
-                    # encipher plaintext and compare cipher text (NTLM = MD4(UTF-16LE(pw)))
-                    pw_bytes = plaintext.encode('utf-16le', 'surrogatepass')
-                    md4_hasher = hashlib.new('md4', pw_bytes)
-                    digest = md4_hasher.digest()
-
-                    if ciphertext == binascii.hexlify(digest).decode('ascii').upper():
+                    # encipher plaintext and compare cipher text (NTLM = MD4(UTF-16LE(pw)));
+                    # ntlm_hash_hex falls back to pure-Python MD4 where OpenSSL 3.x
+                    # no longer provides md4.
+                    if ciphertext == ntlm_hash_hex(plaintext):
                         # valid hash:plaintext
                         record = Hashes.query.filter_by(hash_type=hash_type, sub_ciphertext=get_md5_hash(ciphertext), cracked='0').first()
                         if record:
