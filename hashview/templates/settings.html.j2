@@ -222,6 +222,20 @@
                         </div>
                         <a class="btn" href="{{ url_for('settings.clear_temp_folder') }}" role="button">{{ icon('trash', size=15) }} Clear temp</a>
                     </div>
+
+                    <div style="height:1px; background:var(--border-soft); margin:18px 0;"></div>
+
+                    {# Clear audit + error logs #}
+                    <div style="display:flex; align-items:center; gap:14px;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="color:var(--text); font-weight:500;">Clear audit &amp; error logs</div>
+                            <div class="field-hint" style="margin-top:2px;">Remove the audit / error log files and rotated backups · currently {{ audit_logs_size }}.</div>
+                        </div>
+                        <form method="POST" action="{{ url_for('settings.clear_logs') }}" style="margin:0;"
+                              onsubmit="return confirm('Clear all audit and error logs? This erases the on-disk record of who did what and cannot be undone.');">
+                            <button type="submit" class="btn">{{ icon('trash', size=15) }} Clear logs</button>
+                        </form>
+                    </div>
                 </div>
             </div>
 

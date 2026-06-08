@@ -202,6 +202,10 @@ def create_app(testing=False, config_overrides=None):
     # soon as possible when the program starts.
     loggingDictConfig({
         'version': 1,
+        # Don't disable loggers configured elsewhere (e.g. the hashview.audit /
+        # hashview.error loggers set up by configure_audit_logging). The default
+        # (True) would silently disable them whenever create_app runs again.
+        'disable_existing_loggers': False,
         'formatters': {
             'default': {
                 'format': ('%(asctime)s [%(levelname)-8s] for %(name)s: '
@@ -227,6 +231,13 @@ def create_app(testing=False, config_overrides=None):
                 .astimezone()
                 .isoformat(sep="T", timespec="milliseconds")
     )
+
+    # Audit/event logging to disk (control/logs/audit.log + error.log). Done
+    # here, after app=Flask(__name__), so it can use app.root_path to create
+    # the dir and attach file handlers (the dictConfig above runs too early /
+    # console-only). Also wires the got_request_exception 500 hook.
+    from hashview.utils.audit import configure_audit_logging
+    configure_audit_logging(app)
 
     if not testing:
         from hashview.config import Config
@@ -263,6 +274,7 @@ def create_app(testing=False, config_overrides=None):
     from hashview.customers.routes import customers
     from hashview.hashfiles.routes import hashfiles
     from hashview.jobs.routes import jobs
+    from hashview.logs.routes import logs
     from hashview.main.routes import main
     from hashview.notifications.routes import notifications
     from hashview.rules.routes import rules
@@ -281,6 +293,7 @@ def create_app(testing=False, config_overrides=None):
     app.register_blueprint(customers)
     app.register_blueprint(hashfiles)
     app.register_blueprint(jobs)
+    app.register_blueprint(logs)
     app.register_blueprint(main)
     app.register_blueprint(rules)
     app.register_blueprint(settings)

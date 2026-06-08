@@ -40,6 +40,7 @@ from hashview.users.forms import (
     ResetPasswordForm,
     UsersForm,
 )
+from hashview.utils.audit import log_event
 from hashview.utils.utils import send_email, send_pushover, send_slack
 
 bcrypt = Bcrypt()
@@ -85,21 +86,28 @@ def login_post():
     form = LoginForm()
     if not form.validate_on_submit():
         current_app.logger.info('Login is Complete with Failure(Form Validation).')
+        log_event('user.login_failed', outcome='failure', actor=(None, None),
+                  detail='form validation failed')
         return failed()
 
     user = Users.query.filter_by(email_address=form.email.data).first()
     if not user:
         current_app.logger.info('Login is Complete with Failure(Invalid User from Email:%s).', form.email.data)
+        log_event('user.login_failed', outcome='failure', actor=(None, None),
+                  detail=f'unknown email={form.email.data}')
         return failed()
 
     if not bcrypt.check_password_hash(user.password, form.password.data):
         current_app.logger.info('Login is Complete with Failure(Invalid Password).')
+        log_event('user.login_failed', outcome='failure', actor=(None, None),
+                  detail=f'invalid password for email={form.email.data}')
         return failed()
 
     login_user(user, remember=form.remember.data)
     user.last_login_utc = datetime.utcnow()
     db.session.commit()
     current_app.logger.info('Login is Complete with Success(User:%s).', user.email_address)
+    log_event('user.login', actor=(user.email_address, user.id))
     return redirect(
         request.args.get("next", url_for('main.home'))
     )
@@ -147,6 +155,7 @@ def users_add():
                 send_email(user, 'Your Hashview account',
                            f'An account has been created for you on Hashview. '
                            f'Sign in with your email address ({user.email_address}).')
+            log_event('user.create', target=f'user:{user.id} {user.email_address}')
             flash(f'Account created for {form.email.data}!', 'success')
             return redirect(url_for('users.users_list'))
         return render_template('users_add.html.j2', title='User Add', form=form)
@@ -300,6 +309,10 @@ def reset_request():
     If you did not make this request... then something phishy is going on.
     '''
             send_email(user, subject, message)
+        # Unauthenticated page; log the attempted email without confirming
+        # whether the account exists (avoid user enumeration in the log too).
+        log_event('user.password_reset_request', actor=(None, None),
+                  detail=f'email={form.email.data}')
         flash('An email has been sent to '+  form.email.data, 'info')
         return redirect(url_for('users.login_get'))
     return render_template('reset_request.html.j2', title='Reset Password', form=form)
@@ -323,6 +336,7 @@ def admin_reset(user_id):
         If you did not make this request... then something phishy is going on.
     ''')
     send_email(user, subject, message)
+    log_event('user.admin_reset', target=f'user:{user.id} {user.email_address}')
     flash('An email has been sent to '+  user.email_address, 'info')
     return redirect(url_for('users.users_list'))
 
@@ -348,6 +362,8 @@ def reset_token(user_id :int, token :str):
         hashed_password = bcrypt.generate_password_hash(form.password.data)
         user.password = hashed_password
         db.session.commit()
+        log_event('user.password_reset', actor=(user.email_address, user.id),
+                  target=f'user:{user.id} {user.email_address}')
         flash('Your password has been updated! You are now able to login.', 'success')
         return redirect(url_for('users.login_get'))
 

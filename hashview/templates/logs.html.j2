@@ -1,0 +1,218 @@
+{% extends "layout.html.j2" %}
+{% from "icons.html.j2" import icon %}
+{% block title %}Logs · Hashview{% endblock %}
+{% block content %}
+{% set rows = audit_rows if view == 'audit' else error_rows %}
+{% set verb_phrase = {
+    'create': 'created', 'edit': 'updated', 'delete': 'deleted',
+    'login': 'logged in', 'login_failed': 'failed login for',
+    'password_reset': 'reset password', 'password_reset_request': 'requested password reset',
+    'admin_reset': 'reset password for', 'clear': 'cleared'} %}
+
+{# A single label/value row inside the detail modals. #}
+{% macro kv(label, value, color='var(--text-dim)', mono=false) %}
+<div style="display:flex; gap:16px; padding:9px 0; border-bottom:1px solid var(--border-soft);">
+    <div class="mono" style="width:104px; flex:none; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); padding-top:2px;">{{ label }}</div>
+    <div style="color:{{ color }};{% if mono %} font-family:var(--mono);{% endif %} word-break:break-word; min-width:0;">{{ value }}</div>
+</div>
+{% endmacro %}
+
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Logs</h1>
+        <div class="page-sub">// system audit &amp; error trail · raw records on disk at control/logs/{{ 'audit.log' if view == 'audit' else 'error.log' }}</div>
+    </div>
+</div>
+
+<div class="card">
+    {# One-line toolbar: source pills · filter · actions dropdown · export #}
+    <div class="card-head" style="gap:12px; flex-wrap:nowrap;">
+        <a class="btn btn-sm {{ 'active' if view == 'audit' else '' }}" href="{{ url_for('logs.logs_view', view='audit') }}">{{ icon('list', size=14) }} Audit {{ audit_count }}</a>
+        <a class="btn btn-sm {{ 'active' if view == 'error' else '' }}" href="{{ url_for('logs.logs_view', view='error') }}">{{ icon('flag', size=14) }} Error {{ error_count }}</a>
+
+        <span style="color:var(--text-mute); display:inline-flex; margin-left:6px;">{{ icon('search', size=16) }}</span>
+        <input type="text" id="log-filter" class="input" style="flex:1; min-width:120px;"
+               placeholder="{{ 'filter by actor, entity, action, IP…' if view == 'audit' else 'filter by exception, route, message…' }}"
+               autocomplete="off" oninput="hvFilterLogs(this.value)">
+
+        {% if view == 'audit' %}
+        <select class="select" id="log-action" style="width:170px; flex:none;" onchange="hvFilterAction(this.value)">
+            <option value="">All actions</option>
+            {% for a in actions %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+        </select>
+        {% endif %}
+
+        <a class="btn btn-sm" style="flex:none;" href="{{ url_for('logs.logs_download', which=view) }}">{{ icon('download', size=14) }} Export {{ view }} log</a>
+    </div>
+
+    {# Trail sub-label #}
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--border-soft);">
+        <span class="mono" style="font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute);">
+            <span style="color:var(--primary);">●</span> {{ 'Audit trail' if view == 'audit' else 'Error trail' }}
+        </span>
+        <span class="mono" style="font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute);">
+            {{ (audit_count ~ ' events') if view == 'audit' else '↯ HTTP 500' }}
+        </span>
+    </div>
+
+    {% if rows %}
+    <table class="tbl">
+        <thead>
+            {% if view == 'audit' %}
+            <tr><th>Time</th><th>Action</th><th>Entity</th><th>Actor</th><th>Source IP</th><th class="center" style="width:70px;">Control</th></tr>
+            {% else %}
+            <tr><th>Time</th><th>Status</th><th>Route</th><th>Exception</th><th>Actor</th><th class="center" style="width:70px;">Control</th></tr>
+            {% endif %}
+        </thead>
+        <tbody id="log-tbody">
+            {% if view == 'audit' %}
+                {% for r in rows %}
+                <tr data-search="{{ r.search }}" data-action="{{ r.action }}">
+                    <td><div class="mono">{{ r.time }}</div><div class="mono" style="font-size:10px; color:var(--text-mute);">{{ r.rel }}</div></td>
+                    <td><span class="badge {{ r.action_class }}">{{ r.action }}</span></td>
+                    <td>
+                        <div class="mono" style="font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-bottom:3px;">{{ r.entity_type }}</div>
+                        <span style="display:inline-flex; align-items:center; gap:8px; font-weight:500;">
+                            <span style="color:var(--text-mute); display:inline-flex;">{{ icon(r.icon, size=15) }}</span>{{ r.entity_name }}
+                        </span>
+                    </td>
+                    <td style="color:var(--text-dim);">{{ r.actor }}</td>
+                    <td class="mono" style="color:var(--cyan);">{{ r.ip }}</td>
+                    <td class="center"><button type="button" class="icon-btn" title="Details" onclick="document.getElementById('audit-modal-{{ loop.index }}').showModal()">{{ icon('info', size=15) }}</button></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                {% for r in rows %}
+                <tr data-search="{{ r.search }}">
+                    <td><div class="mono">{{ r.time }}</div><div class="mono" style="font-size:10px; color:var(--text-mute);">{{ r.rel }}</div></td>
+                    <td><span class="badge red">500</span></td>
+                    <td><span class="badge dim">{{ r.method }}</span> <span class="mono" style="color:var(--text-dim);">{{ r.path }}</span></td>
+                    <td>
+                        <div style="font-weight:600;">{{ r.exc_class }}</div>
+                        {% if r.exc_msg %}<div class="mono" style="font-size:11px; color:var(--text-mute);">{{ r.exc_msg }}</div>{% endif %}
+                    </td>
+                    <td style="color:var(--text-dim);">{{ r.actor }}</td>
+                    <td class="center"><button type="button" class="icon-btn" title="Traceback" onclick="document.getElementById('error-modal-{{ loop.index }}').showModal()">{{ icon('info', size=15) }}</button></td>
+                </tr>
+                {% endfor %}
+            {% endif %}
+            <tr id="log-no-match" style="display:none;"><td colspan="6" style="text-align:center; padding:28px 16px; color:var(--text-mute);" class="mono">No log entries match that filter.</td></tr>
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card-body" style="text-align:center; padding:48px 24px;">
+        <div class="mono" style="color:var(--text-dim);">No {{ view }} log entries yet.</div>
+    </div>
+    {% endif %}
+</div>
+
+{# ---- per-row detail modals (native <dialog>) ---- #}
+{% if view == 'audit' %}
+    {% for r in rows %}
+    <dialog class="hv-dialog" id="audit-modal-{{ loop.index }}" style="max-width:620px; width:94vw;">
+        <div class="hv-dialog-head">
+            {{ icon('list', size=16) }}
+            <div style="line-height:1.2;">
+                <h3 style="margin:0;">Audit event</h3>
+                <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">{{ r.action_key }} · {{ r.ts }}</div>
+            </div>
+            <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+        </div>
+        <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+            {# summary #}
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                <span style="color:var(--text-mute); display:inline-flex;">{{ icon(r.icon, size=20) }}</span>
+                <div style="min-width:0;">
+                    <div><span style="color:var(--primary);">{{ r.actor }}</span> <span style="color:var(--text-mute);">{{ verb_phrase.get(r.action_key, r.action_key) }}</span> {{ r.entity_type }}{% if r.entity_name and r.entity_name != '—' %} <b>{{ r.entity_name }}</b>{% endif %}</div>
+                    <div style="margin-top:6px;"><span class="badge {{ r.action_class }}">{{ r.action }}</span></div>
+                </div>
+            </div>
+            {# fields (request id + user agent intentionally omitted — not captured) #}
+            {{ kv('Actor', r.actor ~ (' · #' ~ r.actor_id if r.actor_id else '')) }}
+            {{ kv('Entity', r.entity_type ~ (' #' ~ r.entity_id if r.entity_id else ''), mono=true) }}
+            {{ kv('Source IP', r.ip, color='var(--cyan)', mono=true) }}
+            {{ kv('Outcome', r.outcome) }}
+            {% if r.detail %}{{ kv('Detail', r.detail, mono=true) }}{% endif %}
+            <pre id="audit-raw-{{ loop.index }}" class="mono" style="display:none; margin:14px 0 0; padding:12px; background:var(--surface-1); border:1px solid var(--border-soft); border-radius:var(--radius); font-size:11px; color:var(--text-dim); white-space:pre-wrap; word-break:break-word; max-height:280px; overflow:auto;">{{ r.raw_json }}</pre>
+        </div>
+        <div class="hv-dialog-foot">
+            <button class="btn btn-sm" style="margin-right:auto;" onclick="hvToggleRaw('audit-raw-{{ loop.index }}')">{{ icon('eye', size=14) }} View raw .json</button>
+            <button class="btn btn-sm" onclick="hvDownloadJson('audit-raw-{{ loop.index }}', 'audit-{{ loop.index }}.json')">{{ icon('download', size=14) }} Download .json</button>
+            <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+        </div>
+    </dialog>
+    {% endfor %}
+{% else %}
+    {% for r in rows %}
+    <dialog class="hv-dialog" id="error-modal-{{ loop.index }}" style="max-width:680px; width:94vw;">
+        <div class="hv-dialog-head">
+            <span style="color:var(--red); display:inline-flex;">{{ icon('flag', size=16) }}</span>
+            <div style="line-height:1.2;">
+                <h3 style="margin:0;">Error event</h3>
+                <div class="mono" style="font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--text-mute); margin-top:3px;">server.error · {{ r.ts }}</div>
+            </div>
+            <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close" style="margin-left:auto;">{{ icon('x', size=15) }}</button>
+        </div>
+        <div class="hv-dialog-body" style="max-height:72vh; overflow-y:auto;">
+            {# summary #}
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+                <span style="color:var(--red); display:inline-flex;">{{ icon('flag', size=18) }}</span>
+                <div style="font-weight:600;">{{ r.exc_class }}</div>
+                <span class="badge red">HTTP 500</span>
+                <span class="badge dim">{{ r.method }}</span>
+            </div>
+            {# fields (request id intentionally omitted — not captured) #}
+            {% if r.exc_msg %}{{ kv('Message', r.exc_msg) }}{% endif %}
+            {{ kv('Route', r.method ~ ' ' ~ r.path, mono=true) }}
+            {% if r.location %}{{ kv('Location', r.location, mono=true) }}{% endif %}
+            {{ kv('Actor', r.actor ~ ' · ' ~ r.ip, mono=true) }}
+            {# traceback #}
+            <div class="mono" style="font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin:16px 0 6px;">Traceback</div>
+            <pre class="mono" style="margin:0; padding:12px; background:var(--surface-1); border:1px solid var(--border-soft); border-radius:var(--radius); font-size:11px; color:var(--text-dim); white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto;">{{ r.traceback or 'No traceback recorded.' }}</pre>
+            <pre id="error-raw-{{ loop.index }}" class="mono" style="display:none; margin:14px 0 0; padding:12px; background:var(--surface-1); border:1px solid var(--border-soft); border-radius:var(--radius); font-size:11px; color:var(--text-dim); white-space:pre-wrap; word-break:break-word; max-height:280px; overflow:auto;">{{ r.raw_json }}</pre>
+        </div>
+        <div class="hv-dialog-foot">
+            <button class="btn btn-sm" style="margin-right:auto;" onclick="hvToggleRaw('error-raw-{{ loop.index }}')">{{ icon('eye', size=14) }} View raw .json</button>
+            <button class="btn btn-sm" onclick="hvDownloadJson('error-raw-{{ loop.index }}', 'error-{{ loop.index }}.json')">{{ icon('download', size=14) }} Download .json</button>
+            <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+        </div>
+    </dialog>
+    {% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+var hvLogQuery = '', hvLogAction = '';
+function hvApplyLogFilters(){
+    var shown = 0;
+    document.querySelectorAll('#log-tbody tr[data-search]').forEach(function(tr){
+        var okText = !hvLogQuery || (tr.getAttribute('data-search') || '').indexOf(hvLogQuery) !== -1;
+        var okAct  = !hvLogAction || (tr.getAttribute('data-action') === hvLogAction);
+        var hit = okText && okAct;
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+    });
+    var none = document.getElementById('log-no-match');
+    if (none) none.style.display = shown === 0 ? '' : 'none';
+}
+function hvFilterLogs(v){ hvLogQuery = (v || '').trim().toLowerCase(); hvApplyLogFilters(); }
+function hvFilterAction(v){ hvLogAction = v || ''; hvApplyLogFilters(); }
+function hvToggleRaw(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = (el.style.display === 'none') ? '' : 'none';
+}
+function hvDownloadJson(id, name){
+    var el = document.getElementById(id);
+    if (!el) return;
+    var blob = new Blob([el.textContent], {type: 'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+}
+</script>
+{% endblock %}

@@ -20,6 +20,7 @@ from flask_login import current_user, login_required
 import hashview
 from hashview.models import Hashes, Settings, db
 from hashview.settings.forms import DatabaseBackupForm, HashviewSettingsForm
+from hashview.utils.audit import clear_logs_on_disk, log_event, logs_dir
 from hashview.utils.backup import (
     BackupError,
     create_encrypted_db_backup,
@@ -60,6 +61,13 @@ def settings_list():
         for file in os.scandir('hashview/control/tmp/'):
             tmp_folder_size += os.stat(file).st_size
         tmp_folder_size = _human_size(tmp_folder_size)
+
+        audit_logs_size = 0
+        _logs_dir = logs_dir(current_app)
+        if os.path.isdir(_logs_dir):
+            for file in os.scandir(_logs_dir):
+                audit_logs_size += os.stat(file).st_size
+        audit_logs_size = _human_size(audit_logs_size)
 
         if hashview_form.validate_on_submit():
             settings.retention_period = hashview_form.retention_period.data
@@ -105,6 +113,7 @@ def settings_list():
             HashviewForm        = hashview_form,
             backupForm          = DatabaseBackupForm(),
             tmp_folder_size     = tmp_folder_size,
+            audit_logs_size     = audit_logs_size,
             application_version = hashview.__version__,
             database_version    = database_version,
         )
@@ -211,4 +220,24 @@ def purge_cracked():
     )
     db.session.commit()
     flash(f'Purged {count:,} recovered password(s) — those hashes are now uncracked.', 'success')
+    return redirect(url_for('settings.settings_list'))
+
+
+@settings.route('/settings/clear_logs', methods=['POST'])
+@login_required
+def clear_logs():
+    """Clear the on-disk audit + error logs (admin only).
+
+    POST + CSRF (unlike clear_temp's GET) because wiping the audit trail is a
+    sensitive action. The live audit.log/error.log are truncated in place
+    rather than unlinked — the RotatingFileHandler holds an open fd, and
+    deleting the path would leave it writing to an unlinked inode. Rotated
+    *.log.N backups are removed outright. The clear is itself audited.
+    """
+    if not current_user.admin:
+        abort(403)
+    removed_backups = clear_logs_on_disk(current_app)
+    # Audited after the clear, so this is the first line in the freshly-emptied log.
+    log_event('logs.clear', detail=f'removed_backups={removed_backups}')
+    flash('Audit and error logs cleared.', 'success')
     return redirect(url_for('settings.settings_list'))
