@@ -31,6 +31,15 @@ repos:
         pass_filenames: false
         files: \.py$
 
+  # OpenAPI spec structural validation — fires only when the committed API
+  # spec changes. Parity with the actual /v1 routes is enforced separately by
+  # tests/unit/test_openapi_spec.py.
+  - repo: https://github.com/python-openapi/openapi-spec-validator
+    rev: 0.7.1
+    hooks:
+      - id: openapi-spec-validator
+        files: ^hashview/api_docs/openapi\.yaml$
+
   # General hygiene.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

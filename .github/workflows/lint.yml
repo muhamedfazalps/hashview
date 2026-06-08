@@ -43,3 +43,18 @@ jobs:
         run: pip install pip-audit==2.10.0
       - name: Audit production dependencies
         run: pip-audit -r requirements.txt
+
+  # OpenAPI: structural validation of the committed API spec. Route<->spec
+  # parity is additionally enforced by tests/unit/test_openapi_spec.py (run
+  # locally — there is no full-deps unit-test CI job).
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install validator
+        run: pip install openapi-spec-validator==0.7.1
+      - name: Validate OpenAPI spec
+        run: openapi-spec-validator hashview/api_docs/openapi.yaml

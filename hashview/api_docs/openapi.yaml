@@ -1,0 +1,1750 @@
+# Hashview /v1 API — OpenAPI 3.0.3 specification.
+#
+# Hand-authored; kept honest by tests/unit/test_openapi_spec.py which enforces
+#   * structural validity (openapi-spec-validator, also run in CI / pre-commit)
+#   * info.version == hashview.__version__
+#   * two-way parity between this file's paths/methods and the Flask url_map
+# If you add/remove/change a /v1 route, update this file or the test fails.
+openapi: 3.0.3
+
+info:
+  title: Hashview API
+  version: 0.8.2
+  description: >-
+    The `/v1` API shared by Hashview's human consumers (scripting against the
+    server with a personal API key) and the distributed cracking agents.
+
+
+    **Authentication.** A single cookie named `uuid` carries the credential.
+    Depending on the route it must resolve to either a **user's** API key
+    (`Profile -> Generate API Key`) or a registered **agent's** UUID — the
+    per-operation security requirement (`userApiKey`, `agentUuid`, or both)
+    tells you which. On an auth failure the server answers **HTTP 302** to
+    `/v1/not_authorized`; following that redirect yields HTTP 200 with an
+    error-shaped body.
+
+
+    **Response envelope.** Almost every endpoint answers **HTTP 200** and puts
+    the real outcome in the body's `status` field (200, 400, 403, 426 or 500)
+    — see the `ApiMessage` / `ApiError` schemas. Only a handful of newer
+    endpoints also use genuine HTTP status codes (404s on
+    `DELETE /v1/jobs/{job_id}`, `GET /v1/rules/{rules_id}` and
+    `GET /v1/wordlists/{wordlist_id}`); these are modeled explicitly.
+
+
+    **Serialized rows.** List/detail endpoints return ORM rows JSON-encoded
+    **as a string** (double-decode required; see the per-field descriptions).
+    The encoder also emits SQLAlchemy artifacts (`query`, `query_class`,
+    `registry`, relationship keys such as `owner`) as `null`, and **all
+    datetime columns are always `null`** because non-JSON-encodable values are
+    dropped. Clients should ignore these artifact keys. The one exception is
+    `GET /v1/hashfiles/hash_type/{hash_type}`, which builds a real nested
+    array with ISO-8601 timestamps.
+
+servers:
+  - url: /
+
+# Default: most read endpoints accept EITHER principal. Operations narrow
+# this to user-only / agent-only / public (security: []) as appropriate.
+security:
+  - userApiKey: []
+  - agentUuid: []
+
+tags:
+  - name: System
+    description: Unauthenticated sentinels and agent error reporting.
+  - name: Agent Protocol
+    description: >-
+      The runtime loop a cracking agent drives: heartbeat for work dispatch,
+      job-task status updates, crack-file uploads and dynamic wordlist
+      refresh. Grouped here as a second tag so the whole protocol is visible
+      in one place.
+  - name: Admin
+    description: System settings.
+  - name: Agents
+    description: Agent registration and heartbeat.
+  - name: Customers
+    description: Customer records jobs and hashfiles are attributed to.
+  - name: Rules
+    description: Hashcat rule files (stored plaintext at rest, served gzipped).
+  - name: Wordlists
+    description: >-
+      Wordlists. Static lists are stored gzip-compressed at rest and served
+      as-is; dynamic lists are regenerated from cracked material and
+      compressed on the fly.
+  - name: Jobs
+    description: Cracking jobs and their lifecycle.
+  - name: Job Tasks
+    description: Per-job task queue entries dispatched to agents.
+  - name: Tasks
+    description: Reusable attack definitions (wordlist/rule/mask combinations).
+  - name: Hashfiles
+    description: Uploaded hash files and their contents.
+  - name: Hashes
+    description: Importing cracked material.
+  - name: Search
+    description: Looking up recovered hashes.
+
+paths:
+  # ---------------------------------------------------------------- System
+  /v1/not_authorized:
+    get:
+      tags: [System]
+      summary: Authorization-failure sentinel
+      description: >-
+        Target of the HTTP 302 every authenticated endpoint issues on a bad or
+        missing `uuid` cookie. Note it answers **HTTP 200** with an
+        error-shaped body.
+      operationId: notAuthorized
+      x-audience: both
+      security: []
+      responses:
+        '200':
+          description: Always the same error-shaped body (HTTP 200).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotAuthorizedBody'
+    post:
+      tags: [System]
+      summary: Authorization-failure sentinel (POST variant)
+      description: Same body as the GET variant; exists so redirected POSTs resolve.
+      operationId: notAuthorizedPost
+      x-audience: both
+      security: []
+      responses:
+        '200':
+          description: Always the same error-shaped body (HTTP 200).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotAuthorizedBody'
+
+  /v1/upgrade_required:
+    get:
+      tags: [System]
+      summary: Agent-version-mismatch sentinel
+      description: >-
+        Target of the HTTP 302 issued by `/v1/agents/heartbeat` when the
+        `agent_version` cookie is older than the server version. Answers HTTP
+        200 with body `status: 426`.
+      operationId: upgradeRequired
+      x-audience: agent
+      security: []
+      responses:
+        '200':
+          description: HTTP 200 with body status 426.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeRequiredBody'
+
+  /v1/error:
+    post:
+      tags: [System, Agent Protocol]
+      summary: Report an agent-side error
+      description: >-
+        Agent-only. Emails the reported error to all admins (subject
+        "Error on <agent name>").
+      operationId: reportAgentError
+      x-audience: agent
+      security:
+        - agentUuid: []
+      requestBody:
+        required: false
+        description: >-
+          Tolerant — the body is read with silent JSON parsing and `error`
+          defaults to null, so a missing/empty/non-JSON body still returns OK.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentErrorReport'
+      responses:
+        '200':
+          description: Acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiMessage'
+              example: {status: 200, type: message, msg: OK}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ---------------------------------------------------------------- Agents
+  /v1/agents/heartbeat:
+    post:
+      tags: [Agents, Agent Protocol]
+      summary: Agent heartbeat / work dispatch
+      description: >-
+        The agent's main loop. All outcomes are **HTTP 200**; dispatch is via
+        `msg`:
+
+        * unknown `uuid` — the agent is registered with status `Pending`,
+          response `msg: "Go Away"`;
+
+        * status `Pending` (not yet authorized in the UI) — `msg: "Go Away"`;
+
+        * `agent_status: Working` with a canceled/missing task, or the task /
+          job exceeded the configured max runtime — `msg: "Canceled"`;
+
+        * `agent_status: Working` otherwise — `msg: "OK"` (the server also
+          parses `hc_status` for the `Speed #` benchmark figure);
+
+        * `agent_status: Idle` with an already-assigned or newly claimable
+          Queued job task — `msg: "START"` plus `job_task_id`;
+
+        * `agent_status: Idle` with nothing to do — `msg: "OK"`.
+
+
+        If the `agent_version` cookie is older than the server version the
+        request is redirected (302) to `/v1/upgrade_required` instead. The
+        body fields are read by direct key access, so a body without
+        `agent_status` — or, in the `Working` branch, without `hc_status` —
+        raises an unhandled server error (HTTP 500).
+      operationId: agentHeartbeat
+      x-audience: agent
+      security: []
+      parameters:
+        - name: uuid
+          in: cookie
+          required: true
+          schema: {type: string}
+          description: >-
+            Agent UUID. Unknown values trigger registration (status Pending),
+            so this endpoint is reachable without prior authorization.
+        - name: agent_version
+          in: cookie
+          required: true
+          schema: {type: string}
+          description: Agent software version; gated against the server version.
+        - name: name
+          in: cookie
+          required: false
+          schema: {type: string}
+          description: Agent display name, read only on first-seen registration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartbeatRequest'
+      responses:
+        '200':
+          description: See the state machine in the operation description.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeartbeatResponse'
+              examples:
+                goAway: {value: {status: 200, type: message, msg: Go Away}}
+                start: {value: {status: 200, type: message, msg: START, job_task_id: 7}}
+                ok: {value: {status: 200, type: message, msg: OK}}
+                canceled: {value: {status: 200, type: message, msg: Canceled}}
+        '302':
+          description: >-
+            Agent version older than the server version; redirect to
+            `/v1/upgrade_required` (which answers HTTP 200, body status 426).
+          headers:
+            Location:
+              schema: {type: string, example: /v1/upgrade_required}
+
+  # ----------------------------------------------------------------- Admin
+  /v1/admin/settings:
+    get:
+      tags: [Admin]
+      summary: Get system settings
+      description: >-
+        Returns the Settings rows JSON-encoded as a string. Note this includes
+        `slack_bot_token` and is readable by ANY valid user or agent
+        credential.
+      operationId: getAdminSettings
+      x-audience: both
+      responses:
+        '200':
+          description: Envelope with `settings` as a JSON-encoded string.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ------------------------------------------------------------- Customers
+  /v1/customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      description: >-
+        Returns all customers JSON-encoded as a string — under the (misnamed)
+        key **`users`**, not `customers`.
+      operationId: listCustomers
+      x-audience: both
+      responses:
+        '200':
+          description: >-
+            Envelope whose `users` key (sic) is a JSON-encoded string holding
+            the customer array.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomersListResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/customers/add:
+    post:
+      tags: [Customers]
+      summary: Create a customer
+      operationId: addCustomer
+      x-audience: user
+      security:
+        - userApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 with `customer_id` on success,
+            400 on a missing body, 500 on a database error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CustomerAddedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                added: {value: {status: 200, type: message, msg: Customer added, customer_id: 3}}
+                missingBody: {value: {status: 400, type: Error, msg: Missing customer data in request body}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ----------------------------------------------------------------- Rules
+  /v1/rules:
+    get:
+      tags: [Rules]
+      summary: List rules (metadata)
+      operationId: listRules
+      x-audience: both
+      responses:
+        '200':
+          description: Envelope with `rules` as a JSON-encoded string.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesListResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/rules/{rules_id}:
+    get:
+      tags: [Rules]
+      summary: Download a rule file (gzipped)
+      description: >-
+        Rules are stored plaintext at rest; the server gzip-compresses on the
+        fly and streams the result.
+      operationId: downloadRule
+      x-audience: both
+      parameters:
+        - name: rules_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: The gzip-compressed rule file.
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404':
+          description: >-
+            Real HTTP 404 — unknown rule id ("Rule not found") or the row
+            exists but the file is gone ("Rule file missing on disk").
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: {status: 404, type: Error, msg: Rule not found}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/rules/add/{rule_name}:
+    post:
+      tags: [Rules]
+      summary: Upload a rule file (raw body)
+      description: >-
+        The request body is the RAW file bytes (NOT multipart/form-data):
+        plain text or a gzip stream. Gzip is validated and decompressed
+        server-side — rules are stored plaintext at rest. Duplicate rule
+        names are allowed (mirrors the web UI).
+      operationId: addRule
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: rule_name
+          in: path
+          required: true
+          schema: {type: string}
+          description: Display name for the new rule.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: {type: string}
+          application/gzip:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 with `rule_id`, 400 on an empty
+            body or invalid gzip, 403 if the key resolves to no user.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RuleAddedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                added: {value: {status: 200, type: message, msg: Rule added, rule_id: 4}}
+                emptyBody: {value: {status: 400, type: Error, msg: Missing rule content in request body}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ------------------------------------------------------------- Wordlists
+  /v1/wordlists:
+    get:
+      tags: [Wordlists]
+      summary: List wordlists (metadata)
+      description: >-
+        `size` is the line count; `byte_size` the on-disk bytes of the file at
+        `path` (gzip-compressed for static lists); `checksum` the sha256 of
+        that on-disk file.
+      operationId: listWordlists
+      x-audience: both
+      responses:
+        '200':
+          description: Envelope with `wordlists` as a JSON-encoded string.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordlistsListResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/wordlists/{wordlist_id}:
+    get:
+      tags: [Wordlists]
+      summary: Download a wordlist (gzipped)
+      description: >-
+        Static wordlists are served exactly as stored (so the sha256 of the
+        download matches the catalog `checksum`); dynamic wordlists are
+        compressed on the fly.
+      operationId: downloadWordlist
+      x-audience: both
+      parameters:
+        - name: wordlist_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: The gzip-compressed wordlist.
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404':
+          description: Real HTTP 404 — unknown wordlist id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: {status: 404, type: Error, msg: Wordlist not found}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/wordlists/add/{wordlist_name}:
+    post:
+      tags: [Wordlists]
+      summary: Upload a wordlist (raw body)
+      description: >-
+        The request body is the RAW file bytes (NOT multipart/form-data):
+        plain text or a gzip stream. Either way the list is stored
+        gzip-compressed at rest and the catalog row records the line count,
+        compressed byte size and sha256 of the stored file.
+      operationId: addWordlist
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: wordlist_name
+          in: path
+          required: true
+          schema: {type: string}
+          description: Display name for the new wordlist.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: {type: string}
+          application/gzip:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 with `wordlist_id`, 400 on an
+            empty body or invalid gzip, 403 if the key resolves to no user.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/WordlistAddedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                added: {value: {status: 200, type: message, msg: Wordlist added, wordlist_id: 6}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/updateWordlist/{wordlist_id}:
+    get:
+      tags: [Wordlists, Agent Protocol]
+      summary: Regenerate a dynamic wordlist
+      description: >-
+        Rebuilds a dynamic wordlist from the database. For the crawl-based
+        "(DYNAMIC) Website Keywords" list, the per-job crawl URL is resolved
+        from the calling agent's currently Running job task. Static wordlists
+        are unaffected. Always answers OK.
+      operationId: updateDynamicWordlist
+      x-audience: both
+      parameters:
+        - name: wordlist_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: Acknowledged (even when there was nothing to update).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiMessage'
+              example: {status: 200, type: message, msg: OK}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ------------------------------------------------------------------ Jobs
+  /v1/jobs/add:
+    post:
+      tags: [Jobs]
+      summary: Create a job
+      description: >-
+        Creates the job in status `Ready` and auto-assigns up to the 10
+        historically most effective tasks for the hashfile's hash type
+        (ranked by cracks). Fails (body status 500) when no cracked material
+        of that hash type exists yet to rank tasks by. One job-notification
+        row is created per requested channel (`email` / `push` / `slack`).
+      operationId: addJob
+      x-audience: user
+      security:
+        - userApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobCreate'
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 with `job_id`, 400 on a missing
+            body, 403 if the key resolves to no user, 500 when effective
+            tasks can't be determined or on a database error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JobAddedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                added: {value: {status: 200, type: message, msg: Job added, job_id: 12}}
+                noData:
+                  value:
+                    status: 500
+                    type: Error
+                    msg: >-
+                      Not enough data to determine effective tasks for this
+                      hash type. Please add more cracked hashes of this type
+                      before creating a job.
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/jobs/start/{job_id}:
+    post:
+      tags: [Jobs]
+      summary: Queue a job for execution
+      description: >-
+        Owner or admin only. Moves the job and its tasks to `Queued` and
+        builds the hashcat command for every job task. NOTE the guard
+        currently requires the job to already be in status `Queued`; jobs in
+        `Ready` are rejected with "Job is not in a queued state" (start them
+        from the web UI instead).
+      operationId: startJob
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 on success, 400 for an unknown
+            job / no tasks / wrong state, 403 when not owner or admin (msg is
+            "User not found").
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JobStartedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                started: {value: {status: 200, type: message, msg: Job started, job_id: 12}}
+                notQueued: {value: {status: 400, type: Error, msg: Job is not in a queued state}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/jobs/{job_id}:
+    get:
+      tags: [Jobs]
+      summary: Get a job
+      operationId: getJob
+      x-audience: both
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: >-
+            Envelope with `job` as a JSON-encoded string. An unknown id
+            yields the string "null".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+    delete:
+      tags: [Jobs]
+      summary: Delete a job
+      description: >-
+        Owner or admin only. Deletes the job plus its job tasks and job
+        notifications (hashfile and hashes are kept). Like the web UI there
+        is deliberately no status guard — a Queued/Running job can be
+        deleted.
+      operationId: deleteJob
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: >-
+            HTTP 200; body status 200 on success, 403 when not owner or
+            admin, 500 on a database error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JobDeletedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                deleted: {value: {status: 200, type: message, msg: Job deleted, job_id: 12}}
+                forbidden: {value: {status: 403, type: Error, msg: You do not have rights to delete this job}}
+        '404':
+          description: Real HTTP 404 — unknown job id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: {status: 404, type: Error, msg: Job not found}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ------------------------------------------------------------- Job Tasks
+  /v1/jobTasks/{job_task_id}:
+    get:
+      tags: [Job Tasks, Agent Protocol]
+      summary: Get the calling agent's job-task assignment
+      description: >-
+        QUIRK — the `job_task_id` path parameter is currently **ignored**:
+        the route resolves the CALLING agent from the `uuid` cookie and
+        returns the first job task assigned to that agent (used by agents to
+        re-discover their assignment after a restart). Although the auth
+        guard accepts user keys, a user credential cannot be resolved to an
+        agent and produces an unhandled server error — call this with an
+        agent credential.
+      operationId: getJobTaskAssignment
+      x-audience: agent
+      security:
+        - agentUuid: []
+      parameters:
+        - name: job_task_id
+          in: path
+          required: true
+          schema: {type: integer}
+          description: Currently ignored (see operation description).
+      responses:
+        '200':
+          description: >-
+            Envelope with `job_task` as a JSON-encoded string ("null" when
+            the agent has no assignment).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobTaskResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/jobtask/status:
+    post:
+      tags: [Job Tasks, Agent Protocol]
+      summary: Update a job task's status
+      description: >-
+        Agent-only. Sets the given job task's status and runs the server-side
+        bookkeeping (job start/finish timestamps, notifications, hashfile
+        runtime accounting). A body missing either field raises an unhandled
+        server error.
+      operationId: setJobTaskStatus
+      x-audience: agent
+      security:
+        - agentUuid: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobTaskStatusUpdate'
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 on success, 500 (with
+            `type: message`) when the update fails.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ApiMessage'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                ok: {value: {status: 200, type: message, msg: OK}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ----------------------------------------------------------------- Tasks
+  /v1/tasks/add:
+    post:
+      tags: [Tasks]
+      summary: Create a task (wordlist + optional rule)
+      description: >-
+        Creates a hashcat attack-mode 0 (straight dictionary) task. `rule_id`
+        is optional — omit it (or send `null`/`"None"`/`""`) for a plain
+        dictionary attack. Task names must be unique.
+      operationId: addTask
+      x-audience: user
+      security:
+        - userApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+            examples:
+              withRule: {value: {name: rockyou-best64, wl_id: 1, rule_id: 2}}
+              plainDictionary: {value: {name: rockyou-only, wl_id: 1}}
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 with `task_id` on success, 400
+            for each validation failure, 403 if the key resolves to no user,
+            500 on a database error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TaskAddedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                added: {value: {status: 200, type: message, msg: Task added, task_id: 42}}
+                missingBody: {value: {status: 400, type: Error, msg: Missing task data in request body}}
+                missingName: {value: {status: 400, type: Error, msg: Task name is required}}
+                duplicateName: {value: {status: 400, type: Error, msg: A task with that name already exists}}
+                badWlId: {value: {status: 400, type: Error, msg: wl_id is required and must be a wordlist id}}
+                unknownWlId: {value: {status: 400, type: Error, msg: Invalid wl_id}}
+                badRuleId: {value: {status: 400, type: Error, msg: rule_id must be a rule id}}
+                unknownRuleId: {value: {status: 400, type: Error, msg: Invalid rule_id}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/tasks/{task_id}:
+    get:
+      tags: [Tasks]
+      summary: Get a task
+      operationId: getTask
+      x-audience: both
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: >-
+            Envelope with `task` as a JSON-encoded string ("null" for an
+            unknown id).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ------------------------------------------------------------- Hashfiles
+  /v1/hashfiles/upload/{customer_id}/{file_format}/{hash_type}/{hashfile_name}:
+    post:
+      tags: [Hashfiles]
+      summary: Upload a hashfile (raw body)
+      description: >-
+        The request body is the RAW file content as plain text (NOT
+        multipart). The file is validated line-by-line for the declared
+        format/hash type, imported, and checked against already-cracked
+        material ("insta-crack"). A file yielding zero valid hashes is
+        rolled back.
+      operationId: uploadHashfile
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema: {type: integer}
+        - name: file_format
+          in: path
+          required: true
+          schema:
+            type: integer
+            enum: [0, 1, 2, 3, 4, 5]
+          description: >-
+            0 = pwdump, 1 = NetNTLM, 2 = kerberos, 3 = shadow,
+            4 = user:hash, 5 = hash_only.
+        - name: hash_type
+          in: path
+          required: true
+          schema: {type: integer}
+          description: Hashcat hash mode (e.g. 1000 for NTLM).
+        - name: hashfile_name
+          in: path
+          required: true
+          schema: {type: string}
+          description: Display name for the hashfile.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: {type: string}
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 with counts on success, 400 for
+            an unknown customer / empty body / bad format, 403 if the key
+            resolves to no user, 500 for validation or import failures.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/HashfileUploadedResponse'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                added:
+                  value: {status: 200, type: message, msg: Hashfile added, hashfile_id: 9, hash_count: 1523, instacracked: 47}
+                badFormat:
+                  value:
+                    status: 400
+                    type: Error
+                    msg: >-
+                      Invalid file format. Valid formats are 0=pwdump,
+                      1=NetNTLM, 2=kerberos, 3=shadow, 4=user:hash,
+                      5=hash_only
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/hashfiles/{hashfile_id}:
+    get:
+      tags: [Hashfiles]
+      summary: Download a hashfile's uncracked hashes
+      description: >-
+        Generates and streams a plaintext file containing the ciphertext of
+        every still-uncracked hash in the hashfile, one per line (the file
+        agents crack against). An unknown id yields an empty file, not a 404.
+      operationId: downloadHashfile
+      x-audience: both
+      parameters:
+        - name: hashfile_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: >-
+            File contents, one uncracked ciphertext per line (served with a
+            generic binary content type — the temp file has no extension).
+          content:
+            application/octet-stream:
+              schema: {type: string}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/hashfiles/hash_type/{hash_type}:
+    get:
+      tags: [Hashfiles]
+      summary: List hashfiles containing a hash type
+      description: >-
+        Lists every hashfile holding at least one hash of the given type. A
+        hashfile can contain mixed types, so `total_hashes`/`cracked_hashes`
+        are scoped to the REQUESTED type within each file. Unlike the legacy
+        list endpoints this returns a real nested JSON array (no
+        double-decode) with ISO-8601 timestamps.
+      operationId: listHashfilesByHashType
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: hash_type
+          in: path
+          required: true
+          schema: {type: integer}
+          description: Hashcat hash mode (e.g. 1000 for NTLM).
+      responses:
+        '200':
+          description: >-
+            Envelope with a `hashfiles` array; empty array when no hashfile
+            holds the type (still body status 200).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HashfilesByTypeResponse'
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/getHashType/{hashfile_id}:
+    get:
+      tags: [Hashfiles]
+      summary: Get a hashfile's hash type
+      description: >-
+        Returns the hash type of the FIRST hash linked to the hashfile (files
+        are assumed homogeneous). An unknown id raises an unhandled server
+        error.
+      operationId: getHashfileHashType
+      x-audience: both
+      parameters:
+        - name: hashfile_id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        '200':
+          description: Envelope plus the `hash_type` integer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HashTypeResponse'
+              example: {status: 200, type: message, msg: OK, hash_type: 1000}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ---------------------------------------------------------------- Hashes
+  /v1/hashes/import/{hash_type}:
+    post:
+      tags: [Hashes]
+      summary: Import cracked NTLM material
+      description: >-
+        User-only bulk import of already-cracked hashes. Only `hash_type`
+        1000 (NTLM) is supported — anything else answers body status 403
+        "Unsupported Hashtype" (with `type: message`). The body is plain
+        text, one `HASH:plaintext` pair per line; the hash must be UPPERCASE
+        hex. Every pair is verified server-side (MD4 over UTF-16LE of the
+        plaintext must reproduce the hash); the first failing line aborts the
+        import with body status 500, but previously processed lines remain
+        committed. Matching uncracked hashes are marked cracked and credited
+        to the calling user, and per-hash recovery notifications fire.
+      operationId: importCrackedHashes
+      x-audience: user
+      security:
+        - userApiKey: []
+      parameters:
+        - name: hash_type
+          in: path
+          required: true
+          schema: {type: integer}
+          description: Only 1000 (NTLM) is currently supported.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: {type: string}
+            example: "8846F7EAEE8FB117AD06BDD830B7586C:password"
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; body status 200 on success, 400 on an empty
+            body, 403 for no-such-user or an unsupported hash type, 500 on a
+            failed verification or import error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ApiMessage'
+                  - $ref: '#/components/schemas/ApiError'
+              examples:
+                ok: {value: {status: 200, type: message, msg: OK}}
+                unsupported: {value: {status: 403, type: message, msg: Unsupported Hashtype}}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/uploadCrackFile/{job_task_id}:
+    post:
+      tags: [Hashes, Agent Protocol]
+      summary: Upload cracked hashes for a job task
+      description: >-
+        Agent-only. The agent posts its hashcat potfile-style results
+        (`{"file": "..."}`, newline-delimited `hash:plaintext` lines with the
+        plaintext hex-encoded; WPA/22000 lines carry an extra `:ssid:` form).
+        Matched hashes are marked cracked, credited to the job owner and the
+        recovering task; per-hash recovery notifications fire. For
+        one-and-done jobs (`limit_recovered`) a successful recovery cancels
+        the job's remaining tasks.
+
+
+        The route does no input validation: an unknown `job_task_id`, a
+        missing/empty body, or a body without `file` raises an unhandled
+        server error (HTTP 500) rather than a structured error body.
+      operationId: uploadCrackFile
+      x-audience: agent
+      security:
+        - agentUuid: []
+      parameters:
+        - name: job_task_id
+          in: path
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrackFileUpload'
+      responses:
+        '200':
+          description: Acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiMessage'
+              example: {status: 200, type: message, msg: OK}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  /v1/uploadCrackFile/{task_id}/{hash_type}:
+    post:
+      tags: [Hashes, Agent Protocol]
+      summary: Upload cracked hashes (legacy)
+      deprecated: true
+      description: >-
+        Legacy variant kept for old agents ("old and probably unused"). Does
+        NOT validate `task_id`. As with the current variant, a missing/empty
+        body or a body without `file` raises an unhandled HTTP 500. Prefer
+        `/v1/uploadCrackFile/{job_task_id}`.
+      operationId: uploadCrackFileLegacy
+      x-audience: agent
+      security:
+        - agentUuid: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: {type: integer}
+        - name: hash_type
+          in: path
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrackFileUpload'
+      responses:
+        '200':
+          description: Acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiMessage'
+              example: {status: 200, type: message, msg: OK}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+  # ---------------------------------------------------------------- Search
+  /v1/search:
+    post:
+      tags: [Search]
+      summary: Look up a recovered hash
+      description: >-
+        Searches CRACKED hashes by exact ciphertext. When found, `msg` is an
+        OBJECT with the recovered material; when not found, `msg` is the
+        string "Search complete. No Results Found.". A missing/empty body
+        answers body status 500 "Invalid Search"; a JSON body without a
+        `hash` key raises an unhandled server error.
+      operationId: searchHash
+      x-audience: user
+      security:
+        - userApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: >-
+            HTTP 200 always; `msg` is an object (found), a not-found string,
+            or body status 500 "Invalid Search" for an empty body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              examples:
+                found:
+                  value:
+                    status: 200
+                    type: message
+                    msg: {hash_type: 1000, hash: 8846F7EAEE8FB117AD06BDD830B7586C, plaintext: password}
+                notFound:
+                  value: {status: 200, type: message, msg: Search complete. No Results Found.}
+                invalid:
+                  value: {status: 500, type: message, msg: Invalid Search}
+        '302':
+          $ref: '#/components/responses/NotAuthorizedRedirect'
+
+components:
+  securitySchemes:
+    userApiKey:
+      type: apiKey
+      in: cookie
+      name: uuid
+      description: >-
+        The `uuid` cookie set to a USER's API key (generate one via
+        Profile -> Generate API Key). Accepted by operations whose security
+        lists `userApiKey`.
+    agentUuid:
+      type: apiKey
+      in: cookie
+      name: uuid
+      description: >-
+        The `uuid` cookie set to a registered AGENT's UUID (agent must be in
+        status Online/Working/Idle/Authorized). Accepted by operations whose
+        security lists `agentUuid`.
+
+  responses:
+    NotAuthorizedRedirect:
+      description: >-
+        Missing/invalid `uuid` cookie, or a credential of the wrong kind for
+        this operation (e.g. an agent UUID on a user-only endpoint) — HTTP
+        302 redirect to `/v1/not_authorized`. NOTE: following the redirect
+        yields HTTP 200 with an error-shaped body.
+      headers:
+        Location:
+          schema: {type: string, example: /v1/not_authorized}
+
+  schemas:
+    # ------------------------------------------------------- envelopes
+    ApiMessage:
+      type: object
+      description: >-
+        Standard success envelope. The API almost always answers HTTP 200 and
+        reports the real outcome in `status` — 200 OK, 400 bad input, 403
+        forbidden/unknown user, 426 version mismatch, 500 server error.
+      required: [status]
+      properties:
+        status:
+          type: integer
+          description: Logical status code (NOT necessarily the HTTP status).
+          example: 200
+        type:
+          type: string
+          enum: [message]
+        msg:
+          type: string
+
+    ApiError:
+      type: object
+      description: >-
+        Standard error envelope, usually still delivered over HTTP 200
+        (except the real 404s noted per-operation). `type` is usually
+        "Error", but a few error paths use "message" (e.g. jobtask/status
+        failures, hashes/import "Unsupported Hashtype").
+      required: [status, msg]
+      properties:
+        status:
+          type: integer
+          enum: [400, 403, 404, 426, 500]
+        type:
+          type: string
+          enum: [Error, message]
+        msg:
+          type: string
+
+    NotAuthorizedBody:
+      type: object
+      description: >-
+        The auth-failure sentinel body — HTTP 200 with `type: "Error"`.
+        Standalone (not an ApiMessage) because ApiMessage's `type` is
+        `message`, whereas this body uses `Error`.
+      required: [status]
+      properties:
+        status: {type: integer, example: 200}
+        type: {type: string, enum: [Error]}
+        msg: {type: string}
+      example:
+        status: 200
+        type: Error
+        msg: Your agent is not authorized to work with this cluster.
+
+    UpgradeRequiredBody:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+      description: HTTP 200 with body status 426 — agent must upgrade.
+      example: {status: 426, type: message, msg: 'Version missmatch, update your agent!'}
+
+    # ------------------------------------------- serialized model rows
+    # These describe the OBJECTS EMBEDDED in the JSON-encoded strings the
+    # list/detail endpoints return. Only stable column fields are listed;
+    # responses additionally carry SQLAlchemy artifacts (query, query_class,
+    # registry, relationship keys like owner) as null — ignore them. ALL
+    # datetime columns are always null (the encoder drops non-JSON-encodable
+    # values), which is why they are typed nullable string here.
+    Customer:
+      type: object
+      description: A customer row (embedded in the JSON-encoded string).
+      properties:
+        id: {type: integer}
+        name: {type: string}
+
+    Rule:
+      type: object
+      description: A rule-file catalog row (embedded in the JSON-encoded string).
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        last_updated:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        owner_id: {type: integer}
+        path: {type: string, description: Server-side storage path.}
+        size: {type: integer, description: Line count.}
+        checksum: {type: string, description: sha256 of the plaintext file.}
+
+    Wordlist:
+      type: object
+      description: A wordlist catalog row (embedded in the JSON-encoded string).
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        last_updated:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        owner_id: {type: integer}
+        type:
+          type: string
+          enum: [static, dynamic]
+        path: {type: string, description: Server-side storage path (.gz for static).}
+        size: {type: integer, description: Line count.}
+        byte_size:
+          type: integer
+          nullable: true
+          description: On-disk bytes of the stored (compressed) file.
+        checksum: {type: string, description: sha256 of the stored on-disk file.}
+
+    Job:
+      type: object
+      description: A job row (embedded in the JSON-encoded string).
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        priority:
+          type: integer
+          description: 5 highest .. 1 lowest (default 3).
+        created_at:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        updated_at:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        queued_at:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        status:
+          type: string
+          enum: [Ready, Queued, Running, Paused, Completed, Canceled, Incomplete]
+        started_at:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        ended_at:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        hashfile_id: {type: integer, nullable: true}
+        customer_id: {type: integer}
+        owner_id: {type: integer}
+        limit_recovered:
+          type: boolean
+          description: One-and-done mode — cancel remaining tasks after the first recovery.
+        crawl_url:
+          type: string
+          nullable: true
+          description: URL crawled for the "(DYNAMIC) Website Keywords" wordlist.
+
+    JobTask:
+      type: object
+      description: A job-task queue row (embedded in the JSON-encoded string).
+      properties:
+        id: {type: integer}
+        job_id: {type: integer}
+        task_id: {type: integer}
+        priority: {type: integer}
+        command:
+          type: string
+          nullable: true
+          description: The full hashcat command (built when the job is queued).
+        status:
+          type: string
+          enum: [Not Started, Queued, Running, Paused, Completed, Canceled, Importing]
+        started_at:
+          type: string
+          nullable: true
+          description: Always null in API responses (encoder limitation).
+        agent_id: {type: integer, nullable: true}
+
+    Task:
+      type: object
+      description: A task (attack definition) row (embedded in the JSON-encoded string).
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        hc_attackmode:
+          type: integer
+          enum: [0, 1, 3, 6, 7]
+          description: >-
+            0 dictionary (+ optional rule), 1 combinator, 3 mask/brute-force,
+            6 hybrid wordlist+mask, 7 hybrid mask+wordlist.
+        owner_id: {type: integer}
+        wl_id: {type: integer, nullable: true, description: Primary wordlist.}
+        wl_id_2: {type: integer, nullable: true, description: Combinator second wordlist.}
+        j_rule: {type: string, nullable: true, description: Combinator -j rule.}
+        k_rule: {type: string, nullable: true, description: Combinator -k rule.}
+        rule_id: {type: integer, nullable: true}
+        hc_mask: {type: string, nullable: true, description: Mask for modes 3/6/7.}
+
+    Settings:
+      type: object
+      description: >-
+        The system settings row (embedded in the JSON-encoded string). NOTE:
+        includes `slack_bot_token` — visible to any valid user or agent
+        credential.
+      properties:
+        id: {type: integer}
+        retention_period: {type: integer, nullable: true}
+        max_runtime_jobs: {type: integer, nullable: true, description: Hours; 0 disables.}
+        max_runtime_tasks: {type: integer, nullable: true, description: Hours; 0 disables.}
+        enabled_job_weights: {type: boolean}
+        crawl_min_word_length: {type: integer}
+        crawl_user_agent: {type: string}
+        crawl_force_lowercase: {type: boolean}
+        crawl_depth: {type: integer}
+        crawl_threads: {type: integer}
+        email_enabled: {type: boolean}
+        pushover_enabled: {type: boolean}
+        slack_enabled: {type: boolean}
+        slack_bot_token: {type: string, nullable: true}
+        passwords_decoded: {type: boolean}
+
+    HashfileSummary:
+      type: object
+      description: >-
+        One hashfile entry from /v1/hashfiles/hash_type/{hash_type} — a real
+        nested object (no double-decode) with counts scoped to the requested
+        hash type.
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        customer_id: {type: integer}
+        owner_id: {type: integer}
+        uploaded_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 (a real timestamp, unlike the encoder-nulled fields).
+        hash_type: {type: integer}
+        total_hashes:
+          type: integer
+          description: Hashes of the REQUESTED type in this file.
+        cracked_hashes:
+          type: integer
+          description: Cracked hashes of the REQUESTED type in this file.
+
+    # ------------------------------------------------- request bodies
+    CustomerCreate:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+
+    JobCreate:
+      type: object
+      required: [name, hashfile_id, customer_id]
+      properties:
+        name: {type: string}
+        hashfile_id: {type: integer}
+        customer_id: {type: integer}
+        limit_recovered:
+          type: boolean
+          default: false
+          description: One-and-done mode.
+        notify_email: {type: boolean, default: false}
+        notify_pushover: {type: boolean, default: false}
+        notify_slack: {type: boolean, default: false}
+
+    TaskCreate:
+      type: object
+      required: [name, wl_id]
+      properties:
+        name:
+          type: string
+          description: Must be unique across tasks.
+        wl_id:
+          type: integer
+          description: Wordlist id (must exist).
+        rule_id:
+          type: integer
+          nullable: true
+          description: >-
+            Optional rule id (must exist when given). Omit, or send
+            null/"None"/"", for a plain dictionary attack.
+
+    JobTaskStatusUpdate:
+      type: object
+      required: [job_task_id, task_status]
+      properties:
+        job_task_id: {type: integer}
+        task_status:
+          type: string
+          enum: [Not Started, Queued, Running, Paused, Completed, Canceled, Importing]
+
+    SearchRequest:
+      type: object
+      required: [hash]
+      properties:
+        hash:
+          type: string
+          description: Exact ciphertext to look up among cracked hashes.
+
+    AgentErrorReport:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error text forwarded to the admins.
+
+    CrackFileUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          description: >-
+            Newline-delimited hashcat results: `hash:plaintext` with the
+            plaintext hex-encoded ($HEX-style); WPA/22000 entries use the
+            extended `hash:ssid:plaintext` form.
+
+    HeartbeatRequest:
+      type: object
+      required: [agent_status]
+      properties:
+        agent_status:
+          type: string
+          description: >-
+            The agent's self-reported state. The server branches on "Working"
+            and "Idle"; anything else is acknowledged with OK. A missing key
+            raises an unhandled server error.
+          example: Idle
+        hc_status:
+          type: string
+          nullable: true
+          description: >-
+            Stringified dict of hashcat status output; the server extracts
+            the "Speed #" entry as the agent benchmark while Working. May be
+            omitted when Idle, but MUST be present (even if empty) when
+            `agent_status` is "Working" — the Working branch reads it by
+            direct key access and a missing key raises HTTP 500.
+
+    # ------------------------------------------------ response bodies
+    HeartbeatResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          properties:
+            msg:
+              type: string
+              enum: [Go Away, START, OK, Canceled]
+            job_task_id:
+              type: integer
+              description: Present only with msg "START".
+
+    SettingsResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [settings]
+          properties:
+            settings:
+              type: string
+              description: >-
+                JSON-encoded STRING (double-decode) holding an array of
+                Settings objects.
+              x-embedded-schema:
+                type: array
+                items: {$ref: '#/components/schemas/Settings'}
+              example: '[{"id": 1, "retention_period": 30, "max_runtime_jobs": 0, "max_runtime_tasks": 0, "email_enabled": true, "slack_enabled": false, "slack_bot_token": null}]'
+
+    CustomersListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [users]
+          properties:
+            users:
+              type: string
+              description: >-
+                MISNAMED KEY — holds the CUSTOMERS, not users, as a
+                JSON-encoded STRING (double-decode).
+              x-embedded-schema:
+                type: array
+                items: {$ref: '#/components/schemas/Customer'}
+              example: '[{"id": 1, "name": "Acme"}]'
+
+    RulesListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [rules]
+          properties:
+            rules:
+              type: string
+              description: >-
+                JSON-encoded STRING (double-decode) holding an array of Rule
+                objects.
+              x-embedded-schema:
+                type: array
+                items: {$ref: '#/components/schemas/Rule'}
+              example: '[{"id": 1, "name": "best64", "owner_id": 1, "path": "hashview/control/rules/ab12.txt", "size": 77, "checksum": "9f2c...", "last_updated": null}]'
+
+    WordlistsListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [wordlists]
+          properties:
+            wordlists:
+              type: string
+              description: >-
+                JSON-encoded STRING (double-decode) holding an array of
+                Wordlist objects.
+              x-embedded-schema:
+                type: array
+                items: {$ref: '#/components/schemas/Wordlist'}
+              example: '[{"id": 1, "name": "rockyou", "type": "static", "size": 14344384, "byte_size": 53357520, "checksum": "ab34...", "path": "hashview/control/wordlists/cd56.gz", "owner_id": 1, "last_updated": null}]'
+
+    JobResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [job]
+          properties:
+            job:
+              type: string
+              description: >-
+                JSON-encoded STRING (double-decode) holding a single Job
+                object ("null" for an unknown id).
+              x-embedded-schema:
+                $ref: '#/components/schemas/Job'
+              example: '{"id": 12, "name": "acme-ntlm", "status": "Running", "priority": 3, "customer_id": 1, "owner_id": 1, "hashfile_id": 9, "limit_recovered": false, "crawl_url": null}'
+
+    JobTaskResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [job_task]
+          properties:
+            job_task:
+              type: string
+              description: >-
+                JSON-encoded STRING (double-decode) holding a single JobTask
+                object ("null" when the agent has no assignment).
+              x-embedded-schema:
+                $ref: '#/components/schemas/JobTask'
+              example: '{"id": 7, "job_id": 12, "task_id": 42, "priority": 3, "status": "Running", "agent_id": 2, "command": "hashcat -O -w 3 ..."}'
+
+    TaskResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [task]
+          properties:
+            task:
+              type: string
+              description: >-
+                JSON-encoded STRING (double-decode) holding a single Task
+                object ("null" for an unknown id).
+              x-embedded-schema:
+                $ref: '#/components/schemas/Task'
+              example: '{"id": 42, "name": "rockyou-best64", "hc_attackmode": 0, "wl_id": 1, "rule_id": 2, "owner_id": 1, "wl_id_2": null, "j_rule": null, "k_rule": null, "hc_mask": null}'
+
+    HashfilesByTypeResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [hashfiles]
+          properties:
+            hashfiles:
+              type: array
+              description: Real nested array — no double-decode needed.
+              items:
+                $ref: '#/components/schemas/HashfileSummary'
+
+    SearchResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          properties:
+            msg:
+              description: >-
+                An object when a cracked hash matched; the string "Search
+                complete. No Results Found." otherwise (or "Invalid Search"
+                with body status 500 for an empty body).
+              oneOf:
+                - $ref: '#/components/schemas/SearchResultFound'
+                - type: string
+
+    SearchResultFound:
+      type: object
+      properties:
+        hash_type: {type: integer}
+        hash: {type: string, description: The ciphertext searched for.}
+        plaintext: {type: string}
+
+    CustomerAddedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [customer_id]
+          properties:
+            customer_id: {type: integer}
+
+    RuleAddedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [rule_id]
+          properties:
+            rule_id: {type: integer}
+
+    WordlistAddedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [wordlist_id]
+          properties:
+            wordlist_id: {type: integer}
+
+    JobAddedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [job_id]
+          properties:
+            job_id: {type: integer}
+
+    JobStartedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [job_id]
+          properties:
+            job_id: {type: integer}
+
+    JobDeletedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [job_id]
+          properties:
+            job_id: {type: integer}
+
+    TaskAddedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [task_id]
+          properties:
+            task_id: {type: integer}
+
+    HashfileUploadedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [hashfile_id, hash_count, instacracked]
+          properties:
+            hashfile_id: {type: integer}
+            hash_count:
+              type: integer
+              description: Hashes imported from the file.
+            instacracked:
+              type: integer
+              description: Hashes already cracked by previous campaigns.
+
+    HashTypeResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiMessage'
+        - type: object
+          required: [hash_type]
+          properties:
+            hash_type: {type: integer}

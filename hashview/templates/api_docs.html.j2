@@ -1,0 +1,70 @@
+{% extends "layout.html.j2" %}
+{% from "icons.html.j2" import icon %}
+{% block title %}API Docs · Hashview{% endblock %}
+
+{% block head %}
+  {# Swagger UI — pinned version + SRI so a CDN compromise can't inject script
+     into a login-protected page. When bumping the pin, regenerate BOTH hashes:
+       curl -s https://cdn.jsdelivr.net/npm/swagger-ui-dist@<ver>/<file> \
+         | openssl dgst -sha384 -binary | openssl base64 -A               #}
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css"
+        integrity="sha384-wxLW6kwyHktdDGr6Pv1zgm/VGJh99lfUbzSn6HNHBENZlCN7W602k9VkGdxuFvPn"
+        crossorigin="anonymous">
+  <style>
+    /* Let Swagger UI sit comfortably on the dark Phosphor shell. */
+    .hv-api-docs { background: #fafafa; border-radius: 8px; padding: 8px 16px 24px; }
+    .hv-api-docs-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .hv-api-docs-bar .field-hint { color: var(--text-mute); font-size: 12px; }
+  </style>
+{% endblock %}
+
+{% block header %}
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">API Docs</h1>
+      <div class="page-sub">// interactive reference for the /v1 API · spec: <a href="{{ url_for('api_docs.openapi_spec') }}">openapi.yaml</a></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="hv-api-docs-bar">
+    {% if current_user.api_key %}
+      <button type="button" class="btn" onclick="hvDocsAuth()">{{ icon('key', size=15) }} Authorize try-it-out</button>
+      <button type="button" class="btn" onclick="hvDocsAuthClear()">Clear</button>
+      <span class="field-hint">Sets a same-origin <code>uuid</code> cookie with your API key so “Try it out” requests authenticate as you.</span>
+    {% else %}
+      <span class="field-hint">Generate an API key in account settings to use “Try it out”.</span>
+    {% endif %}
+  </div>
+  <div id="swagger-ui" class="hv-api-docs"></div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
+          integrity="sha384-wmyclcVGX/WhUkdkATwhaK1X1JtiNrr2EoYJ+diV3vj4v6OC5yCeSu+yW13SYJep"
+          crossorigin="anonymous"></script>
+  <script>
+    window.addEventListener('load', function () {
+      window.ui = SwaggerUIBundle({
+        url: "{{ url_for('api_docs.openapi_spec') }}",
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: 'BaseLayout',
+        withCredentials: true,  // same-origin try-it-out rides the uuid cookie
+        defaultModelsExpandDepth: 0
+      });
+    });
+    {% if current_user.api_key %}
+    function hvDocsAuth() {
+      document.cookie = "uuid={{ current_user.api_key }}; path=/; secure; samesite=Strict";
+      alert("Authorized — try-it-out requests will now send your API key.");
+    }
+    function hvDocsAuthClear() {
+      document.cookie = "uuid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      alert("Cleared.");
+    }
+    {% endif %}
+  </script>
+{% endblock %}
