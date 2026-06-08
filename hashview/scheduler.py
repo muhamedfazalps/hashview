@@ -191,8 +191,11 @@ def data_retention_cleanup(app :Flask):
         try:
             app.logger.info('DataRetentionCleanup ScheduledJob Progressing.')
 
+            # db is already registered on the app in create_app(); re-running
+            # db.init_app(app) here raises in Flask-SQLAlchemy 3.x
+            # ("instance has already been registered"), which aborted the whole
+            # cleanup every hour. The app_context above is all that's needed.
             from hashview.models import db
-            db.init_app(app)
 
             mailer = app.extensions['mail']
             logger = app.logger
