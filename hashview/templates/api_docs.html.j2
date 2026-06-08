@@ -1,6 +1,9 @@
 {% extends "layout.html.j2" %}
 {% from "icons.html.j2" import icon %}
 {% block title %}API Docs · Hashview{% endblock %}
+{# Disable the CRT scanline overlay on this page — over the white Swagger panel
+   it shows up as distracting horizontal lines. #}
+{% block scanlines %}off{% endblock %}
 
 {% block head %}
   {# Swagger UI — pinned version + SRI so a CDN compromise can't inject script
@@ -13,9 +16,27 @@
         crossorigin="anonymous">
   <style>
     /* Let Swagger UI sit comfortably on the dark Phosphor shell. */
-    .hv-api-docs { background: #fafafa; border-radius: 8px; padding: 8px 16px 24px; }
+    .hv-api-docs { background: #fafafa; border-radius: 8px; padding: 0 16px 24px; }
     .hv-api-docs-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
     .hv-api-docs-bar .field-hint { color: var(--text-mute); font-size: 12px; }
+
+    /* Collapse Swagger UI's default spacing around the .info block so the
+       description sits right under our header instead of leaving a large gap.
+       !important to beat swagger-ui.css regardless of load order/specificity. */
+    .hv-api-docs .swagger-ui .information-container { padding: 0 !important; }
+    .hv-api-docs .swagger-ui .info { margin: 12px 0 16px !important; }
+    .hv-api-docs .swagger-ui .info .description { margin-top: 0 !important; }
+    /* Show Swagger's title/version/spec-URL header (<hgroup class="main">) but
+       neutralize the oversized, mostly-empty box it renders — force the hgroup
+       and its children back to fit-content so they don't open a ~viewport-tall
+       gap above the description. */
+    .hv-api-docs .swagger-ui .info hgroup.main,
+    .hv-api-docs .swagger-ui .info hgroup.main h2.title {
+        height: auto !important; min-height: 0 !important;
+    }
+    .hv-api-docs .swagger-ui .info hgroup.main { margin: 0 0 12px !important; padding: 0 !important; }
+    .hv-api-docs .swagger-ui .info hgroup.main h2.title { margin: 0 !important; }
+    .hv-api-docs .swagger-ui .info hgroup.main pre.version { margin: 0 !important; }
   </style>
 {% endblock %}
 
