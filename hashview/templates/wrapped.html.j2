@@ -1,556 +1,334 @@
 {% extends "layout.html.j2" %}
 {% from "icons.html.j2" import icon %}
 {% block title %}Hashview Wrapped · Hashview{% endblock %}
+
 {% block header %}
 <div class="page-head">
     <div>
-        <h1 class="page-title">Hashview Wrapped</h1>
-        <div class="page-sub">// some fun statistics on passwords recovered by you from the past year — click the arrows to advance</div>
+        <h1 class="page-title">Wrapped</h1>
+        <div class="page-sub">// your {{ year }} year in hashes · 9 cards</div>
     </div>
 </div>
 {% endblock header %}
+
 {% block content %}
 <style>
-    /* dependency-free carousel: native horizontal scroll-snap + JS arrows/dots */
-    .wrap-carousel { position: relative; }
-    .wrap-track {
-        display: flex;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        scroll-behavior: smooth;
-        scrollbar-width: none;
-    }
-    .wrap-track::-webkit-scrollbar { display: none; }
-    .wrap-slide { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; padding: 2px; }
-    .wrap-nav { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 18px; }
-    .wrap-dots { display: flex; gap: 7px; }
-    .wrap-dot {
-        width: 8px; height: 8px; border-radius: 50%; padding: 0;
-        background: var(--surface-3); border: 1px solid var(--border-bright); cursor: pointer;
-        transition: background .15s, border-color .15s;
-    }
-    .wrap-dot.active { background: var(--primary); border-color: var(--primary); box-shadow: var(--glow-sm); }
+.wr-progress { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.wr-segs { display:flex; gap:5px; flex:1; }
+.wr-seg { flex:1; height:3px; border-radius:2px; background:var(--surface-3); transition:background .25s; }
+.wr-seg.filled { background:var(--primary); box-shadow:var(--glow-sm); }
+.wr-count { font-family:var(--mono); font-size:11px; color:var(--text-mute); white-space:nowrap; }
+
+.wr-stage { position:relative; border:1px solid var(--border-bright); border-radius:14px;
+    background:radial-gradient(120% 140% at 50% 0%, var(--surface-2), var(--bg) 72%);
+    padding:32px 40px; min-height:430px; cursor:pointer; }
+.wr-slide { display:none; }
+.wr-slide.is-active { display:block; animation:wrIn .35s ease; }
+.wr-slide.wr-center.is-active { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; min-height:366px; }
+@keyframes wrIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+.wr-kicker { display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--primary); margin-bottom:14px; }
+.wr-big { font-family:var(--mono); font-weight:700; font-size:54px; line-height:1; color:var(--primary); text-shadow:var(--glow-text); margin-bottom:10px; }
+.wr-lede { color:var(--text-dim); font-size:14px; max-width:700px; margin:0 0 8px; line-height:1.5; }
+.wr-lede b { color:var(--text); }
+.wr-seclabel { display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-mute); margin:20px 0 9px; }
+.wr-foot { margin-top:20px; font-family:var(--mono); font-size:11.5px; color:var(--text-mute); }
+.wr-tbl th, .wr-tbl td { font-size:12px; }
+.wr-tbl td.plain { font-family:var(--mono); color:var(--text); word-break:break-all; }
+
+.wr-rank { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text-mute); border:1px solid var(--border-bright); }
+.wr-rank.g1 { color:#161616; background:var(--primary); border-color:var(--primary); box-shadow:var(--glow-sm); }
+.wr-rank.g2 { color:#cdd3d8; border-color:#5b636b; }
+.wr-rank.g3 { color:#d8975a; border-color:#7a5230; }
+tr.wr-you { background:rgba(var(--primary-rgb),0.07); }
+.wr-ubadge { font-family:var(--mono); font-size:9px; letter-spacing:.5px; text-transform:uppercase; color:var(--primary); border:1px solid var(--primary-dim); border-radius:4px; padding:1px 5px; margin-left:7px; }
+
+.wr-intro-kicker { display:inline-flex; align-items:center; gap:9px; font-family:var(--mono); font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--primary); margin-bottom:18px; }
+.wr-intro-title { font-family:var(--mono); font-weight:800; font-size:52px; letter-spacing:1px; line-height:1; margin:0 0 18px; color:var(--text); }
+.wr-intro-title .yr { color:var(--primary); text-shadow:var(--glow-text); }
+.wr-hint { font-family:var(--mono); font-size:10.5px; letter-spacing:1px; color:var(--text-mute); margin-top:18px; }
+.wr-plain { font-family:var(--mono); font-weight:700; font-size:30px; color:var(--primary); text-shadow:var(--glow-text); word-break:break-all; line-height:1.12; margin-bottom:8px; }
+.wr-sub { color:var(--text-dim); font-size:13px; margin-bottom:4px; }
+
+.wr-tiles { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin:24px 0 8px; }
+.wr-tile { border:1px solid var(--border); border-radius:10px; background:var(--surface-2); padding:14px 20px; min-width:120px; text-align:center; }
+.wr-tile .ico-w { color:var(--primary); }
+.wr-tile .v { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--text); margin-top:6px; }
+.wr-tile .l { font-family:var(--mono); font-size:8.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-mute); margin-top:6px; }
+
+.wr-bottom { display:flex; align-items:center; justify-content:space-between; margin-top:16px; }
+.wr-dots { display:flex; gap:7px; }
+.wr-dot { width:7px; height:7px; border-radius:50%; padding:0; background:var(--surface-3); border:1px solid var(--border-bright); cursor:pointer; transition:background .15s,border-color .15s; }
+.wr-dot.active { background:var(--primary); border-color:var(--primary); box-shadow:var(--glow-sm); }
 </style>
-<script src="{{ url_for('static', filename='js/confetti.bundle.min.js') }}"></script>
-<script type="text/javascript">
-    window.onload = function() {
-        const duration = 15 * 1000,
-        animationEnd = Date.now() + duration,
-        defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
 
-        function randomInRange(min, max) {
-        return Math.random() * (max - min) + min;
-        }
+{# ---------------- reusable bits ---------------- #}
+{% macro handle(email) %}{{ (email or '').split('@')[0] }}{% endmacro %}
+{% macro rank_badge(i) %}<span class="wr-rank{% if i == 1 %} g1{% elif i == 2 %} g2{% elif i == 3 %} g3{% endif %}">{{ i }}</span>{% endmacro %}
 
-        const interval = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
+{% macro lb_table(rows, me, cracked_label='Cracked') %}
+<table class="tbl wr-tbl" style="table-layout:fixed;">
+    <colgroup><col style="width:44px;"><col style="width:120px;"><col></colgroup>
+    <thead><tr><th>#</th><th>{{ cracked_label }}</th><th>Recovered by</th></tr></thead>
+    <tbody>
+        {% for e in rows[:5] %}
+        <tr class="{% if me and e.email_address == me %}wr-you{% endif %}">
+            <td>{{ rank_badge(loop.index) }}</td>
+            <td class="mono num" style="color:var(--primary);">{{ e.count | commafy }}</td>
+            <td style="color:var(--text-dim);">{{ handle(e.email_address) }}{% if me and e.email_address == me %}<span class="wr-ubadge">you</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}<tr><td colspan="3" class="mono" style="text-align:center;color:var(--text-mute);padding:14px;">nobody recovered any yet</td></tr>{% endif %}
+    </tbody>
+</table>
+{% endmacro %}
 
-        if (timeLeft <= 0) {
-            return clearInterval(interval);
-        }
+{% macro task_table(rows) %}
+<table class="tbl wr-tbl" style="table-layout:fixed;">
+    <colgroup><col style="width:96px;"><col style="width:46%;"><col></colgroup>
+    <thead><tr><th>Cracked</th><th>Task</th><th>Author</th></tr></thead>
+    <tbody>
+        {% for e in rows[:5] %}
+        <tr>
+            <td class="mono num" style="color:var(--primary);">{{ e.count | commafy }}</td>
+            <td class="mono" style="color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.task_name }}</td>
+            <td style="color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ handle(e.task_author) }}</td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}<tr><td colspan="3" class="mono" style="text-align:center;color:var(--text-mute);padding:14px;">no tasks recorded</td></tr>{% endif %}
+    </tbody>
+</table>
+{% endmacro %}
 
-        const particleCount = 50 * (timeLeft / duration);
+{% macro stat_slide(kicker, cnt, pct, noun, lb_title, lb_rows, task_title, task_rows, footer, me) %}
+<div class="wr-slide">
+    <div class="wr-kicker">{{ icon('trophy', size=15) }} {{ kicker }}</div>
+    <div class="wr-big wr-num" data-target="{{ cnt or 0 }}">{{ cnt | commafy }}</div>
+    <p class="wr-lede">
+        {% if cnt and cnt > 0 %}
+            You recovered <b>{{ cnt | commafy }}</b> {{ noun }}{% if pct %} — that puts you in the <b>top {{ pct }}%</b> of all crackers this year{% endif %}.
+        {% else %}
+            You recovered <b>zero</b> {{ noun }} this year. Did you even try?
+        {% endif %}
+    </p>
+    <div class="wr-seclabel">{{ lb_title }}</div>
+    {{ lb_table(lb_rows, me) }}
+    <div class="wr-seclabel">{{ task_title }}</div>
+    {{ task_table(task_rows) }}
+    <div class="wr-foot">{{ footer }}</div>
+</div>
+{% endmacro %}
 
-        // since particles fall down, start a bit higher than random
-        confetti(
-            Object.assign({}, defaults, {
-            particleCount,
-            origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-            })
-        );
-        confetti(
-            Object.assign({}, defaults, {
-            particleCount,
-            origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-            })
-        );
-        }, 250);
-};
-</script>
-<div id="tsparticles"></div>
+{% set me = current_user.email_address %}
 
-<div class="wrap-carousel">
-  <div class="wrap-track" id="wrapTrack">
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">Longest Password</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">Your longest recovered password: {{longest_password_personal}}</h6>
-                <p style="margin:0; color:var(--text-dim);">Your longest password was {{ longest_password_personal | length | commafy }} characters long and is ranked {{longest_password_personal_rank | commafy}} out of {{longest_password_all_cnt | commafy}} of all recovered passwords this past year.</p>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Top 10 longest passwords recovered by everyone</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Length</th>
-                        <th scope="col">Recovery Date</th>
-                        <th scope="col">Plaintext</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in longest_password_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.length | commafy }}</td>
-                                <td>{{ entry.recovered_at }}</td>
-                                <td>{{ entry.plaintext }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">Total Password Recovered By You</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">Warming the planet one hash at a time.</h6>
-                <p style="margin:0; color:var(--text-dim);">
-                    {% if total_passwords_recovered_personal_pct > 50 %}
-                        You recovered {{total_passwords_recovered_personal_cnt | commafy}} passwords last year. This puts you in the top {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
-                    {% else %}
-                        You recovered {{total_passwords_recovered_personal_cnt | commafy}} passwords last year. This puts you in the bottom {{total_passwords_recovered_personal_pct}}% of all recovered passwords by everyone else.
-                    {% endif %}
-                </p>
-              </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Passwords Recovered by Everyone</h3>
-            </div>
-            <div class="card-body">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_passwords_recovered_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Effective Tasks Overall</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Task Author</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_effective_tasks_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.task_name }}</td>
-                                <td>{{ entry.task_author }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">NTLM</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">The bigger the NTDS.dit, the harder they fall</h6>
-                <p style="margin:0; color:var(--text-dim);">
-                    {% if total_ntlm_recovered_personal_cnt == 0 %}
-                        You recovered no NTLM hashes this year. Did you even try?
-                    {% elif total_ntlm_recovered_personal_pct > 50 %}
-                        You recovered {{ total_ntlm_recovered_personal_cnt | commafy }} NTLM hashes last year. This puts you in the top {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
-                    {% else %}
-                        You recovered {{ total_ntlm_recovered_personal_cnt | commafy }} NTLM hashes last year. This puts you in the bottom {{total_ntlm_recovered_personal_pct}}% of all recovered NTLM hashes last year.
-                    {% endif %}
-                </p>
-              </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most NTLM Hashes Recovered by Everyone</h3>
-            </div>
-            <div class="card-body">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in total_ntlm_recovered_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Effective Tasks for NTLM in {{previous_year}}</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Task Author</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_effective_tasks_ntlm_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.task_name }}</td>
-                                <td>{{ entry.task_author }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">NetNTLMv1</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">Responder --lm still worked in {{ previous_year }}?!</h6>
-                <p style="margin:0; color:var(--text-dim);">
-                    {% if total_ntlmv1_recovered_personal_cnt == 0 %}
-                        You recovered no NTLMv1 hashes this year. Did you even try?
-                    {% elif total_ntlmv1_recovered_personal_pct > 50 %}
-                        You recovered {{ total_ntlmv1_recovered_personal_cnt | commafy }} NTLMv1 hashes last year. This puts you in the top {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
-                    {% else %}
-                        You recovered {{ total_ntlmv1_recovered_personal_cnt | commafy }} NTLMv1 hashes last year. This puts you in the bottom {{total_ntlmv1_recovered_personal_pct}}% of all recovered NTLMv1 hashes last year.
-                    {% endif %}
-                </p>
-              </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Recovered NetNTLMv1 passwords by Everyone</h3>
-            </div>
-            <div class="card-body">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in total_ntlmv1_recovered_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Effective Tasks for NetNTLMv1 in {{previous_year}}</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Task Author</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_effective_tasks_ntlmv1_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.task_name }}</td>
-                                <td>{{ entry.task_author }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">NetNTLMv2</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">Responder still worked in {{ previous_year }}?!</h6>
-                <p style="margin:0; color:var(--text-dim);">
-                    {% if total_ntlmv2_recovered_personal_cnt == 0 %}
-                        You recovered no NTLMv2 hashes this year. Did you even try?
-                    {% elif total_ntlmv2_recovered_personal_pct > 50 %}
-                        You recovered {{ total_ntlmv2_recovered_personal_cnt | commafy }} NTLMv2 hashes last year. This puts you in the top {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
-                    {% else %}
-                        You recovered {{ total_ntlmv2_recovered_personal_cnt | commafy }} NTLMv2 hashes last year. This puts you in the bottom {{total_ntlmv2_recovered_personal_pct}}% of all recovered NTLMv2 hashes last year.
-                    {% endif %}
-                </p>
-              </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Recovered NetNTLMv2 passwords by Everyone</h3>
-            </div>
-            <div class="card-body">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in total_ntlmv2_recovered_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Effective Tasks for NetNTLMv2 in {{previous_year}}</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Task Author</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_effective_tasks_ntlmv2_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.task_name }}</td>
-                                <td>{{ entry.task_author }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">Kerberos</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">Includes etypes 17, 28 and 23</h6>
-                <p style="margin:0; color:var(--text-dim);">
-                    {% if total_kerberos_recovered_personal_cnt == 0 %}
-                        You recovered no Kerberos hashes this year. Did you even try?
-                    {% elif total_ntlmv2_recovered_personal_pct > 50 %}
-                        You recovered {{ total_kerberos_recovered_personal_cnt | commafy }} Kerberos hashes last year. This puts you in the top {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
-                    {% else %}
-                        You recovered {{ total_kerberos_recovered_personal_cnt | commafy }} Kerberos hashes last year. This puts you in the bottom {{total_kerberos_recovered_personal_pct}}% of all recovered Kerberos hashes last year.
-                    {% endif %}
-                </p>
-              </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Kerberos Passwords Recovered by Everyone</h3>
-            </div>
-            <div class="card-body">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in total_kerberos_recovered_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Effective Tasks for Kerberos in {{previous_year}}</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Task Author</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_effective_tasks_kerberos_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.task_name }}</td>
-                                <td>{{ entry.task_author }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="wrap-slide">
-        <div class="card">
-            <div class="card-body">
-                <h5 style="margin:0 0 6px; color:var(--text);">DCC2</h5>
-                <h6 style="margin:0 0 10px; color:var(--text-mute);">Your pretty leat if you cracked one of these.</h6>
-                <p style="margin:0; color:var(--text-dim);">
-                    {% if total_dcc2_recovered_personal_cnt == 0 %}
-                        You recovered no DCC2 hashes this year. Its okay, they're quite hard
-                    {% elif total_dcc2_recovered_personal_pct > 50 %}
-                        You recovered {{ total_dcc2_recovered_personal_cnt | commafy }} DCC2 hashes last year. This puts you in the top {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
-                    {% else %}
-                        You recovered {{ total_dcc2_recovered_personal_cnt | commafy }} DCC2 hashes last year. This puts you in the bottom {{total_dcc2_recovered_personal_pct}}% of all recovered DCC2 hashes last year.
-                    {% endif %}
-                </p>
-              </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most DCC2 Passwords Recovered by Everyone</h3>
-            </div>
-            <div class="card-body">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Recovered By</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in total_dcc2_recovered_all_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.email_address }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <br>
-        <div class="card">
-            <div class="card-head">
-                <h3>Most Effective Tasks for DCC2 in {{previous_year}}</h3>
-            </div>
-            <div class="card-body ">
-                <table class="tbl">
-                    <thead>
-                    <tr>
-                        <th scope="col">Count</th>
-                        <th scope="col">Task Name</th>
-                        <th scope="col">Task Author</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in most_effective_tasks_dcc2_table %}
-                            <tr>
-                                <td class="num">{{ entry.count | commafy }}</td>
-                                <td>{{ entry.task_name }}</td>
-                                <td>{{ entry.task_author }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-  </div>
-
-  <div class="wrap-nav">
-    <button class="btn btn-sm" type="button" onclick="wrapMove(-1)">{{ icon('arrowLeft', size=14) }} Prev</button>
-    <div class="wrap-dots" id="wrapDots"></div>
-    <button class="btn btn-sm" type="button" onclick="wrapMove(1)">Next {{ icon('arrowRight', size=14) }}</button>
-  </div>
+<div class="wr-progress">
+    <div class="wr-segs" id="wrSegs"></div>
+    <div class="wr-count" id="wrCounter">1 / 9</div>
 </div>
 
+<div class="wr-stage" id="wrStage">
+
+    {# 1 — intro #}
+    <div class="wr-slide wr-center is-active">
+        <div class="wr-intro-kicker">{{ icon('trophy', size=14) }} Hashview presents</div>
+        <div class="wr-intro-title">WRAPPED <span class="yr">{{ year }}</span></div>
+        <p class="wr-lede" style="text-align:center;">A year of cracked hashes, recovered creds, and questionable password choices — wrapped up just for you, <b style="color:var(--primary);">{{ user_handle }}</b>.</p>
+        <button type="button" class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="wrMove(1)">Start the rewind {{ icon('arrowRight', size=14) }}</button>
+        <div class="wr-hint">Tap the card or use ← → to move</div>
+    </div>
+
+    {# 2 — longest passwords #}
+    <div class="wr-slide">
+        <div class="wr-kicker">{{ icon('trophy', size=15) }} Longest passwords</div>
+        {% if longest_password_personal %}
+            <div class="wr-plain">{{ longest_password_personal }}</div>
+            {% if longest_password_personal_is_hex %}<div class="mono" style="font-size:11.5px;color:var(--text-mute);word-break:break-all;margin-bottom:6px;">stored as {{ longest_password_personal_raw }}</div>{% endif %}
+            <div class="wr-sub">{{ longest_password_personal_len | commafy }} characters{% if longest_password_personal_rank %} · ranked <b style="color:var(--primary);">#{{ longest_password_personal_rank | commafy }}</b> globally{% endif %}</div>
+        {% else %}
+            <div class="wr-big" style="font-size:34px;">—</div>
+            <div class="wr-sub">You didn't recover any (non-network) passwords this year.</div>
+        {% endif %}
+        <div class="wr-seclabel">Top 10 longest recovered by everyone</div>
+        <table class="tbl wr-tbl" style="table-layout:fixed;">
+            <colgroup><col style="width:44px;"><col style="width:70px;"><col><col style="width:30%;"></colgroup>
+            <thead><tr><th>#</th><th>Len</th><th>Plaintext</th><th>By</th></tr></thead>
+            <tbody>
+                {% for e in longest_password_all_table %}
+                <tr class="{% if me and e.email_address == me %}wr-you{% endif %}">
+                    <td>{{ rank_badge(loop.index) }}</td>
+                    <td class="mono num" style="color:var(--primary);">{{ e.length | commafy }}</td>
+                    <td class="plain">{{ e.decoded }}{% if e.is_hex %}<div class="mono" style="font-size:10px;color:var(--text-mute);">{{ e.plaintext }}</div>{% endif %}</td>
+                    <td style="color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ handle(e.email_address) }}{% if me and e.email_address == me %}<span class="wr-ubadge">you</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                {% if not longest_password_all_table %}<tr><td colspan="4" class="mono" style="text-align:center;color:var(--text-mute);padding:14px;">no passwords recovered this year</td></tr>{% endif %}
+            </tbody>
+        </table>
+        <div class="wr-foot">
+            {% if longest_password_personal_rank %}Your longest catch ranked <b style="color:var(--primary);">#{{ longest_password_personal_rank | commafy }}</b> out of {{ longest_password_total_cnt | commafy }} passwords recovered this year.{% else %}{{ longest_password_total_cnt | commafy }} passwords were recovered this year — none by you.{% endif %}
+        </div>
+    </div>
+
+    {# 3 — total passwords #}
+    {{ stat_slide('Total passwords recovered',
+        total_passwords_recovered_personal_cnt, total_passwords_recovered_personal_pct, 'passwords',
+        'Most passwords recovered by cracker', most_passwords_recovered_all_table,
+        'Most effective tasks overall', most_effective_tasks_table,
+        'Warming the planet one hash at a time.', me) }}
+
+    {# 4 — NTLM #}
+    {{ stat_slide('NTLM',
+        total_ntlm_recovered_personal_cnt, total_ntlm_recovered_personal_pct, 'NTLM hashes',
+        'Most NTLM recovered by everyone', total_ntlm_recovered_all_table,
+        'Most effective NTLM tasks', most_effective_tasks_ntlm_table,
+        'The bigger the NTDS.dit, the harder they fall.', me) }}
+
+    {# 5 — NetNTLMv1 #}
+    {{ stat_slide('NetNTLMv1',
+        total_ntlmv1_recovered_personal_cnt, total_ntlmv1_recovered_personal_pct, 'NetNTLMv1 hashes',
+        'Most NetNTLMv1 recovered by everyone', total_ntlmv1_recovered_all_table,
+        'Most effective NetNTLMv1 tasks', most_effective_tasks_ntlmv1_table,
+        'Responder --lm still worked in ' ~ year ~ '?!', me) }}
+
+    {# 6 — NetNTLMv2 #}
+    {{ stat_slide('NetNTLMv2',
+        total_ntlmv2_recovered_personal_cnt, total_ntlmv2_recovered_personal_pct, 'NetNTLMv2 hashes',
+        'Most NetNTLMv2 recovered by everyone', total_ntlmv2_recovered_all_table,
+        'Most effective NetNTLMv2 tasks', most_effective_tasks_ntlmv2_table,
+        'Responder still worked in ' ~ year ~ '?!', me) }}
+
+    {# 7 — Kerberos #}
+    {{ stat_slide('Kerberos',
+        total_kerberos_recovered_personal_cnt, total_kerberos_recovered_personal_pct, 'Kerberos hashes',
+        'Most Kerberos recovered by everyone', total_kerberos_recovered_all_table,
+        'Most effective Kerberos tasks', most_effective_tasks_kerberos_table,
+        'Includes etypes 17, 18 and 23.', me) }}
+
+    {# 8 — DCC2 #}
+    {{ stat_slide('DCC2',
+        total_dcc2_recovered_personal_cnt, total_dcc2_recovered_personal_pct, 'DCC2 hashes',
+        'Most DCC2 recovered by everyone', total_dcc2_recovered_all_table,
+        'Most effective DCC2 tasks', most_effective_tasks_dcc2_table,
+        "You're pretty leet if you cracked one of these.", me) }}
+
+    {# 9 — finale #}
+    <div class="wr-slide wr-center">
+        <div class="wr-kicker">{{ icon('trophy', size=15) }} That's a wrap, {{ user_handle | upper }}</div>
+        <div class="wr-big wr-num" data-target="{{ total_passwords_recovered_personal_cnt or 0 }}" style="font-size:60px;">{{ total_passwords_recovered_personal_cnt | commafy }}</div>
+        <div class="wr-sub">passwords recovered in {{ year }}</div>
+        <div class="wr-tiles">
+            <div class="wr-tile"><span class="ico-w">{{ icon('users', size=16) }}</span><div class="v">#{{ total_passwords_recovered_personal_rank if total_passwords_recovered_personal_rank else '—' }}</div><div class="l">Global rank</div></div>
+            <div class="wr-tile"><span class="ico-w">{{ icon('rule', size=16) }}</span><div class="v">{{ longest_password_personal_len | commafy }} chars</div><div class="l">Longest</div></div>
+            <div class="wr-tile"><span class="ico-w">{{ icon('hash', size=16) }}</span><div class="v">{{ total_ntlm_recovered_personal_cnt | commafy }}</div><div class="l">NTLM cracked</div></div>
+            <div class="wr-tile"><span class="ico-w">{{ icon('chart', size=16) }}</span><div class="v">{% if total_passwords_recovered_personal_pct %}top {{ total_passwords_recovered_personal_pct }}%{% else %}—{% endif %}</div><div class="l">Percentile</div></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+            <button type="button" class="btn btn-sm" onclick="wrGo(0)">{{ icon('refresh', size=14) }} Replay</button>
+            <button type="button" class="btn btn-primary btn-sm" id="wrShareBtn" onclick="wrShare()">{{ icon('upload', size=14) }} Share my card</button>
+        </div>
+    </div>
+
+</div>
+
+<div class="wr-bottom">
+    <button type="button" class="btn btn-sm" id="wrBack" onclick="wrMove(-1)">{{ icon('arrowLeft', size=14) }} Back</button>
+    <div class="wr-dots" id="wrDots"></div>
+    <button type="button" class="btn btn-primary btn-sm" id="wrNext" onclick="wrMove(1)"><span id="wrNextLbl">Begin</span> {{ icon('arrowRight', size=14) }}</button>
+</div>
+
+<script src="{{ url_for('static', filename='js/confetti.bundle.min.js') }}"></script>
 <script>
+// ~1-second confetti burst (kept short on purpose).
+function hvConfetti(){
+    if (typeof confetti !== 'function') return;
+    var end = Date.now() + 1000;
+    var defaults = { startVelocity: 32, spread: 360, ticks: 60, zIndex: 9999, disableForReducedMotion: true };
+    (function frame(){
+        var left = end - Date.now();
+        if (left <= 0) return;
+        var pc = Math.ceil(55 * (left / 1000));
+        confetti(Object.assign({}, defaults, { particleCount: pc, origin: { x: Math.random() * 0.2 + 0.1, y: Math.random() * 0.2 } }));
+        confetti(Object.assign({}, defaults, { particleCount: pc, origin: { x: Math.random() * 0.2 + 0.7, y: Math.random() * 0.2 } }));
+        requestAnimationFrame(frame);
+    })();
+}
+
+// Count a number element up from 0 to its data-target (ease-out), with commas.
+function wrCountUp(el) {
+    var target = parseInt(el.getAttribute('data-target') || '0', 10);
+    if (isNaN(target)) return;
+    var dur = 900, t0 = null;
+    function step(ts) {
+        if (t0 === null) t0 = ts;
+        var p = Math.min((ts - t0) / dur, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(target * eased).toLocaleString('en-US');
+        if (p < 1) requestAnimationFrame(step);
+        else el.textContent = target.toLocaleString('en-US');
+    }
+    el.textContent = '0';
+    requestAnimationFrame(step);
+}
+
 (function () {
-    var track = document.getElementById('wrapTrack');
-    var dotsWrap = document.getElementById('wrapDots');
-    if (!track) return;
-    var count = track.children.length;
+    var slides = Array.prototype.slice.call(document.querySelectorAll('#wrStage .wr-slide'));
+    var n = slides.length;
     var idx = 0;
+    var segs = document.getElementById('wrSegs');
+    var dots = document.getElementById('wrDots');
+    var counter = document.getElementById('wrCounter');
+    var back = document.getElementById('wrBack');
+    var next = document.getElementById('wrNext');
+    var nextLbl = document.getElementById('wrNextLbl');
 
-    for (var i = 0; i < count; i++) {
-        var d = document.createElement('button');
-        d.type = 'button';
-        d.className = 'wrap-dot' + (i === 0 ? ' active' : '');
-        d.setAttribute('aria-label', 'Slide ' + (i + 1));
-        (function (n) { d.addEventListener('click', function () { wrapGo(n); }); })(i);
-        dotsWrap.appendChild(d);
+    for (var i = 0; i < n; i++) {
+        var s = document.createElement('div'); s.className = 'wr-seg'; segs.appendChild(s);
+        var d = document.createElement('button'); d.type = 'button'; d.className = 'wr-dot';
+        d.setAttribute('aria-label', 'Card ' + (i + 1));
+        (function (k) { d.addEventListener('click', function () { go(k); }); })(i);
+        dots.appendChild(d);
     }
-    function syncDots() {
-        var dots = dotsWrap.children;
-        for (var i = 0; i < dots.length; i++) { dots[i].classList.toggle('active', i === idx); }
-    }
-    function clamp(n) { return Math.max(0, Math.min(count - 1, n)); }
-    window.wrapGo = function (n) {
-        idx = clamp(n);
-        track.scrollTo({ left: idx * track.clientWidth, behavior: 'smooth' });
-        syncDots();
-    };
-    window.wrapMove = function (delta) { wrapGo(idx + delta); };
 
-    var t;
-    track.addEventListener('scroll', function () {
-        clearTimeout(t);
-        t = setTimeout(function () { idx = clamp(Math.round(track.scrollLeft / track.clientWidth)); syncDots(); }, 90);
+    function render() {
+        for (var i = 0; i < n; i++) {
+            slides[i].classList.toggle('is-active', i === idx);
+            segs.children[i].classList.toggle('filled', i <= idx);
+            dots.children[i].classList.toggle('active', i === idx);
+        }
+        counter.textContent = (idx + 1) + ' / ' + n;
+        back.disabled = (idx === 0);
+        next.disabled = (idx === n - 1);
+        if (nextLbl) nextLbl.textContent = (idx === 0) ? 'Begin' : 'Next';
+        // animate any total(s) on the card that just became active
+        var nums = slides[idx].querySelectorAll('.wr-num');
+        for (var j = 0; j < nums.length; j++) wrCountUp(nums[j]);
+    }
+    function go(k) { idx = Math.max(0, Math.min(n - 1, k)); render(); }
+    window.wrGo = function (k) { var first = (idx !== 0); go(k); if (k === 0 && first) hvConfetti(); };
+    window.wrMove = function (delta) { go(idx + delta); };
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight') go(idx + 1);
+        else if (e.key === 'ArrowLeft') go(idx - 1);
     });
+    // tap the card to advance, but never when the click lands on a control/table
+    document.getElementById('wrStage').addEventListener('click', function (e) {
+        if (e.target.closest('button, a, input, select, table')) return;
+        go(idx + 1);
+    });
+
+    window.wrShare = function () {
+        var txt = "My Hashview Wrapped {{ year }}: {{ total_passwords_recovered_personal_cnt }} passwords recovered"
+            + ", longest {{ longest_password_personal_len }} chars, {{ total_ntlm_recovered_personal_cnt }} NTLM.";
+        var btn = document.getElementById('wrShareBtn');
+        function done() { if (btn) { var h = btn.innerHTML; btn.textContent = 'Copied!'; setTimeout(function(){ btn.innerHTML = h; }, 1500); } }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(txt).then(done).catch(done);
+        } else { done(); }
+    };
+
+    render();
+    hvConfetti();   // celebrate on arrival (1s)
 })();
 </script>
-<br>
 {% endblock content %}
