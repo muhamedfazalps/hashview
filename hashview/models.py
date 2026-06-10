@@ -261,6 +261,8 @@ class Tasks(db.Model):
     k_rule = db.Column(db.String(25))
     rule_id = db.Column(db.Integer)
     hc_mask = db.Column(db.String(50))
+    # Opt-in to hashcat's --loopback (straight mode + rules only); see build_hashcat_command
+    loopback = db.Column(db.Boolean, nullable=False, default=False)
 
 class TaskGroups(db.Model):
     """Class object to represent TaskGroups"""

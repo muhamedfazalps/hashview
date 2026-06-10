@@ -7,7 +7,7 @@ that the template renders without error in each scope. Uses the in-memory SQLite
 app from tests/unit/conftest.py.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from hashview.models import (
     Customers,
@@ -184,6 +184,37 @@ def test_analytics_summary_above_donuts(app, client):
     assert ".toFixed(1)" in html
     # whole-page print: the shell's 100vh/overflow is unpinned for print
     assert "height: auto !important" in html
+
+
+def test_recovery_over_time_hourly_toggle_and_48h_cap(app, client):
+    """Recovery Over Time buckets by hour, offers a Cumulative/Per-hour toggle,
+    and caps the visible window to 48 hours (older recoveries fold into the
+    cumulative baseline rather than widening the x-axis)."""
+    user = _admin(); _login(client, user)
+    cust = Customers(name="Tempo Inc"); db.session.add(cust); db.session.commit()
+    hf = Hashfiles(name="dump", customer_id=cust.id, owner_id=1, runtime=0)
+    db.session.add(hf); db.session.commit()
+
+    base = datetime(2026, 3, 2, 10, 0, 0)
+    # recent cluster (2 @ 10:00, 1 @ 11:00) + one recovery 5 days earlier
+    stamps = [base, base, base + timedelta(hours=1), base - timedelta(days=5)]
+    for i, ts in enumerate(stamps):
+        h = Hashes(sub_ciphertext="0" * 8, ciphertext=f"c{i}", hash_type=1000,
+                   cracked=True, plaintext=f"p{i}", recovered_at=ts)
+        db.session.add(h); db.session.commit()
+        db.session.add(HashfileHashes(hash_id=h.id, hashfile_id=hf.id, username=f"u{i}"))
+    db.session.commit()
+
+    html = client.get(f"/analytics?customer_id={cust.id}&hashfile_id={hf.id}").get_data(as_text=True)
+
+    # toggle controls + both chart containers + handler
+    assert ">Cumulative<" in html and ">Per hour<" in html
+    assert 'id="rot-cum"' in html and 'id="rot-hour"' in html
+    assert "hvRotMode(" in html
+    # hourly x-axis labels (the last bucket is the most recent recovery hour)
+    assert "03/02 11:00" in html
+    # the 5-day-old recovery is outside the 48h window -> not an x-axis bucket
+    assert "02/25 10:00" not in html
 
 
 def test_shared_password_row_download(app, client):

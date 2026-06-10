@@ -170,7 +170,8 @@ def tasks_add():
                             owner_id=current_user.id,
                             wl_id=tasksForm.wl_id.data,
                             rule_id=rule_id,
-                            hc_attackmode=tasksForm.hc_attackmode.data
+                            hc_attackmode=tasksForm.hc_attackmode.data,
+                            loopback=tasksForm.loopback.data
             )
             db.session.add(task)
             db.session.commit()
@@ -303,6 +304,7 @@ def task_edit(task_id):
                 task.rule_id = None if tasksForm.rule_id.data == 'None' else tasksForm.rule_id.data
                 task.hc_attackmode = tasksForm.hc_attackmode.data
                 task.hc_mask = None
+                task.loopback = tasksForm.loopback.data
 
                 db.session.add(task)
                 db.session.commit()
@@ -315,6 +317,7 @@ def task_edit(task_id):
                 task.j_rule=tasksForm.j_rule.data,
                 task.k_rule=tasksForm.k_rule.data,
                 task.hc_attackmode = tasksForm.hc_attackmode.data
+                task.loopback = False
 
                 db.session.add(task)
                 db.session.commit()
@@ -326,6 +329,7 @@ def task_edit(task_id):
                 task.rule_id = None
                 task.hc_attackmode = tasksForm.hc_attackmode.data
                 task.hc_mask = tasksForm.mask.data
+                task.loopback = False
 
                 db.session.add(task)
                 db.session.commit()
@@ -337,6 +341,7 @@ def task_edit(task_id):
                 task.rule_id = None
                 task.hc_attackmode = tasksForm.hc_attackmode.data
                 task.hc_mask = tasksForm.mask.data
+                task.loopback = False
 
                 db.session.add(task)
                 db.session.commit()
@@ -355,6 +360,7 @@ def task_edit(task_id):
             tasksForm.j_rule.data = task.j_rule
             tasksForm.k_rule.data = task.k_rule
             tasksForm.mask.data = task.hc_mask
+            tasksForm.loopback.data = task.loopback
 
         return render_template('tasks_edit.html.j2', title='Tasks Edit', tasksForm=tasksForm, task=task, wordlists=wordlists, rules=rules)
 

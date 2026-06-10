@@ -407,13 +407,24 @@
 
 {# ---------- recovery over time ---------- #}
 <div class="card" style="margin-bottom:var(--gap);">
-    <div class="card-head"><span class="dot-led on"></span><h3>Recovery Over Time</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">cumulative cracked</span></div>
+    <div class="card-head">
+        <span class="dot-led on"></span><h3>Recovery Over Time</h3>
+        <div class="no-print" style="margin-left:auto;display:inline-flex;gap:6px;">
+            <button type="button" class="btn btn-sm btn-primary" id="rot-btn-cum" onclick="hvRotMode('cum')">Cumulative</button>
+            <button type="button" class="btn btn-sm" id="rot-btn-hour" onclick="hvRotMode('hour')">Per hour</button>
+        </div>
+    </div>
     <div class="card-body">
         {% if timeline | length == 0 %}
             {{ empty_note('no recovery activity yet') }}
         {% else %}
             {% set n = timeline | length %}
-            {% set tlmax = timeline[-1].cum %}
+            {# thin the x-axis to ~8 ticks so hourly buckets don't overlap #}
+            {% set step = ((n - 1) // 7) + 1 %}
+
+            {# --- cumulative (line + area) --- #}
+            <div id="rot-cum">
+            {% set tlmax = timeline[-1].cum if timeline[-1].cum > 0 else 1 %}
             {% set pts = [] %}
             {% for p in timeline %}
                 {% set x = 46 + (loop.index0 / ((n - 1) if n > 1 else 1) * 818) %}
@@ -432,20 +443,62 @@
                     <text x="38" y="{{ gy + 3 }}" text-anchor="end" font-size="10" style="fill:var(--text-mute);font-family:var(--mono);">{{ (gv / 1000) | round(1) ~ 'k' if gv >= 1000 else gv }}</text>
                 {% endfor %}
                 {% for p in timeline %}
+                    {% if loop.index0 % step == 0 or loop.last %}
                     {% set lx = 46 + (loop.index0 / ((n - 1) if n > 1 else 1) * 818) %}
-                    <text x="{{ lx | round(1) }}" y="192" text-anchor="middle" font-size="10" style="fill:var(--text-mute);font-family:var(--mono);">{{ p.label }}</text>
+                    <text x="{{ lx | round(1) }}" y="192" text-anchor="middle" font-size="9.5" style="fill:var(--text-mute);font-family:var(--mono);">{{ p.label }}</text>
+                    {% endif %}
                 {% endfor %}
                 <polygon points="46,172 {{ pts | join(' ') }} {{ (46 + (818 if n > 1 else 0)) | round(1) }},172" fill="url(#tlFill)"></polygon>
                 <polyline points="{{ pts | join(' ') }}" fill="none" stroke-width="2.4" style="stroke:var(--primary);filter:drop-shadow(0 0 5px rgba(var(--primary-rgb),0.6));"></polyline>
-                {% for p in timeline %}
+                {% if n <= 24 %}{% for p in timeline %}
                     {% set cx = 46 + (loop.index0 / ((n - 1) if n > 1 else 1) * 818) %}
                     {% set cy = 172 - (p.cum / tlmax * 158) %}
                     <circle cx="{{ cx | round(1) }}" cy="{{ cy | round(1) }}" r="3" stroke-width="2" style="fill:var(--bg);stroke:var(--primary);"></circle>
+                {% endfor %}{% endif %}
+            </svg>
+            </div>
+
+            {# --- per-hour (bars) --- #}
+            <div id="rot-hour" style="display:none;">
+            {% set phmax = timeline | map(attribute='count') | max %}
+            {% set phmax = phmax if phmax and phmax > 0 else 1 %}
+            {% set bw = 818 / n %}
+            <svg viewBox="0 0 880 200" width="100%" style="display:block;">
+                {% for f in [0, 0.25, 0.5, 0.75, 1] %}
+                    {% set gy = (172 - f * 158) | round(1) %}
+                    {% set gv = (phmax * f) | round | int %}
+                    <line x1="46" y1="{{ gy }}" x2="864" y2="{{ gy }}" style="stroke:var(--border);"></line>
+                    <text x="38" y="{{ gy + 3 }}" text-anchor="end" font-size="10" style="fill:var(--text-mute);font-family:var(--mono);">{{ (gv / 1000) | round(1) ~ 'k' if gv >= 1000 else gv }}</text>
+                {% endfor %}
+                {% for p in timeline %}
+                    {% if loop.index0 % step == 0 or loop.last %}
+                    {% set lx = 46 + (loop.index0 + 0.5) * bw %}
+                    <text x="{{ lx | round(1) }}" y="192" text-anchor="middle" font-size="9.5" style="fill:var(--text-mute);font-family:var(--mono);">{{ p.label }}</text>
+                    {% endif %}
+                {% endfor %}
+                {% for p in timeline %}
+                    {% set bx = 46 + loop.index0 * bw %}
+                    {% set bh = p.count / phmax * 158 %}
+                    {% if p.count %}
+                    <rect x="{{ (bx + bw * 0.14) | round(1) }}" y="{{ (172 - bh) | round(1) }}" width="{{ (bw * 0.72) | round(1) }}" height="{{ bh | round(1) }}" rx="1.5" style="fill:var(--primary);opacity:.82;filter:drop-shadow(0 0 4px rgba(var(--primary-rgb),0.45));"></rect>
+                    {% endif %}
                 {% endfor %}
             </svg>
+            </div>
         {% endif %}
     </div>
 </div>
+<script>
+function hvRotMode(m){
+    var isCum = (m === 'cum');
+    var cum = document.getElementById('rot-cum'), hour = document.getElementById('rot-hour');
+    var bc = document.getElementById('rot-btn-cum'), bh = document.getElementById('rot-btn-hour');
+    if (cum) cum.style.display = isCum ? 'block' : 'none';
+    if (hour) hour.style.display = isCum ? 'none' : 'block';
+    if (bc) bc.classList.toggle('btn-primary', isCum);
+    if (bh) bh.classList.toggle('btn-primary', !isCum);
+}
+</script>
 
 {# ---------- masks + shared ---------- #}
 <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:var(--gap);align-items:start;">

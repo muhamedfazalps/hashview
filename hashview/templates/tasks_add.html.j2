@@ -12,6 +12,7 @@
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'block';
             document.getElementById('maskmode_div').style.display = 'none';
+            document.getElementById('loopback_div').style.display = 'block';
         }
         else if (Index.value == '1')
         {
@@ -19,6 +20,7 @@
             document.getElementById('combinator_div').style.display = 'block';
             document.getElementById('rules_div').style.display = 'none';
             document.getElementById('maskmode_div').style.display = 'none';
+            document.getElementById('loopback_div').style.display = 'none';
         }
         else if (Index.value == '3')
         {
@@ -26,6 +28,7 @@
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'none';
             document.getElementById('maskmode_div').style.display = 'block';
+            document.getElementById('loopback_div').style.display = 'none';
         }
         else if (Index.value == '6' || Index.value == '7' )
         {
@@ -33,6 +36,7 @@
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'none';
             document.getElementById('maskmode_div').style.display = 'block';
+            document.getElementById('loopback_div').style.display = 'none';
         }
         else
         {
@@ -40,6 +44,7 @@
             document.getElementById('combinator_div').style.display = 'none';
             document.getElementById('rules_div').style.display = 'none';
             document.getElementById('maskmode_div').style.display = 'none';
+            document.getElementById('loopback_div').style.display = 'none';
         }
     }
 </script>
@@ -99,6 +104,16 @@
                 {% else %}
                     {{ tasksForm.rule_id(class="select") }}
                 {% endif %}
+            </div>
+
+            <div class="field" style="display:none" id="loopback_div">
+                <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+                    <span class="switch">{{ tasksForm.loopback(id="loopback") }}<span class="track"></span></span>
+                    <span>
+                        <span style="display:block;font-size:13px;color:var(--text);">Enable loopback</span>
+                        <span class="field-hint" style="margin-top:2px;">After each pass, newly cracked passwords are fed back through the wordlist + rules and re-run until no new hashes are found. Can recover more passwords (e.g. Password1 &rarr; Password10) but increases runtime. Requires a rule to be selected.</span>
+                    </span>
+                </label>
             </div>
 
             <div class="field" style="display:none" id="maskmode_div">

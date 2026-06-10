@@ -4,6 +4,7 @@ import os
 import re
 import zipfile
 from collections import Counter, defaultdict
+from datetime import timedelta
 
 from flask import Blueprint, redirect, render_template, request, send_file, send_from_directory
 from flask_login import login_required
@@ -359,17 +360,33 @@ def get_analytics():
         jobs_query = jobs_query.filter(Jobs.customer_id == customer_id)
     jobs_cnt = jobs_query.count()
 
-    # ---- recovery over time: cumulative distinct cracked hashes by day ----
+    # ---- recovery over time: distinct cracked hashes bucketed by hour ----
+    # The template toggles between two series built here: per-hour counts and the
+    # running cumulative total. Buckets are hourly and the window spans at most
+    # RECOVERY_WINDOW_HOURS, ending at the most recent recovery; recoveries before
+    # the window are folded into the cumulative baseline so the cumulative line
+    # stays accurate. Gaps inside the window are zero-filled so both series are
+    # continuous (and the x-axis is time-proportional).
+    RECOVERY_WINDOW_HOURS = 48
     recovered_rows = (_scoped_hash_query(customer_id, hashfile_id, cracked=True)
                       .with_entities(Hashes.id, Hashes.recovered_at).distinct().all())
-    by_day = Counter()
+    by_hour = Counter()
     for _hash_id, recovered_at in recovered_rows:
         if recovered_at:
-            by_day[recovered_at.date()] += 1
-    timeline, running = [], 0
-    for day in sorted(by_day):
-        running += by_day[day]
-        timeline.append({'label': day.strftime('%m/%d'), 'cum': running})
+            by_hour[recovered_at.replace(minute=0, second=0, microsecond=0)] += 1
+    timeline = []
+    if by_hour:
+        hours = sorted(by_hour)
+        last = hours[-1]
+        window_start = max(hours[0], last - timedelta(hours=RECOVERY_WINDOW_HOURS - 1))
+        running = sum(c for h, c in by_hour.items() if h < window_start)  # cumulative baseline
+        bucket = window_start
+        while bucket <= last:
+            count = by_hour.get(bucket, 0)
+            running += count
+            timeline.append({'label': bucket.strftime('%m/%d %H:%M'),
+                             'count': count, 'cum': running})
+            bucket += timedelta(hours=1)
 
     # ---- customer rollup (shown whenever a customer is selected) ----
     if customer_id and not hashfile_id:

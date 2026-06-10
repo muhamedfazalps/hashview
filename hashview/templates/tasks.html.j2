@@ -47,6 +47,17 @@
         </select>
     </div>
 
+    {# Loopback — dict+rule only #}
+    <div class="field" id="{{ p }}-fld-loopback" style="display:none;">
+        <label style="display:flex; align-items:center; gap:12px; cursor:pointer; margin:0;">
+            <span class="switch"><input type="checkbox" name="loopback" id="{{ p }}-loopback"><span class="track"></span></span>
+            <span>
+                <span style="display:block; font-size:13px; color:var(--text);">Enable loopback</span>
+                <span class="field-hint" style="margin-top:2px;">After each pass, newly cracked passwords are fed back through the wordlist + rules and re-run until no new hashes are found. Recovers more passwords (e.g. Password1 &rarr; Password10) but takes longer.</span>
+            </span>
+        </label>
+    </div>
+
     {# Second wordlist — combinator #}
     <div class="field" id="{{ p }}-fld-wl2" style="display:none;">
         <label class="field-label">Second wordlist <span class="req">*</span></label>
@@ -172,7 +183,7 @@
                         {% if tasks_in_jobs is defined and task.id in tasks_in_jobs %}
                         <span class="icon-btn" style="opacity:.4; cursor:not-allowed;" title="Locked — task is assigned to a job">{{ icon('edit', size=15) }}</span>
                         {% else %}
-                        <button type="button" class="icon-btn" title="Edit" onclick='hvEditTask({id:{{ task.id }}, name:{{ task.name|tojson }}, mode:{{ task.hc_attackmode|tojson }}, wl_id:{{ task.wl_id|tojson }}, wl_id_2:{{ task.wl_id_2|tojson }}, rule_id:{{ task.rule_id|tojson }}, mask:{{ task.hc_mask|tojson }}, j_rule:{{ task.j_rule|tojson }}, k_rule:{{ task.k_rule|tojson }}})'>{{ icon('edit', size=15) }}</button>
+                        <button type="button" class="icon-btn" title="Edit" onclick='hvEditTask({id:{{ task.id }}, name:{{ task.name|tojson }}, mode:{{ task.hc_attackmode|tojson }}, wl_id:{{ task.wl_id|tojson }}, wl_id_2:{{ task.wl_id_2|tojson }}, rule_id:{{ task.rule_id|tojson }}, mask:{{ task.hc_mask|tojson }}, j_rule:{{ task.j_rule|tojson }}, k_rule:{{ task.k_rule|tojson }}, loopback:{{ task.loopback|tojson }}})'>{{ icon('edit', size=15) }}</button>
                         {% endif %}
                         <button type="button" class="icon-btn act-del" title="Delete" onclick="document.getElementById('del-{{ task.id }}').showModal()">{{ icon('trash', size=15) }}</button>
                     </div>
@@ -281,13 +292,16 @@ function hvFilterTasks(q){
             var atk = el('mode'), hint = el('hint'), ruleSel = el('rule');
             show('fld-wl', false); show('fld-rule', false); show('fld-wl2', false);
             show('fld-order', false); show('fld-mask', false); show('fld-jrule', false); show('fld-krule', false);
+            show('fld-loopback', false);
             if (mode === 'dict')          { atk.value = '0'; show('fld-wl', true); hint.textContent = '↳ Straight wordlist run'; }
-            else if (mode === 'dictrule') { atk.value = '0'; show('fld-wl', true); show('fld-rule', true); hint.textContent = '↳ Wordlist mutated by a rules file'; }
+            else if (mode === 'dictrule') { atk.value = '0'; show('fld-wl', true); show('fld-rule', true); show('fld-loopback', true); hint.textContent = '↳ Wordlist mutated by a rules file'; }
             else if (mode === 'mask')     { atk.value = '3'; show('fld-mask', true); hint.textContent = '↳ Brute-force a hashcat mask'; }
             else if (mode === 'hybrid')   { atk.value = String(HYBRID); show('fld-order', true); show('fld-wl', true); show('fld-mask', true); hint.textContent = '↳ Wordlist combined with a mask'; }
             else if (mode === 'combo')    { atk.value = '1'; show('fld-wl', true); show('fld-wl2', true); show('fld-jrule', true); show('fld-krule', true); hint.textContent = '↳ Two wordlists combined · optional -j/-k rules'; }
             // only reset the rule select on a user tab-switch; programmatic prefill sets it explicitly
             if (fromUser && ruleSel) { ruleSel.value = 'None'; if (mode === 'dictrule' && ruleSel.options.length > 1) ruleSel.selectedIndex = 1; }
+            // loopback is opt-in per task; clear it on a user tab-switch (prefill sets it explicitly)
+            if (fromUser) { var cb = el('loopback'); if (cb) cb.checked = false; }
         }
         function setHybridOrder(m) { HYBRID = m; el('mode').value = String(m); var a = el('ho-wm'), b = el('ho-mw'); if (a) a.classList.toggle('active', m === 6); if (b) b.classList.toggle('active', m === 7); }
         return { setMode: setMode, setHybridOrder: setHybridOrder };
@@ -313,6 +327,7 @@ function hvFilterTasks(q){
         var mk = document.getElementById('etk-mask'); if (mk) mk.value = d.mask || '';
         var jr = document.getElementById('etk-jrule'); if (jr) jr.value = d.j_rule || '';
         var kr = document.getElementById('etk-krule'); if (kr) kr.value = d.k_rule || '';
+        var lb = document.getElementById('etk-loopback'); if (lb) lb.checked = !!d.loopback;
         document.getElementById('edit-task-modal').showModal();
     };
     if (registry['atk']) registry['atk'].setMode('dict', true);
@@ -371,6 +386,9 @@ function hvFilterTasks(q){
             {% endif %}
             {% if task.wl_id %}
             <div>{{ kv_label('List size') }}<div style="color:var(--text);">{% if wl_filesize is defined and wl_filesize.get(task.wl_id) %}{{ wl_filesize[task.wl_id] }} · {% endif %}{{ "{:,}".format(ns.wlsize|int) }} words</div></div>
+            {% endif %}
+            {% if task.hc_attackmode == 0 and has_rule %}
+            <div>{{ kv_label('Loopback') }}<div class="mono" style="color:{{ 'var(--primary)' if task.loopback else 'var(--text-mute)' }};">{{ 'Enabled' if task.loopback else 'Disabled' }}</div></div>
             {% endif %}
             <div>{{ kv_label('Historical hits') }}<div><span class="mono" style="color:{{ 'var(--primary)' if ns.recovered else 'var(--text-mute)' }};{% if ns.recovered %}text-shadow:var(--glow-text);{% endif %}">{{ "{:,}".format(ns.recovered|int) }}</span> <span style="color:var(--text-dim);">passwords recovered</span></div></div>
         </div>

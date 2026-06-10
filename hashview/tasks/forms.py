@@ -1,6 +1,6 @@
 """Forms Page to manage Tasks"""
 from flask_wtf import FlaskForm
-from wtforms import SelectField, StringField, SubmitField
+from wtforms import BooleanField, SelectField, StringField, SubmitField
 from wtforms.validators import DataRequired, InputRequired, ValidationError
 
 from hashview.models import Tasks
@@ -19,7 +19,8 @@ class TasksForm(FlaskForm):
     j_rule = StringField('-j rule (i.e. $-)')
     k_rule = StringField('-k rule (i.e. $!)')
     mask = StringField('Hashcat Mask')
-    submit = SubmitField('Create') 
+    loopback = BooleanField('Enable loopback')
+    submit = SubmitField('Create')
 
     def validate_task(self, name):
         """Function to validate Task name group"""

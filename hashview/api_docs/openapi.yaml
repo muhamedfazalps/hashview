@@ -1373,6 +1373,7 @@ components:
         k_rule: {type: string, nullable: true, description: Combinator -k rule.}
         rule_id: {type: integer, nullable: true}
         hc_mask: {type: string, nullable: true, description: Mask for modes 3/6/7.}
+        loopback: {type: boolean, description: "Enable hashcat --loopback (straight mode + rule only)."}
 
     Settings:
       type: object

@@ -656,6 +656,10 @@ def build_hashcat_command(job_id, task_id):
 
     target_file = 'control/hashes/hashfile_' + str(job.id) + '_' + str(task.id) + '.txt'
     crack_file = 'control/outfiles/hc_cracked_' + str(job.id) + '_' + str(task.id) + '.txt'
+    # Per-jobtask potfile (replaces the old global --potfile-disable). --loopback
+    # requires an enabled potfile; keeping it unique per job/task and living in
+    # control/outfiles means the agent's data-retention sweep cleans it up too.
+    potfile = 'control/outfiles/hc_potfile_' + str(job.id) + '_' + str(task.id) + '.pot'
     # Wordlists are stored compressed at rest; the agent keeps them compressed
     # and hashcat reads gzip directly. ensure_gz() applies the same '.gz' name
     # rule the agent uses, so the path emitted here matches the file on disk on
@@ -684,10 +688,16 @@ def build_hashcat_command(job_id, task_id):
     cmd += ' -O -w 3'
     cmd += ' --session ' + session
     cmd += ' -m ' + str(hash_type)
-    cmd += ' --potfile-disable'
+    cmd += ' --potfile-path ' + potfile
     cmd += ' --status --status-timer=15'
     cmd += ' --outfile-format 1,3'
     cmd += ' --outfile ' + crack_file
+
+    # Loopback only applies to straight mode (-a 0) with a rule; hashcat rejects
+    # it for other attack modes. The server-side gate means a task flipped away
+    # from dict+rules never emits a stray --loopback.
+    if attackmode == 0 and isinstance(task.rule_id, int) and task.loopback:
+        cmd += ' --loopback'
 
     # Dictionary with optional rules
     if attackmode == 0:
