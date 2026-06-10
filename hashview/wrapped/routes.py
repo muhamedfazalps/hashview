@@ -8,594 +8,237 @@ from hashview.models import Hashes, Tasks, Users, db
 
 wrapped = Blueprint('wrapped', __name__)
 
+
+def _percentile_top(ordered_ids, user_id):
+    """Where ``user_id`` ranks among crackers, expressed as a "top N%" badge.
+
+    ``ordered_ids`` is the list of distinct ``recovered_by`` ids ordered best
+    (most recovered) first. Returns an int 1..100 where a SMALLER number is
+    better (rank #1 of 100 -> "top 1%"), matching the plain-English meaning of
+    "top N%". Returns None when the user isn't ranked in that category.
+    """
+    n = len(ordered_ids)
+    if not n or user_id not in ordered_ids:
+        return None
+    rank = ordered_ids.index(user_id) + 1          # 1-based rank from the top
+    return max(1, round(rank / n * 100))
+
+
+def _rank_of(ordered_ids, user_id):
+    """1-based rank of the user among crackers (None if unranked)."""
+    return ordered_ids.index(user_id) + 1 if user_id in ordered_ids else None
+
+
+def _decode_plain(plaintext):
+    """Human plaintext used for length checks + display.
+
+    hashcat emits non-UTF-8 plaintexts as ``$HEX[..]``; decode those first so the
+    length reflects the real password rather than the wrapper (``$HEX[4142]`` is
+    8 chars on the wire but the password is just "AB"). A latin-1 fallback keeps
+    binary passwords displayable with a byte-accurate length.
+    """
+    if plaintext and plaintext.startswith('$HEX[') and plaintext.endswith(']'):
+        try:
+            raw = bytes.fromhex(plaintext[5:-1])
+        except ValueError:
+            return plaintext
+        try:
+            return raw.decode('utf-8')
+        except UnicodeDecodeError:
+            return raw.decode('latin-1')
+    return plaintext or ''
+
+
 @wrapped.route("/wrapped", methods=['GET'])
 @login_required
 def wrapped_list():
     """Render the Wrapped statistics page with various hash recovery metrics.
 
     This route is protected by ``login_required`` and collects data for the
-    previous calendar year. It gathers statistics such as longest recovered
-    passwords, most recovered passwords, hash type specific counts, and the
-    most effective tasks. The collected data is passed to the
-    ``wrapped.html`` template for rendering.
+    most recently completed calendar year (the "previous" year — Wrapped is a
+    year-in-review). It gathers longest recovered passwords, most recovered
+    passwords, per-hash-type counts, and the most effective tasks, then passes
+    them to the ``wrapped.html.j2`` template.
     """
 
-    # Determine the calendar year for which statistics are displayed (previous year)
-    # Build start and end date strings for the query range
-    # Get previous year (will need to update this once we're ready to go live)
+    uid = current_user.id
+
+    # Wrapped is a year-in-review. Until go-live it reports on the CURRENT
+    # calendar year (so there's data to see while testing); switch this to
+    # ``- 1`` (previous year) when it ships.
     year = datetime.datetime.now().year
-    date_start = str(year) + '-01-01'
-    date_end = str(year) + '-12-31'
+    # Half-open datetime range [Jan 1 00:00 of `year`, Jan 1 00:00 next year):
+    # using real datetime bounds (not 'YYYY-12-31' strings) so the whole of
+    # Dec 31 — and the first instant of Jan 1 — are included.
+    range_start = datetime.datetime(year, 1, 1)
+    range_end = datetime.datetime(year + 1, 1, 1)
+
+    def in_year(query):
+        return query.filter(Hashes.recovered_at >= range_start, Hashes.recovered_at < range_end)
 
     # Hash types excluded from "longest password" rankings (network protocol hashes).
     excluded_hash_types_for_length = (7500, 27000, 27100, 31500, 31600, 35300, 35400)
 
-    # ---- Longest recovered passwords (global ranking, top 10 by length) ----
-    longest_password_all_table_raw = (
-        db.session.query(Hashes.plaintext, Hashes.recovered_at, Users.email_address)
-        .join(Users, Hashes.recovered_by == Users.id)
+    def ranked_ids(*hash_type_filters):
+        """Distinct recovered_by ids (real users only) for a category, ordered
+        most-recovered first — the basis for rank/percentile."""
+        q = (db.session.query(Hashes.recovered_by)
+             .filter(Hashes.cracked == '1', Hashes.recovered_by.isnot(None)))
+        q = in_year(q)
+        for f in hash_type_filters:
+            q = q.filter(f)
+        rows = (q.group_by(Hashes.recovered_by)
+                .order_by(func.count(Hashes.id).desc())
+                .all())
+        return [r.recovered_by for r in rows]
+
+    def personal_cnt(*hash_type_filters):
+        q = (db.session.query(Hashes.id)
+             .filter(Hashes.cracked == '1', Hashes.recovered_by == uid))
+        q = in_year(q)
+        for f in hash_type_filters:
+            q = q.filter(f)
+        return q.count()
+
+    def leaderboard(*hash_type_filters):
+        """Top 10 crackers (with email) for a category."""
+        q = (db.session.query(Hashes.recovered_by, Users.email_address,
+                              func.count(Hashes.id).label('row_count'))
+             .join(Users, Hashes.recovered_by == Users.id)
+             .filter(Hashes.cracked == '1'))
+        q = in_year(q)
+        for f in hash_type_filters:
+            q = q.filter(f)
+        rows = (q.group_by(Hashes.recovered_by)
+                .order_by(func.count(Hashes.id).desc())
+                .limit(10).all())
+        return [{'count': r.row_count, 'email_address': r.email_address} for r in rows]
+
+    def effective_tasks(*hash_type_filters):
+        """Top 10 tasks by hashes recovered for a category."""
+        q = (db.session.query(func.count(Hashes.id).label('row_count'),
+                              Tasks.name, Users.email_address)
+             .join(Tasks, Hashes.task_id == Tasks.id)
+             .join(Users, Tasks.owner_id == Users.id)
+             .filter(Hashes.cracked == '1', Hashes.task_id.isnot(None)))
+        q = in_year(q)
+        for f in hash_type_filters:
+            q = q.filter(f)
+        rows = (q.group_by(Hashes.task_id)
+                .order_by(func.count(Hashes.id).desc())
+                .limit(10).all())
+        return [{'count': r.row_count, 'task_name': r.name, 'task_author': r.email_address}
+                for r in rows]
+
+    # Hash-type groupings.
+    ntlm_filter = (Hashes.hash_type == 1000,)
+    ntlmv1_filter = (Hashes.hash_type.in_((5500, 27000)),)
+    ntlmv2_filter = (Hashes.hash_type.in_((5600, 27100)),)
+    kerberos_filter = (Hashes.hash_type.in_((7500, 13100, 18200, 19600, 19700, 19800, 19900)),)
+    kerberos_task_filter = (Hashes.hash_type.in_(
+        (7500, 13100, 18200, 19600, 19700, 19800, 19900, 35300, 35400)),)
+    dcc2_filter = (Hashes.hash_type == 2100,)
+
+    # ---- Longest recovered passwords ----
+    # Load the full pool of cracked, non-network passwords for the year, decode
+    # any $HEX[..] plaintexts, and rank by the DECODED length in Python — SQL
+    # length() would measure the $HEX[..] wrapper and over-rank encoded entries.
+    # This one pool drives the top-10 table, the user's longest, its global rank,
+    # and the "out of N" denominator, so they all stay consistent.
+    longest_rows = in_year(
+        db.session.query(Hashes.plaintext, Hashes.recovered_at, Hashes.recovered_by)
         .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.notin_(excluded_hash_types_for_length))
-        .order_by(func.length(Hashes.plaintext).desc(), Hashes.recovered_at.asc())
-        .limit(10)
-        .all()
-    )
+        .filter(Hashes.hash_type.notin_(excluded_hash_types_for_length))).all()
+    longest_pool = []
+    for r in longest_rows:
+        raw = r.plaintext or ''
+        decoded = _decode_plain(raw)
+        longest_pool.append({'plaintext': raw, 'decoded': decoded,
+                             'is_hex': raw.startswith('$HEX['), 'length': len(decoded),
+                             'recovered_at': r.recovered_at, 'recovered_by': r.recovered_by})
+    longest_pool.sort(key=lambda d: (-d['length'], d['recovered_at']))
+    longest_password_total_cnt = len(longest_pool)
 
-    longest_password_all_table = []
-    for entry in longest_password_all_table_raw:
-        dict_entry = {}
-        dict_entry['length'] = len(entry.plaintext or '')
-        dict_entry['recovered_at'] = entry.recovered_at
-        dict_entry['plaintext'] = entry.plaintext
-        dict_entry['email_address'] = entry.email_address
-        longest_password_all_table.append(dict_entry)
+    emails = {u.id: u.email_address for u in Users.query.all()}
+    longest_password_all_table = [
+        {'length': d['length'], 'recovered_at': d['recovered_at'],
+         'plaintext': d['plaintext'], 'decoded': d['decoded'], 'is_hex': d['is_hex'],
+         'email_address': emails.get(d['recovered_by'], '(unknown)')}
+        for d in longest_pool[:10]]
 
-    # ---- Longest recovered password for the current user ----
-    longest_password_personal_raw = (
-        db.session.query(Hashes.plaintext)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .order_by(func.length(Hashes.plaintext).desc(), Hashes.recovered_at.asc())
-        .filter(Hashes.recovered_by == current_user.id)
-        .first()
-    )
-
-    if longest_password_personal_raw:
-        longest_password_personal = longest_password_personal_raw.plaintext
-    else:
-        longest_password_personal = ''
-
-    # ---- Current user's rank among all users' longest passwords ----
-    longest_password_all_raw = (
-        db.session.query(Hashes.plaintext, Hashes.recovered_by)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .order_by(func.length(Hashes.plaintext).desc())
-        .all()
-    )
-
-    longest_password_all_cnt = max(len(longest_password_all_raw) - 1, 0)
-    longest_password_personal_rank = 1
-    for entry in longest_password_all_raw:
-        if entry.recovered_by == current_user.id:
+    longest_password_personal = ''        # decoded (the real password)
+    longest_password_personal_raw = ''    # as stored ($HEX[..] when non-UTF-8)
+    longest_password_personal_is_hex = False
+    longest_password_personal_rank = None
+    for i, d in enumerate(longest_pool):
+        if d['recovered_by'] == uid:
+            longest_password_personal = d['decoded']
+            longest_password_personal_raw = d['plaintext']
+            longest_password_personal_is_hex = d['is_hex']
+            longest_password_personal_rank = i + 1
             break
-        if entry.recovered_by is not None:
-            longest_password_personal_rank += 1
+    longest_password_personal_len = len(longest_password_personal)
 
-    # ---- Top 10 users by total passwords recovered ----
-    most_passwords_recovered_all_raw = (
-        db.session.query(
-            Hashes.recovered_by,
-            Users.email_address,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .join(Users, Hashes.recovered_by == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
+    # ---- Total passwords recovered ----
+    most_passwords_recovered_all_table = leaderboard()
+    total_ids = ranked_ids()
+    total_passwords_recovered_personal_cnt = personal_cnt()
+    total_passwords_recovered_personal_pct = _percentile_top(total_ids, uid)
+    total_passwords_recovered_personal_rank = _rank_of(total_ids, uid)
 
-    most_passwords_recovered_all_table = []
-    for entry in most_passwords_recovered_all_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['email_address'] = entry.email_address
-        most_passwords_recovered_all_table.append(dict_entry)
+    # ---- NTLM (1000) ----
+    total_ntlm_recovered_all_table = leaderboard(*ntlm_filter)
+    total_ntlm_recovered_personal_cnt = personal_cnt(*ntlm_filter)
+    total_ntlm_recovered_personal_pct = _percentile_top(ranked_ids(*ntlm_filter), uid)
 
-    # ---- Current user's percentile rank by total passwords recovered ----
-    total_passwords_recovered = (
-        db.session.query(Hashes.recovered_by)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .all()
-    )
+    # ---- NetNTLMv1 (5500/27000) ----
+    total_ntlmv1_recovered_all_table = leaderboard(*ntlmv1_filter)
+    total_ntlmv1_recovered_personal_cnt = personal_cnt(*ntlmv1_filter)
+    total_ntlmv1_recovered_personal_pct = _percentile_top(ranked_ids(*ntlmv1_filter), uid)
 
-    total_passwords_recovered_personal_pct = 0
-    personal_group_by_pos = len(total_passwords_recovered) - 1
-    for entry in total_passwords_recovered:
-        if entry.recovered_by == current_user.id:
-            total_passwords_recovered_personal_pct = round(
-                personal_group_by_pos / (len(total_passwords_recovered) - 1 or 1), 2) * 100
-            break
-        personal_group_by_pos -= 1
+    # ---- NetNTLMv2 (5600/27100) ----
+    total_ntlmv2_recovered_all_table = leaderboard(*ntlmv2_filter)
+    total_ntlmv2_recovered_personal_cnt = personal_cnt(*ntlmv2_filter)
+    total_ntlmv2_recovered_personal_pct = _percentile_top(ranked_ids(*ntlmv2_filter), uid)
 
-    total_passwords_recovered_personal_cnt = (
-        db.session.query(Hashes.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.recovered_by == current_user.id)
-        .count()
-    )
+    # ---- Kerberos ----
+    total_kerberos_recovered_all_table = leaderboard(*kerberos_filter)
+    total_kerberos_recovered_personal_cnt = personal_cnt(*kerberos_filter)
+    total_kerberos_recovered_personal_pct = _percentile_top(ranked_ids(*kerberos_filter), uid)
 
-    # ---- NTLM (hash_type 1000) — top 10 users + personal percentile/count ----
-    total_ntlm_recovered_all_raw = (
-        db.session.query(
-            Hashes.recovered_by,
-            Users.email_address,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .join(Users, Hashes.recovered_by == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type == 1000)
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
+    # ---- DCC2 (2100) ----
+    total_dcc2_recovered_all_table = leaderboard(*dcc2_filter)
+    total_dcc2_recovered_personal_cnt = personal_cnt(*dcc2_filter)
+    total_dcc2_recovered_personal_pct = _percentile_top(ranked_ids(*dcc2_filter), uid)
 
-    total_ntlm_recovered_all_table = []
-    for entry in total_ntlm_recovered_all_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['email_address'] = entry.email_address
-        total_ntlm_recovered_all_table.append(dict_entry)
+    # ---- Most effective tasks (overall + per hash type) ----
+    most_effective_tasks_table = effective_tasks()
+    most_effective_tasks_ntlm_table = effective_tasks(*ntlm_filter)
+    most_effective_tasks_ntlmv1_table = effective_tasks(*ntlmv1_filter)
+    most_effective_tasks_ntlmv2_table = effective_tasks(*ntlmv2_filter)
+    most_effective_tasks_kerberos_table = effective_tasks(*kerberos_task_filter)
+    most_effective_tasks_dcc2_table = effective_tasks(*dcc2_filter)
 
-    total_ntlm_recovered_all = (
-        db.session.query(Hashes.recovered_by)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type == 1000)
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .all()
-    )
+    # A short handle for the intro/finale + leaderboards: the email local-part
+    # (e.g. "j.mercer@..." -> "j.mercer"), matching how crackers are listed.
+    user_handle = (current_user.email_address or 'you').split('@')[0]
 
-    total_ntlm_recovered_personal_pct = 0
-    personal_group_by_pos = len(total_ntlm_recovered_all) - 1
-    for entry in total_ntlm_recovered_all:
-        if entry.recovered_by == current_user.id:
-            total_ntlm_recovered_personal_pct = round(
-                personal_group_by_pos / (len(total_ntlm_recovered_all) - 1 or 1), 2) * 100
-            break
-        personal_group_by_pos -= 1
-
-    total_ntlm_recovered_personal_cnt = (
-        db.session.query(Hashes.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.recovered_by == current_user.id)
-        .filter(Hashes.hash_type == 1000)
-        .count()
-    )
-
-    # ---- NetNTLMv1 (hash_type 5500/27000) — top 10 users + personal percentile/count ----
-    ntlmv1_hash_types = (5500, 27000)
-
-    total_ntlmv1_recovered_all_raw = (
-        db.session.query(
-            Hashes.recovered_by,
-            Users.email_address,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .join(Users, Hashes.recovered_by == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.in_(ntlmv1_hash_types))
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    total_ntlmv1_recovered_all_table = []
-    for entry in total_ntlmv1_recovered_all_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['email_address'] = entry.email_address
-        total_ntlmv1_recovered_all_table.append(dict_entry)
-
-    total_ntlmv1_recovered_all = (
-        db.session.query(Hashes.recovered_by)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.in_(ntlmv1_hash_types))
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .all()
-    )
-
-    total_ntlmv1_recovered_personal_pct = 0
-    personal_group_by_pos = len(total_ntlmv1_recovered_all) - 1
-    for entry in total_ntlmv1_recovered_all:
-        if entry.recovered_by == current_user.id:
-            total_ntlmv1_recovered_personal_pct = round(
-                personal_group_by_pos / (len(total_ntlmv1_recovered_all) - 1 or 1), 2) * 100
-        else:
-            personal_group_by_pos -= 1
-
-    total_ntlmv1_recovered_personal_cnt = (
-        db.session.query(Hashes.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.recovered_by == current_user.id)
-        .filter(Hashes.hash_type.in_(ntlmv1_hash_types))
-        .count()
-    )
-
-    # ---- NetNTLMv2 (hash_type 5600/27100) — top 10 users + personal percentile/count ----
-    ntlmv2_hash_types = (5600, 27100)
-    ntlmv1_v2_all_hash_types = (5500, 5600, 27000, 27100)
-
-    total_ntlmv2_recovered_all_raw = (
-        db.session.query(
-            Hashes.recovered_by,
-            Users.email_address,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .join(Users, Hashes.recovered_by == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.in_(ntlmv2_hash_types))
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    total_ntlmv2_recovered_all_table = []
-    for entry in total_ntlmv2_recovered_all_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['email_address'] = entry.email_address
-        total_ntlmv2_recovered_all_table.append(dict_entry)
-
-    total_ntlmv2_recovered_all = (
-        db.session.query(Hashes.recovered_by)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.in_(ntlmv2_hash_types))
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .all()
-    )
-
-    total_ntlmv2_recovered_personal_pct = 0
-    personal_group_by_pos = len(total_ntlmv2_recovered_all) - 1
-    for entry in total_ntlmv2_recovered_all:
-        if entry.recovered_by == current_user.id:
-            total_ntlmv2_recovered_personal_pct = round(
-                personal_group_by_pos / (len(total_ntlmv2_recovered_all) - 1 or 1), 2) * 100
-        else:
-            personal_group_by_pos -= 1
-
-    total_ntlmv2_recovered_personal_cnt = (
-        db.session.query(Hashes.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.recovered_by == current_user.id)
-        .filter(Hashes.hash_type.in_(ntlmv1_v2_all_hash_types))
-        .count()
-    )
-
-    # ---- Kerberos (multiple hash types) — top 10 users + personal percentile/count ----
-    kerberos_hash_types = (7500, 13100, 18200, 19600, 19700, 19800, 19900)
-
-    total_kerberos_recovered_all_raw = (
-        db.session.query(
-            Hashes.recovered_by,
-            Users.email_address,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .join(Users, Hashes.recovered_by == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.in_(kerberos_hash_types))
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    total_kerberos_recovered_all_table = []
-    for entry in total_kerberos_recovered_all_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['email_address'] = entry.email_address
-        total_kerberos_recovered_all_table.append(dict_entry)
-
-    total_kerberos_recovered_all = (
-        db.session.query(
-            Hashes.recovered_by,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type.in_(kerberos_hash_types))
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .all()
-    )
-
-    total_kerberos_recovered_personal_pct = 0
-    for entry in total_kerberos_recovered_all:
-        if entry.recovered_by == current_user.id:
-            total_kerberos_recovered_personal_pct = round(
-                entry.row_count / (len(total_kerberos_recovered_all) - 1 or 1), 2) * 100
-
-    total_kerberos_recovered_personal_cnt = (
-        db.session.query(Hashes.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.recovered_by == current_user.id)
-        .filter(Hashes.hash_type.in_(kerberos_hash_types))
-        .count()
-    )
-
-    # ---- DCC2 (hash_type 2100) — top 10 users + personal percentile/count ----
-    total_dcc2_recovered_all_raw = (
-        db.session.query(
-            Hashes.recovered_by,
-            Users.email_address,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .join(Users, Hashes.recovered_by == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type == 2100)
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    total_dcc2_recovered_all_table = []
-    for entry in total_dcc2_recovered_all_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['email_address'] = entry.email_address
-        total_dcc2_recovered_all_table.append(dict_entry)
-
-    total_dcc2_recovered_all = (
-        db.session.query(
-            Hashes.recovered_by,
-            func.count(Hashes.id).label("row_count"),
-        )
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.hash_type == 2100)
-        .group_by(Hashes.recovered_by)
-        .order_by(func.count(Hashes.id).desc())
-        .all()
-    )
-
-    total_dcc2_recovered_personal_pct = 0
-    for entry in total_dcc2_recovered_all:
-        if entry.recovered_by == current_user.id:
-            total_dcc2_recovered_personal_pct = round(
-                entry.row_count / (len(total_dcc2_recovered_all) - 1 or 1), 2) * 100
-
-    total_kerberos_dcc2_personal_cnt = (
-        db.session.query(Hashes.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.recovered_by == current_user.id)
-        .filter(Hashes.hash_type == 2100)
-        .count()
-    )
-
-    # ---- Most effective tasks (overall, then per-hash-type) ----
-    most_effective_tasks_raw = (
-        db.session.query(
-            func.count(Hashes.id).label("row_count"),
-            Tasks.name,
-            Users.email_address,
-        )
-        .join(Tasks, Hashes.task_id == Tasks.id)
-        .join(Users, Tasks.owner_id == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.task_id.isnot(None))
-        .group_by(Hashes.task_id)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    most_effective_tasks_table = []
-    for entry in most_effective_tasks_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['task_name'] = entry.name
-        dict_entry['task_author'] = entry.email_address
-        most_effective_tasks_table.append(dict_entry)
-
-    most_effective_tasks_ntlm_raw = (
-        db.session.query(
-            func.count(Hashes.id).label("row_count"),
-            Tasks.name,
-            Users.email_address,
-        )
-        .join(Tasks, Hashes.task_id == Tasks.id)
-        .join(Users, Tasks.owner_id == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.task_id.isnot(None))
-        .filter(Hashes.hash_type == 1000)
-        .group_by(Hashes.task_id)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    most_effective_tasks_ntlm_table = []
-    for entry in most_effective_tasks_ntlm_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['task_name'] = entry.name
-        dict_entry['task_author'] = entry.email_address
-        most_effective_tasks_ntlm_table.append(dict_entry)
-
-    most_effective_tasks_ntlmv1_raw = (
-        db.session.query(
-            func.count(Hashes.id).label("row_count"),
-            Tasks.name,
-            Users.email_address,
-        )
-        .join(Tasks, Hashes.task_id == Tasks.id)
-        .join(Users, Tasks.owner_id == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.task_id.isnot(None))
-        .filter(Hashes.hash_type.in_(ntlmv1_hash_types))
-        .group_by(Hashes.task_id)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    most_effective_tasks_ntlmv1_table = []
-    for entry in most_effective_tasks_ntlmv1_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['task_name'] = entry.name
-        dict_entry['task_author'] = entry.email_address
-        most_effective_tasks_ntlmv1_table.append(dict_entry)
-
-    most_effective_tasks_ntlmv2_raw = (
-        db.session.query(
-            func.count(Hashes.id).label("row_count"),
-            Tasks.name,
-            Users.email_address,
-        )
-        .join(Tasks, Hashes.task_id == Tasks.id)
-        .join(Users, Tasks.owner_id == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.task_id.isnot(None))
-        .filter(Hashes.hash_type.in_(ntlmv2_hash_types))
-        .group_by(Hashes.task_id)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    most_effective_tasks_ntlmv2_table = []
-    for entry in most_effective_tasks_ntlmv2_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['task_name'] = entry.name
-        dict_entry['task_author'] = entry.email_address
-        most_effective_tasks_ntlmv2_table.append(dict_entry)
-
-    kerberos_task_hash_types = kerberos_hash_types + (35300, 35400)
-    most_effective_tasks_kerberos_raw = (
-        db.session.query(
-            func.count(Hashes.id).label("row_count"),
-            Tasks.name,
-            Users.email_address,
-        )
-        .join(Tasks, Hashes.task_id == Tasks.id)
-        .join(Users, Tasks.owner_id == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.task_id.isnot(None))
-        .filter(Hashes.hash_type.in_(kerberos_task_hash_types))
-        .group_by(Hashes.task_id)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    most_effective_tasks_kerberos_table = []
-    for entry in most_effective_tasks_kerberos_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['task_name'] = entry.name
-        dict_entry['task_author'] = entry.email_address
-        most_effective_tasks_kerberos_table.append(dict_entry)
-
-    most_effective_tasks_dcc2_raw = (
-        db.session.query(
-            func.count(Hashes.id).label("row_count"),
-            Tasks.name,
-            Users.email_address,
-        )
-        .join(Tasks, Hashes.task_id == Tasks.id)
-        .join(Users, Tasks.owner_id == Users.id)
-        .filter(Hashes.cracked == '1')
-        .filter(Hashes.recovered_at > date_start)
-        .filter(Hashes.recovered_at < date_end)
-        .filter(Hashes.task_id.isnot(None))
-        .filter(Hashes.hash_type == 2100)
-        .group_by(Hashes.task_id)
-        .order_by(func.count(Hashes.id).desc())
-        .limit(10)
-        .all()
-    )
-
-    most_effective_tasks_dcc2_table = []
-    for entry in most_effective_tasks_dcc2_raw:
-        dict_entry = {}
-        dict_entry['count'] = entry.row_count
-        dict_entry['task_name'] = entry.name
-        dict_entry['task_author'] = entry.email_address
-        most_effective_tasks_dcc2_table.append(dict_entry)
-
-    # Render the wrapped statistics template with the collected data
     return render_template(
         'wrapped.html.j2',
         title='Hashview Wrapped',
-        previous_year=year,
+        year=year,
+        user_handle=user_handle,
         longest_password_all_table=longest_password_all_table,
         longest_password_personal=longest_password_personal,
+        longest_password_personal_raw=longest_password_personal_raw,
+        longest_password_personal_is_hex=longest_password_personal_is_hex,
+        longest_password_personal_len=longest_password_personal_len,
         longest_password_personal_rank=longest_password_personal_rank,
-        longest_password_all_cnt=longest_password_all_cnt,
+        longest_password_total_cnt=longest_password_total_cnt,
         most_passwords_recovered_all_table=most_passwords_recovered_all_table,
         total_passwords_recovered_personal_cnt=total_passwords_recovered_personal_cnt,
         total_passwords_recovered_personal_pct=total_passwords_recovered_personal_pct,
+        total_passwords_recovered_personal_rank=total_passwords_recovered_personal_rank,
         total_ntlm_recovered_personal_cnt=total_ntlm_recovered_personal_cnt,
         total_ntlm_recovered_personal_pct=total_ntlm_recovered_personal_pct,
         total_ntlm_recovered_all_table=total_ntlm_recovered_all_table,
@@ -608,7 +251,7 @@ def wrapped_list():
         total_kerberos_recovered_personal_cnt=total_kerberos_recovered_personal_cnt,
         total_kerberos_recovered_personal_pct=total_kerberos_recovered_personal_pct,
         total_kerberos_recovered_all_table=total_kerberos_recovered_all_table,
-        total_dcc2_recovered_personal_cnt=total_kerberos_dcc2_personal_cnt,
+        total_dcc2_recovered_personal_cnt=total_dcc2_recovered_personal_cnt,
         total_dcc2_recovered_personal_pct=total_dcc2_recovered_personal_pct,
         total_dcc2_recovered_all_table=total_dcc2_recovered_all_table,
         most_effective_tasks_table=most_effective_tasks_table,
