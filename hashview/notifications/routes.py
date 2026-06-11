@@ -13,6 +13,7 @@ from hashview.models import (
     Settings,
     db,
 )
+from hashview.utils.utils import try_commit
 
 notifications = Blueprint('notifications', __name__)
 
@@ -76,9 +77,13 @@ def notifications_list():
 def notifications_job_delete(notification_id):
     """Function to delete a job notification"""
     notification = JobNotifications.query.get(notification_id)
+    if notification is None:
+        flash('Notification not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('notifications.notifications_list'))
     if current_user.admin or notification.owner_id == current_user.id:
         db.session.delete(notification)
-        db.session.commit()
+        if not try_commit(f'delete job notification {notification_id}'):
+            flash('Notification could not be deleted — it may have already been removed.', 'danger')
     else:
         flash('You do not have rights to delete this notification!', 'danger')
     return redirect(url_for('notifications.notifications_list'))
@@ -88,9 +93,13 @@ def notifications_job_delete(notification_id):
 def notifications_hash_delete(notification_id):
     """Function to delete a recovered hash notification"""
     notification = HashNotifications.query.get(notification_id)
+    if notification is None:
+        flash('Notification not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('notifications.notifications_list'))
     if current_user.admin or notification.owner_id == current_user.id:
         db.session.delete(notification)
-        db.session.commit()
+        if not try_commit(f'delete hash notification {notification_id}'):
+            flash('Notification could not be deleted — it may have already been removed.', 'danger')
     else:
         flash('You do not have rights to delete this notification!', 'danger')
     return redirect(url_for('notifications.notifications_list'))

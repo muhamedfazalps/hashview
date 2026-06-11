@@ -44,6 +44,7 @@ from hashview.utils.utils import (
     build_hashcat_command,
     import_hashfilehashes,
     save_file,
+    try_commit,
     validate_hash_only_hashfile,
     validate_kerberos_hashfile,
     validate_netntlm_hashfile,
@@ -638,8 +639,12 @@ def jobs_remove_task(job_id, task_id):
     """Function to remove task from task list on job"""
 
     job_task = JobTasks.query.filter_by(job_id=job_id, task_id=task_id).first()
+    if job_task is None:
+        flash('That task is no longer on this job — it may have already been removed.', 'warning')
+        return redirect("/jobs/"+str(job_id)+"/tasks")
     db.session.delete(job_task)
-    db.session.commit()
+    if not try_commit(f'remove task {task_id} from job {job_id}'):
+        flash('Could not remove the task — it may have already been removed.', 'danger')
 
     return redirect("/jobs/"+str(job_id)+"/tasks")
 
@@ -746,13 +751,18 @@ def jobs_delete(job_id):
     """Function to delete job"""
 
     job = Jobs.query.get(job_id)
+    if job is None:
+        flash('Job not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('jobs.jobs_list'))
     if current_user.admin or job.owner_id == current_user.id:
         job_target = f'job:{job.id} {job.name!r}'   # capture before delete (instance expires post-commit)
         JobTasks.query.filter_by(job_id=job_id).delete()
         JobNotifications.query.filter_by(job_id=job_id).delete()
 
         db.session.delete(job)
-        db.session.commit()
+        if not try_commit(f'delete job {job_id}'):
+            flash('Job could not be deleted — it may have already been removed.', 'danger')
+            return redirect(url_for('jobs.jobs_list'))
         log_event('job.delete', target=job_target)
         flash('Job has been deleted!', 'success')
         return redirect(url_for('jobs.jobs_list'))

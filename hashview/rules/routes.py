@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from hashview.models import Hashes, Jobs, JobTasks, Rules, Tasks, Users, Wordlists, db
 from hashview.rules.forms import RulesForm
 from hashview.utils.audit import log_event
-from hashview.utils.utils import get_filehash, get_linecount, save_file
+from hashview.utils.utils import get_filehash, get_linecount, save_file, try_commit
 
 rules = Blueprint('rules', __name__)
 
@@ -114,7 +114,10 @@ def rules_add():
 @rules.route("/rules/edit/<int:rule_id>", methods=['GET', 'POST'])
 @login_required
 def rules_view(rule_id):
-    rule = Rules.query.get_or_404(rule_id)
+    rule = Rules.query.get(rule_id)
+    if rule is None:
+        flash('Rule not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('rules.rules_list'))
     # Read file content
     try:
         with open(rule.path) as f:
@@ -168,16 +171,21 @@ def rules_download(rule_id):
 @login_required
 def rules_delete(rule_id):
     rule = Rules.query.get(rule_id)
+    if rule is None:
+        flash('Rule not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('rules.rules_list'))
     if current_user.admin or rule.owner_id == current_user.id:
         # Check if part of a task
         tasks = Tasks.query.filter_by(rule_id=rule.id).first()
         if tasks:
-            flash('Rules is currently used in a task and can not be delete.', 'danger')
-        else:
-            rule_target = f'rule:{rule.id} {rule.name!r}'
-            db.session.delete(rule)
-            db.session.commit()
-            log_event('rule.delete', target=rule_target)
+            flash('Rule is currently used in a task and can not be deleted.', 'danger')
+            return redirect(url_for('rules.rules_list'))
+        rule_target = f'rule:{rule.id} {rule.name!r}'
+        db.session.delete(rule)
+        if not try_commit(f'delete rule {rule_id}'):
+            flash('Rule could not be deleted — it may have already been removed.', 'danger')
+            return redirect(url_for('rules.rules_list'))
+        log_event('rule.delete', target=rule_target)
         flash('Rule file has been deleted!', 'success')
     else:
         flash('Unauthorized action!', 'danger')

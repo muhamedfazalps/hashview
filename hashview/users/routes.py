@@ -42,7 +42,7 @@ from hashview.users.forms import (
     UsersForm,
 )
 from hashview.utils.audit import log_event
-from hashview.utils.utils import send_email, send_pushover, send_slack
+from hashview.utils.utils import send_email, send_pushover, send_slack, try_commit
 
 bcrypt = Bcrypt()
 
@@ -197,11 +197,14 @@ def users_edit(user_id):
     Driven by the edit-user modal, which mirrors the add-user modal. Password fields
     are optional on edit — left blank, the current password is kept.
     """
+    user = Users.query.get(user_id)
+    if user is None:
+        flash('User not found — they may have already been deleted.', 'warning')
+        return redirect(url_for('users.users_list'))
     if not current_user.admin:
         flash('Unauthorized to edit users account.', 'danger')
         return redirect(url_for('users.users_list'))
 
-    user = Users.query.get_or_404(user_id)
     first = (request.form.get('first_name') or '').strip()
     last = (request.form.get('last_name') or '').strip()
     email = (request.form.get('email') or '').strip()
@@ -241,10 +244,15 @@ def users_edit(user_id):
 def users_delete(user_id):
     """Function to delete user"""
 
+    user = Users.query.get(user_id)
+    if user is None:
+        flash('User not found — they may have already been deleted.', 'warning')
+        return redirect(url_for('users.users_list'))
     if current_user.admin:
-        user = Users.query.get_or_404(user_id)
         db.session.delete(user)
-        db.session.commit()
+        if not try_commit(f'delete user {user_id}'):
+            flash('User could not be deleted — they may have already been removed.', 'danger')
+            return redirect(url_for('users.users_list'))
         flash('User has been deleted!', 'success')
         return redirect(url_for('users.users_list'))
     else:

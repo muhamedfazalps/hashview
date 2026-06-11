@@ -15,6 +15,7 @@ from hashview.models import (
     db,
 )
 from hashview.utils.audit import log_event
+from hashview.utils.utils import try_commit
 
 
 def _hash_type_names():
@@ -102,7 +103,10 @@ def customers_add():
 @login_required
 def customers_edit():
     """Rename an existing customer (from the Edit customer modal)."""
-    customer = Customers.query.get_or_404(request.form.get('customer_id', type=int))
+    customer = Customers.query.get(request.form.get('customer_id', type=int))
+    if customer is None:
+        flash('Customer not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('customers.customers_list'))
     name = (request.form.get('name') or '').strip()
     if not name:
         flash('Customer name is required.', 'danger')
@@ -156,32 +160,38 @@ def customers_info(customer_id):
 @login_required
 def customers_delete(customer_id):
     """Function to delete a customer"""
-    customer = Customers.query.get_or_404(customer_id)
+    customer = Customers.query.get(customer_id)
+    if customer is None:
+        flash('Customer not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('customers.customers_list'))
     customer_target = f'customer:{customer.id} {customer.name!r}'
-    if current_user.admin:
-        # Check if jobs are present
-        jobs = Jobs.query.filter_by(customer_id=customer_id).all()
-        if jobs:
-            flash('Unable to delete. Customer has active job', 'danger')
-        else:
-            # remove associated hash files & hashes & Hash Notifications
-            hashfiles = Hashfiles.query.filter_by(customer_id=customer_id)
-            for hashfile in hashfiles:
-                hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).all()
-                for hashfile_hash in hashfile_hashes:
-                    hashes = Hashes.query.filter_by(id=hashfile_hash.id, cracked=0).all()
-                    for hash in hashes:
-                        # Check to see if our hashfile is the ONLY hashfile for this customer that has this hash
-                        customer_cnt = HashfileHashes.query.filter_by(hash_id=hash.id).distinct('customer_id')
-                        if customer_cnt < 2:
-                            db.session.delete(hash)
-                            HashNotifications.query.filter_by(hash_id=hashfile_hash.hash_id).delete()
-                    db.session.delete(hashfile_hash)
-                db.session.delete(hashfile)
-        db.session.delete(customer)
-        db.session.commit()
-        log_event('customer.delete', target=customer_target)
-        flash('Customer has been deleted!', 'success')
-    else:
+    if not current_user.admin:
         flash('Permission Denied', 'danger')
+        return redirect(url_for('customers.customers_list'))
+    # Don't delete a customer that still has jobs (previously this flashed the
+    # warning but then deleted the customer anyway).
+    if Jobs.query.filter_by(customer_id=customer_id).first():
+        flash('Unable to delete. Customer has active job', 'danger')
+        return redirect(url_for('customers.customers_list'))
+
+    # remove associated hash files & hashes & Hash Notifications
+    hashfiles = Hashfiles.query.filter_by(customer_id=customer_id)
+    for hashfile in hashfiles:
+        hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).all()
+        for hashfile_hash in hashfile_hashes:
+            hashes = Hashes.query.filter_by(id=hashfile_hash.id, cracked=0).all()
+            for hash in hashes:
+                # Check to see if our hashfile is the ONLY hashfile for this customer that has this hash
+                customer_cnt = HashfileHashes.query.filter_by(hash_id=hash.id).distinct('customer_id')
+                if customer_cnt < 2:
+                    db.session.delete(hash)
+                    HashNotifications.query.filter_by(hash_id=hashfile_hash.hash_id).delete()
+            db.session.delete(hashfile_hash)
+        db.session.delete(hashfile)
+    db.session.delete(customer)
+    if not try_commit(f'delete customer {customer_id}'):
+        flash('Customer could not be deleted — it may have already been removed.', 'danger')
+        return redirect(url_for('customers.customers_list'))
+    log_event('customer.delete', target=customer_target)
+    flash('Customer has been deleted!', 'success')
     return redirect(url_for('customers.customers_list'))

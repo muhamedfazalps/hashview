@@ -12,6 +12,7 @@ from datetime import datetime
 import requests
 from flask import current_app, url_for
 from flask_mail import Message
+from sqlalchemy.exc import SQLAlchemyError
 
 from hashview.models import (
     Agents,
@@ -31,6 +32,22 @@ from hashview.models import (
     db,
 )
 from hashview.utils.hashcat_modes import HASH_ONLY_AUTO_RULES
+
+
+def try_commit(context=''):
+    """Commit the current session; on any DB error roll back + log and return False.
+
+    Lets delete routes turn a concurrent double-submit (e.g. two quick clicks on
+    a delete button — the second commit raises StaleDataError because the row is
+    already gone) into a flash message instead of a 500.
+    """
+    try:
+        db.session.commit()
+        return True
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception('DB commit failed: %s', context)
+        return False
 
 
 def save_file(path, form_file):

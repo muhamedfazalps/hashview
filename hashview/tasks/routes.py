@@ -17,6 +17,7 @@ from hashview.models import (
 )
 from hashview.tasks.forms import TasksForm
 from hashview.utils.audit import log_event
+from hashview.utils.utils import try_commit
 
 tasks = Blueprint('tasks', __name__)
 
@@ -251,6 +252,9 @@ def task_edit(task_id):
     """Function to edit task"""
 
     task = Tasks.query.get(task_id)
+    if task is None:
+        flash('Task not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('tasks.tasks_list'))
 
     # Check if task is currently assigned to a job.
     # We probably dont care if its assigned to a task group though
@@ -373,6 +377,9 @@ def tasks_delete(task_id):
     """Function to delete task"""
 
     task = Tasks.query.get(task_id)
+    if task is None:
+        flash('Task not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('tasks.tasks_list'))
     task_groups = TaskGroups.query.all()
     if current_user.admin or task.owner_id == current_user.id:
 
@@ -390,7 +397,9 @@ def tasks_delete(task_id):
 
         task_target = f'task:{task.id} {task.name!r}'
         db.session.delete(task)
-        db.session.commit()
+        if not try_commit(f'delete task {task_id}'):
+            flash('Task could not be deleted — it may have already been removed.', 'danger')
+            return redirect(url_for('tasks.tasks_list'))
         log_event('task.delete', target=task_target)
         flash('Task has been deleted!', 'success')
         return redirect(url_for('tasks.tasks_list'))

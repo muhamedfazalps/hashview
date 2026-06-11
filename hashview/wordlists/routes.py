@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 
 from hashview.models import Hashes, JobTasks, Rules, Tasks, Users, Wordlists, db
 from hashview.utils.audit import log_event
-from hashview.utils.utils import ingest_static_wordlist_file, update_dynamic_wordlist
+from hashview.utils.utils import ingest_static_wordlist_file, try_commit, update_dynamic_wordlist
 from hashview.utils.wordlist_import import list_importable, run_import_async
 from hashview.wordlists.forms import WordlistsForm
 
@@ -182,6 +182,9 @@ def wordlists_delete(wordlist_id):
     """Function to delete wordlist"""
 
     wordlist = Wordlists.query.get(wordlist_id)
+    if wordlist is None:
+        flash('Wordlist not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('wordlists.wordlists_list'))
     if current_user.admin or wordlist.owner_id == current_user.id:
 
         # prevent deletion of dynamic list (must return — otherwise the row,
@@ -204,7 +207,9 @@ def wordlists_delete(wordlist_id):
         wordlist_path = wordlist.path
         wordlist_target = f'wordlist:{wordlist.id} {wordlist.name!r}'
         db.session.delete(wordlist)
-        db.session.commit()
+        if not try_commit(f'delete wordlist {wordlist_id}'):
+            flash('Wordlist could not be deleted — it may have already been removed.', 'danger')
+            return redirect(url_for('wordlists.wordlists_list'))
         log_event('wordlist.delete', target=wordlist_target)
 
         if wordlist_path and os.path.exists(wordlist_path):

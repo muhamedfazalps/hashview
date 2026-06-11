@@ -16,6 +16,7 @@ from sqlalchemy import text
 import hashview
 from hashview.agents.forms import AgentsForm
 from hashview.models import Agents, JobTasks, db
+from hashview.utils.utils import try_commit
 
 agents = Blueprint('agents', __name__)
 
@@ -85,25 +86,21 @@ def agents_list():
 @login_required
 def agents_edit(agent_id):
     """Function to edit agents"""
-    if current_user.admin:
-        agents_form = AgentsForm()
-
-        if agents_form.validate_on_submit():
-            agent_name = agents_form.name.data
-            agent_id = agents_form.id.data
-
-            agent = Agents.query.get(agent_id)
-            agent.name = agent_name
-            db.session.commit()
-
-            flash('Updated Agents Name', 'success')
-            return redirect(url_for('agents.agents_list'))
-        else:
-            agent = Agents.query.get(agent_id)
-            return render_template('agents_edit.html.j2', title='agents', agent=agent, agentsForm=agents_form)
-    else:
+    agent = Agents.query.get(agent_id)
+    if agent is None:
+        flash('Agent not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('agents.agents_list'))
+    if not current_user.admin:
         flash('You are unauthorized to edit agent data.', 'danger')
         return redirect(url_for('agents.agents_list'))
+
+    agents_form = AgentsForm()
+    if agents_form.validate_on_submit():
+        agent.name = agents_form.name.data
+        db.session.commit()
+        flash('Updated Agents Name', 'success')
+        return redirect(url_for('agents.agents_list'))
+    return render_template('agents_edit.html.j2', title='agents', agent=agent, agentsForm=agents_form)
 
 @agents.route("/agents/<int:agent_id>/authorize", methods=['GET'])
 @login_required
@@ -143,14 +140,19 @@ def agents_deauthorize(agent_id):
 @login_required
 def agents_delete(agent_id):
     """Function to delete agent"""
+    agent = Agents.query.get(agent_id)
+    if agent is None:
+        flash('Agent not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('agents.agents_list'))
     if current_user.admin:
         jobtasks = JobTasks.query.filter_by(agent_id = agent_id).count()
         if jobtasks > 0:
             flash('Error: Agent is active with a task.', 'danger')
         else:
-            agent = Agents.query.get(agent_id)
             db.session.delete(agent)
-            db.session.commit()
+            if not try_commit(f'delete agent {agent_id}'):
+                flash('Agent could not be deleted — it may have already been removed.', 'danger')
+                return redirect(url_for('agents.agents_list'))
             flash('Agent removed', 'success')
         return redirect(url_for('agents.agents_list'))
     else:

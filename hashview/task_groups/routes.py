@@ -7,6 +7,7 @@ from flask_login import current_user, login_required
 from hashview.models import Hashes, TaskGroups, Tasks, Users, db
 from hashview.task_groups.forms import TaskGroupsForm
 from hashview.utils.audit import log_event
+from hashview.utils.utils import try_commit
 
 task_groups = Blueprint('task_groups', __name__)
 
@@ -86,7 +87,10 @@ def task_groups_add():
 @login_required
 def task_groups_edit():
     """Update a task group's name and ordered task list (from the edit modal)."""
-    task_group = TaskGroups.query.get_or_404(request.form.get('group_id', type=int))
+    task_group = TaskGroups.query.get(request.form.get('group_id', type=int))
+    if task_group is None:
+        flash('Task Group not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('task_groups.task_groups_list'))
     if not (current_user.admin or task_group.owner_id == current_user.id):
         abort(403)
     task_group_form = TaskGroupsForm()
@@ -136,10 +140,17 @@ def task_groups_assigned_tasks_remove_task(task_group_id, task_id):
     """Function to remove task to task group"""
 
     task_group = TaskGroups.query.get(task_group_id)
+    if task_group is None:
+        flash('Task Group not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('task_groups.task_groups_list'))
     task_group_tasks = json.loads(task_group.tasks)
+    if task_id not in task_group_tasks:
+        flash('That task is no longer in this group — it may have already been removed.', 'warning')
+        return redirect("/task_groups/assigned_tasks/"+str(task_group.id))
     task_group_tasks.remove(task_id)
     task_group.tasks = str(task_group_tasks)
-    db.session.commit()
+    if not try_commit(f'remove task {task_id} from task_group {task_group_id}'):
+        flash('Could not remove the task — please try again.', 'danger')
     return redirect("/task_groups/assigned_tasks/"+str(task_group.id))
 
 @task_groups.route("/task_groups/assigned_tasks/<int:task_group_id>/promote_task/<int:task_id>", methods=['GET'])
@@ -206,10 +217,15 @@ def task_groups_delete(task_group_id):
     """Function to delete task group"""
 
     task_group = TaskGroups.query.get(task_group_id)
+    if task_group is None:
+        flash('Task Group not found — it may have already been deleted.', 'warning')
+        return redirect(url_for('task_groups.task_groups_list'))
     if current_user.admin or task_group.owner_id == current_user.id:
         task_group_target = f'task_group:{task_group.id} {task_group.name!r}'
         db.session.delete(task_group)
-        db.session.commit()
+        if not try_commit(f'delete task_group {task_group_id}'):
+            flash('Task Group could not be deleted — it may have already been removed.', 'danger')
+            return redirect(url_for('task_groups.task_groups_list'))
         log_event('task_group.delete', target=task_group_target)
         flash('Task Group has been deleted!', 'success')
         return redirect(url_for('task_groups.task_groups_list'))

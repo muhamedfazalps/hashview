@@ -21,6 +21,7 @@ from hashview.models import (
     db,
 )
 from hashview.utils.audit import log_event
+from hashview.utils.utils import try_commit
 
 hashfiles = Blueprint('hashfiles', __name__)
 
@@ -133,47 +134,35 @@ def hashfiles_list():
 @login_required
 def hashfiles_delete(hashfile_id):
     """Function to delete hashfile by id"""
-    hashfile = Hashfiles.query.get_or_404(hashfile_id)
-    jobs = Jobs.query.filter_by(hashfile_id = hashfile_id).first()
-
-    if hashfile:
-        if current_user.admin or hashfile.owner_id == current_user.id:
-            if jobs:
-                flash('Error: Hashfile currently associated with a job.', 'danger')
-                return redirect(url_for('hashfiles.hashfiles_list'))
-            else:
-                hashfile_target = f'hashfile:{hashfile.id} {hashfile.name!r}'
-                # Remove hashifle hash
-                deleted_count = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).delete(synchronize_session=False)
-                print(f"[DEBUG] Deleted {deleted_count} Hashfile Hashes entries for hashfile ID {hashfile.id}")
-                db.session.commit()
-
-                # # remove hashfile
-                db.session.delete(hashfile)
-                db.session.commit()
-                log_event('hashfile.delete', target=hashfile_target)
-
-                # Remove all uncracked hashes not associated to a hashfile hash.
-                deleted_count = Hashes.query.filter(
-                    Hashes.cracked == 0
-                ).filter(
-                    ~exists().where(HashfileHashes.hash_id == Hashes.id)
-                ).delete(synchronize_session=False)
-
-                db.session.commit()
-                print(f"[DEBUG] Deleted {deleted_count} orphaned uncracked hashes")
-
-                # Remove notifications
-                deleted_count = HashNotifications.query.filter(~exists().where(Hashes.id == HashNotifications.hash_id)).delete(synchronize_session=False)
-
-                flash('Hashfile has been deleted!', 'success')
-                return redirect(url_for('hashfiles.hashfiles_list'))
-        else:
-            flash('You do not have rights to delete this hashfile!', 'danger')
-            return redirect(url_for('hashfiles.hashfiles_list'))
-    else:
-        flash('Error in deleting hashfile', 'danger')
+    hashfile = Hashfiles.query.get(hashfile_id)
+    if hashfile is None:
+        flash('Hashfile not found — it may have already been deleted.', 'warning')
         return redirect(url_for('hashfiles.hashfiles_list'))
+    if not (current_user.admin or hashfile.owner_id == current_user.id):
+        flash('You do not have rights to delete this hashfile!', 'danger')
+        return redirect(url_for('hashfiles.hashfiles_list'))
+    if Jobs.query.filter_by(hashfile_id=hashfile_id).first():
+        flash('Error: Hashfile currently associated with a job.', 'danger')
+        return redirect(url_for('hashfiles.hashfiles_list'))
+
+    # Cascade in a single transaction (atomic): the hashfile-hash links, the
+    # hashfile, then any uncracked hashes / notifications left orphaned by it.
+    hashfile_target = f'hashfile:{hashfile.id} {hashfile.name!r}'
+    HashfileHashes.query.filter_by(hashfile_id=hashfile.id).delete(synchronize_session=False)
+    db.session.delete(hashfile)
+    Hashes.query.filter(Hashes.cracked == 0).filter(
+        ~exists().where(HashfileHashes.hash_id == Hashes.id)
+    ).delete(synchronize_session=False)
+    HashNotifications.query.filter(
+        ~exists().where(Hashes.id == HashNotifications.hash_id)
+    ).delete(synchronize_session=False)
+    if not try_commit(f'delete hashfile {hashfile_id}'):
+        flash('Hashfile could not be deleted — it may have already been removed.', 'danger')
+        return redirect(url_for('hashfiles.hashfiles_list'))
+
+    log_event('hashfile.delete', target=hashfile_target)
+    flash('Hashfile has been deleted!', 'success')
+    return redirect(url_for('hashfiles.hashfiles_list'))
 
 
 @hashfiles.route("/hashfiles/download/<int:hashfile_id>/<fmt>", methods=['GET'])
