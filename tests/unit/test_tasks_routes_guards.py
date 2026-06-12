@@ -64,12 +64,9 @@ def test_tasks_delete_blocked_when_assigned_to_job(app, client):
     db.session.add(JobTasks(job_id=1, task_id=task.id, status="Not Started"))
     db.session.commit()
 
-    resp = client.post(f"/tasks/delete/{task.id}", follow_redirects=False)
-    assert resp.status_code in (301, 302)
+    resp = client.post(f"/tasks/delete/{task.id}", follow_redirects=True)
+    assert b"associated to one or more jobs" in resp.data
     assert Tasks.query.get(task.id) is not None  # NOT deleted
-
-    follow = client.post(f"/tasks/delete/{task.id}", follow_redirects=True)
-    assert b"associated to one or more jobs" in follow.data
 
 
 def test_tasks_delete_blocked_when_in_task_group(app, client):

@@ -19,6 +19,7 @@ from hashview.models import (
     Jobs,
     JobTasks,
     Settings,
+    Tasks,
     Users,
     db,
 )
@@ -31,6 +32,14 @@ def _admin():
     db.session.add(u)
     db.session.commit()
     return u
+
+
+def _make_task(owner_id, name="task-retention"):
+    task = Tasks(name=name, owner_id=owner_id, wl_id=None, rule_id=None,
+                 hc_attackmode=0, loopback=False)
+    db.session.add(task)
+    db.session.commit()
+    return task
 
 
 def _settings(retention_period=30):
@@ -70,7 +79,8 @@ def test_inner_purges_aged_job_and_hashfile_rows(app, tmp_path, monkeypatch):
                owner_id=admin.id, created_at=aged)
     db.session.add(job)
     db.session.commit()
-    db.session.add(JobTasks(job_id=job.id, task_id=1, status="Not Started"))
+    task = _make_task(admin.id, name="task-aged-job")
+    db.session.add(JobTasks(job_id=job.id, task_id=task.id, status="Not Started"))
     db.session.add(JobNotifications(owner_id=admin.id, job_id=job.id, method="email"))
 
     # aged hashfile with an uncracked, unshared hash
@@ -194,7 +204,8 @@ def test_inner_purges_job_referencing_aged_hashfile(app, tmp_path, monkeypatch):
                hashfile_id=hashfile.id)
     db.session.add(job)
     db.session.commit()
-    db.session.add(JobTasks(job_id=job.id, task_id=1, status="Not Started"))
+    task = _make_task(admin.id, name="task-doomed-job")
+    db.session.add(JobTasks(job_id=job.id, task_id=task.id, status="Not Started"))
     db.session.add(JobNotifications(owner_id=admin.id, job_id=job.id, method="email"))
     db.session.commit()
     job_id, hashfile_id = job.id, hashfile.id
