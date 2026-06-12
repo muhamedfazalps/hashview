@@ -83,19 +83,17 @@ def test_task_name_xss_is_escaped(page, live_server, login):
     if attack_mode.count() == 0:
         pytest.skip("Task attack mode selector not found.")
 
-    if attack_mode.locator("option[value='dictionary']").count() > 0:
-        attack_mode.select_option("dictionary")
-        if page.locator("#wl_id option").count() == 0:
-            pytest.skip("No wordlists available for dictionary task.")
-        page.locator("#wl_id").select_option(index=0)
-    elif attack_mode.locator("option[value='maskmode']").count() > 0:
-        attack_mode.select_option("maskmode")
-        page.get_by_label("Mask").fill("?l?l?l?l?l?l")
-    else:
-        pytest.skip("No supported attack modes available.")
+    # Attack-mode <option> values are numeric (see hashview/tasks/forms.py):
+    # 3 = Brute-force (mask), which needs only a mask — no pre-existing wordlist —
+    # so this XSS-escaping check stays self-contained.
+    if attack_mode.locator("option[value='3']").count() == 0:
+        pytest.skip("Brute-force (mask) attack mode not available.")
+    attack_mode.select_option("3")
+    page.locator("#mask").fill("?l?l?l?l?l?l")
 
-    page.get_by_role("button", name=re.compile(r"Add|Submit|Create", re.I)).click()
-    expect(page.get_by_role("heading", name="Agents")).to_be_visible()
+    page.get_by_role("button", name=re.compile(r"^Create$", re.I)).click()
+    # A successful create redirects to /tasks; failed validation stays on /tasks/add.
+    expect(page).to_have_url(re.compile(r".*/tasks/?$"))
 
     assert page.locator(f"script#{element_id}").count() == 0
     content = page.content()
