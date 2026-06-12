@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import secrets
+import subprocess
 from datetime import datetime, timedelta
 
 from flask import (
@@ -396,19 +398,25 @@ def v1_api_get_rules_download(rules_id):
     if rules is None:
         return jsonify({'status': 404, 'type': 'Error', 'msg': 'Rule not found'}), 404
 
-    # Rules are stored plaintext at rest; compress into control/tmp and serve
-    # that. No shell; pure-Python streamed gzip -9 (same pattern as the
-    # dynamic-wordlist download above). The random tmp name avoids predictable
-    # paths and collisions between concurrent downloads.
-    rules_dir = os.path.join(current_app.root_path, 'control/rules')
-    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
-    src_path = os.path.join(rules_dir, os.path.basename(rules.path))
-    if not os.path.exists(src_path):
-        return jsonify({'status': 404, 'type': 'Error', 'msg': 'Rule file missing on disk'}), 404
+    # Validate the stored filename: only allow safe characters (alphanumeric,
+    # dot, hyphen, underscore) and require a .rule or .txt extension.  This
+    # guards against command-injection payloads that might have been stored
+    # before this check was added, and prevents serving arbitrary file types.
+    safe_name = os.path.basename(rules.path)
+    _ALLOWED_EXTS = {'.rule', '.txt'}
+    _SAFE_NAME_RE = re.compile(r'^[\w.\-]+$')
+    _, ext = os.path.splitext(safe_name)
+    if ext.lower() not in _ALLOWED_EXTS or not _SAFE_NAME_RE.match(safe_name):
+        return jsonify({'status': 400, 'type': 'Error', 'msg': 'Invalid rule filename'}), 400
 
-    tmp_gz = os.path.join(tmp_dir, secrets.token_hex(8) + '.gz')
-    compress_to_gz(src_path, tmp_gz, 9)
-    return send_from_directory(tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
+    rules_dir = os.path.join(current_app.root_path, 'control/rules')
+    src_path = os.path.join(rules_dir, safe_name)
+
+    # Use subprocess.run with a list (never shell=True) so the filename is
+    # passed as a data argument and cannot be interpreted as shell syntax.
+    # gzip -9 -k creates <src_path>.gz alongside the source file.
+    subprocess.run(['gzip', '-9', '-k', src_path], check=True)
+    return send_from_directory(rules_dir, safe_name + '.gz', mimetype='application/octet-stream')
 
 # Create new rule
 @api.route('/v1/rules/add/<rule_name>', methods=['POST'])
