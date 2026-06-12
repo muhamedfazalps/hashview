@@ -157,14 +157,20 @@ NETNTLM_USER = st.text(
 HEX_RESP = st.text(alphabet="0123456789abcdefABCDEF", min_size=8, max_size=48)
 
 
+HEX_CHAL = st.text(alphabet="0123456789abcdefABCDEF", min_size=16, max_size=16)
+
+
 @pytest.mark.security
 @PROPERTY_SETTINGS
-@given(username=NETNTLM_USER, nt_resp=HEX_RESP, lm_resp=HEX_RESP)
+@given(username=NETNTLM_USER, chal=HEX_CHAL, nt_resp=HEX_RESP, lm_resp=HEX_RESP)
 def test_netntlm_machine_accounts_filtered_and_case_normalised(
-    app, username, nt_resp, lm_resp
+    app, username, chal, nt_resp, lm_resp
 ):
+    """Machine accounts (trailing ``$``) must be filtered; the plain username
+    must be uppercased; challenge and response fields (parts 3/4/5) must be
+    stored lowercased regardless of input case; domain (part 2) case is
+    preserved as-is."""
     hashfile_id = _make_user_and_hashfile()
-    chal = "1122334455667788"
     domain = "CORP"
     real = f"{username}::{domain}:{chal}:{nt_resp}:{lm_resp}\n"
     machine = f"{username}$::{domain}:{chal}:{nt_resp}:{lm_resp}\n"
@@ -220,6 +226,10 @@ def test_shadow_never_raises_and_imports_username(app, username, salt, crypt):
 
     usernames = {row.username for row in _imported_rows(hashfile_id)}
     assert usernames == {username}
+
+    ciphertexts = _imported_ciphertexts(hashfile_id)
+    assert len(ciphertexts) == 1
+    assert ciphertexts[0].startswith(f"$6${salt}$")
 
 
 # --- invariant 5: hash_only non-1000 round-trips without mutation -----------
