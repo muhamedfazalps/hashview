@@ -144,3 +144,53 @@ def test_customers_delete_happy_path_cascades_hashfiles(app, client):
     assert Customers.query.get(customer_id) is None
     assert Hashfiles.query.get(hashfile_id) is None
     assert HashfileHashes.query.filter_by(hashfile_id=hashfile_id).count() == 0
+
+
+# --------------------------------------------- customers_list / customers_info
+
+def _customer_with_hashfile(owner_id, cracked=True, name="StatsCo"):
+    customer = _make_customer(name)
+    hashfile = Hashfiles(name=f"{name}.txt", customer_id=customer.id,
+                         owner_id=owner_id)
+    db.session.add(hashfile)
+    db.session.commit()
+    h = Hashes(sub_ciphertext="c" * 32, ciphertext="d" * 32, hash_type=1000,
+               cracked=cracked, plaintext="hunter2" if cracked else None)
+    db.session.add(h)
+    db.session.commit()
+    db.session.add(HashfileHashes(hash_id=h.id, hashfile_id=hashfile.id))
+    db.session.commit()
+    return customer, hashfile
+
+
+def test_customers_list_renders_per_customer_stats(app, client):
+    admin = _admin()
+    _login(client, admin)
+    customer, _ = _customer_with_hashfile(admin.id, cracked=True)
+    db.session.add(Jobs(name="job-stats", status="Incomplete",
+                        customer_id=customer.id, owner_id=admin.id))
+    db.session.commit()
+
+    resp = client.get("/customers")
+    assert resp.status_code == 200
+    assert b"StatsCo" in resp.data
+
+
+def test_customers_info_modal_renders_stats(app, client):
+    admin = _admin()
+    _login(client, admin)
+    customer, hashfile = _customer_with_hashfile(admin.id, cracked=True)
+    db.session.add(Jobs(name="info-job", status="Incomplete",
+                        customer_id=customer.id, owner_id=admin.id))
+    db.session.commit()
+
+    resp = client.get(f"/customers/{customer.id}/info")
+    assert resp.status_code == 200
+    assert b"StatsCo.txt" in resp.data   # the hashfile is listed
+    assert b"NTLM" in resp.data          # mode 1000 reverse-mapped to a name
+
+
+def test_customers_info_missing_customer_404s(app, client):
+    _login(client, _admin())
+    resp = client.get("/customers/999999/info")
+    assert resp.status_code == 404
