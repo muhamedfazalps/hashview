@@ -181,12 +181,15 @@ def test_job_idor_access_denied_for_other_user(
     page.goto(f"{live_server}/logout", wait_until="domcontentloaded")
     _login(page, live_server, second_email, second_password)
 
-    page.goto(f"{live_server}/jobs/{job_id}/tasks", wait_until="domcontentloaded")
-    if page.url.startswith(f"{live_server}/jobs/{job_id}/tasks"):
-        if (
-            page.get_by_text("unauthorized", exact=False).count() == 0
-            and page.get_by_text("forbidden", exact=False).count() == 0
-        ):
-            pytest.fail(
-                "Second user can access another user's job tasks; possible IDOR."
-            )
+    # Hashview uses a shared-jobs model: every authenticated user may VIEW any
+    # job (the jobs list is org-wide), so authorization is enforced on
+    # MUTATIONS, not views. The IDOR check therefore verifies a non-owner,
+    # non-admin user cannot STOP another user's job. jobs_stop gates on
+    # `current_user.admin or job.owner_id == current_user.id`, is a GET (no CSRF
+    # token needed), and is reachable for any existing job, so a successful
+    # denial proves the ownership guard holds.
+    page.goto(f"{live_server}/jobs/stop/{job_id}", wait_until="domcontentloaded")
+    body = page.content().lower()
+    assert "do not have rights to stop this job" in body, (
+        "Second user was not denied when stopping another user's job; possible IDOR."
+    )
