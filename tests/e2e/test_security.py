@@ -139,14 +139,12 @@ def test_login_next_param_not_open_redirect(page, live_server, test_user_credent
     page.get_by_label("Email").fill(test_user_credentials["email"])
     page.get_by_label("Password").fill(test_user_credentials["password"])
     page.get_by_role("button", name="Crack the planet!").click()
-    if os.getenv("HASHVIEW_E2E_ENFORCE_OPEN_REDIRECT", "0") in {"1", "true", "yes"}:
-        assert page.url.startswith(live_server)
-    else:
-        if page.url.startswith("https://example.com"):
-            pytest.xfail("Open redirect: login next allows external URL.")
-        assert page.url.startswith(live_server) or page.url.startswith(
-            "https://example.com"
-        )
+    # The crafted off-site ?next= must be ignored: login redirects through the
+    # same-site guard, so the user always lands back on the app, never on
+    # example.com. (Previously xfail — fixed in login_post via _safe_next.)
+    assert page.url.startswith(live_server), (
+        f"login honored an off-site next= (open redirect): {page.url}"
+    )
 
 
 @pytest.mark.e2e

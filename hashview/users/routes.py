@@ -134,9 +134,10 @@ def login_post():
     db.session.commit()
     current_app.logger.info('Login is Complete with Success(User:%s).', user.email_address)
     log_event('user.login', actor=(user.email_address, user.id))
-    return redirect(
-        request.args.get("next", url_for('main.home'))
-    )
+    # Route the post-login redirect through the same-site guard so a crafted
+    # ?next=https://evil.example can't turn login into an open redirect; an
+    # off-site or protocol-relative target falls back to the home page.
+    return redirect(_safe_next(default_endpoint='main.home'))
 
 @users.route("/logout")
 def logout():
