@@ -32,6 +32,21 @@ if importlib.util.find_spec("flask") is None:
     collect_ignore_glob = ["test_*.py"]
 
 
+@pytest.fixture(autouse=True, scope="session")
+def control_dirs():
+    """Create the runtime control dirs that setup.py / the Dockerfile guarantee.
+
+    They're gitignored, so a fresh clone lacks them; several units write real
+    files there (wordlist storage, backup tmp files, hashfile uploads).
+    """
+    import os
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "hashview" / "control"
+    for sub in ("rules", "wordlists", "tmp", "hashes"):
+        os.makedirs(root / sub, exist_ok=True)
+
+
 @pytest.fixture(autouse=True)
 def ensure_setup():
     """Override parent autouse so live_server isn't requested for unit tests."""
