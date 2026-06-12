@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# Load .env.test so the seed step below sees the same HASHVIEW_E2E_* vars the
+# pytest conftest reads (set -a exports each assignment).
+if [ -f .env.test ]; then
+  echo "Loading e2e environment from .env.test..."
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env.test
+  set +a
+fi
+
 export DOCKER_PLATFORM="linux/amd64"
 
 COMPOSE_BIN="${COMPOSE_BIN:-docker compose}"
@@ -78,6 +88,39 @@ if ! curl -fsS "$BASE_URL/login" >/dev/null 2>&1; then
 fi
 
 export HASHVIEW_E2E_BASE_URL="$BASE_URL"
+
+# Seed the database to the state the suite pins via env vars: the admin user
+# (id=1) gets the e2e email/password/api_key, a Settings row exists, and the
+# Customer/Hashfile/Job rows are created at the expected IDs. Idempotent. Runs
+# INSIDE the app container (PYTHONPATH=/ — the package lives at /hashview in the
+# image). SETUP_EMAIL/SETUP_PASSWORD default to the login email/password.
+#
+# Only seed when the e2e env is actually configured (e.g. a local .env.test).
+# CI has no .env.test, so these are unset — skip seeding (the seeder exits
+# non-zero on missing required vars, which under `set -e` would abort the whole
+# harness) and let the individual tests skip on missing data, exactly as they
+# did before seeding existed.
+if [ -n "${HASHVIEW_E2E_API_KEY:-}" ] && [ -n "${HASHVIEW_E2E_CUSTOMER_ID:-}" ] \
+   && [ -n "${HASHVIEW_E2E_HASHFILE_ID:-}" ] && [ -n "${HASHVIEW_E2E_JOB_ID:-}" ] \
+   && [ -n "${HASHVIEW_E2E_TASK_ID:-}" ] \
+   && { [ -n "${HASHVIEW_E2E_SETUP_EMAIL:-}" ] || [ -n "${HASHVIEW_E2E_EMAIL:-}" ]; }; then
+  echo "Seeding e2e database (customer/hashfile/job + admin)..."
+  $COMPOSE_BIN cp tests/seed_e2e_db.py app:/tmp/seed_e2e_db.py
+  $COMPOSE_BIN exec -T \
+    -e PYTHONPATH=/ \
+    -e HASHVIEW_E2E_SETUP_EMAIL="${HASHVIEW_E2E_SETUP_EMAIL:-${HASHVIEW_E2E_EMAIL:-}}" \
+    -e HASHVIEW_E2E_SETUP_PASSWORD="${HASHVIEW_E2E_SETUP_PASSWORD:-${HASHVIEW_E2E_PASSWORD:-}}" \
+    -e HASHVIEW_E2E_API_KEY="${HASHVIEW_E2E_API_KEY:-}" \
+    -e HASHVIEW_E2E_SECOND_EMAIL="${HASHVIEW_E2E_SECOND_EMAIL:-}" \
+    -e HASHVIEW_E2E_SECOND_PASSWORD="${HASHVIEW_E2E_SECOND_PASSWORD:-}" \
+    -e HASHVIEW_E2E_CUSTOMER_ID="${HASHVIEW_E2E_CUSTOMER_ID:-}" \
+    -e HASHVIEW_E2E_HASHFILE_ID="${HASHVIEW_E2E_HASHFILE_ID:-}" \
+    -e HASHVIEW_E2E_JOB_ID="${HASHVIEW_E2E_JOB_ID:-}" \
+    -e HASHVIEW_E2E_TASK_ID="${HASHVIEW_E2E_TASK_ID:-}" \
+    -w / app python /tmp/seed_e2e_db.py
+else
+  echo "Skipping DB seed: e2e env vars not set (no .env.test?). Data-dependent tests will skip."
+fi
 
 echo "Running pytest against $BASE_URL"
 set +e
