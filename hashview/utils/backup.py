@@ -38,8 +38,9 @@ _MIN_BACKUP_BYTES = 64          # an empty openssl stream is ~48 bytes
 _CHUNK = 1024 * 1024
 
 
-def _require_tools():
-    missing = [t for t in ('mysqldump', 'gzip', 'openssl') if shutil.which(t) is None]
+def _require_tools(need_mysqldump=True):
+    tools = (('mysqldump',) if need_mysqldump else ()) + ('gzip', 'openssl')
+    missing = [t for t in tools if shutil.which(t) is None]
     if missing:
         raise BackupError('Missing required tool(s): ' + ', '.join(missing))
 
@@ -146,10 +147,13 @@ def create_encrypted_db_backup(db_uri, tmp_dir, dump_cmd=None):
     shows the password + sha256 once. ``dump_cmd`` overrides the dump stage
     (used by tests to avoid requiring a live MySQL).
     """
-    _require_tools()
+    # Backend check first: a non-MySQL deployment must hear "unsupported", not
+    # "mysqldump missing". mysqldump is only required when we build the dump
+    # command ourselves (dump_cmd is the test seam that replaces that stage).
     url = make_url(db_uri)
     if not url.get_backend_name().startswith('mysql'):
         raise BackupError('Database backup is only supported for MySQL deployments.')
+    _require_tools(need_mysqldump=dump_cmd is None)
 
     password = secrets.token_urlsafe(24)        # ~143 bits, URL-safe (shell/quoting-safe)
     enc_path = os.path.join(tmp_dir, secrets.token_hex(8) + '.sql.gz.enc')
