@@ -83,6 +83,22 @@ This script:
     that skips the directory if Flask isn't importable, so a stray
     `pytest tests/` against an e2e-only venv won't error at collection.
 
+## Function coverage gate
+
+Every function in `hashview/` must have a unit test that executes it. Verify
+locally:
+
+```
+./.venv/bin/python -m pytest tests/unit -q --cov=hashview --cov-report=json:coverage.json
+./.venv/bin/python tests/check_function_coverage.py
+```
+
+The checker parses `coverage.json`, walks every `hashview/*.py` with `ast`, and
+exits non-zero listing any function with zero executed body lines (migrations
+excluded). Waivers (discouraged) go one-per-line in
+`tests/function_coverage_allowlist.txt` as `hashview/path/file.py::function_name`.
+`pytest-cov` is required (`./.venv/bin/pip install pytest-cov`).
+
 ## CI / CD (dev Docker containers)
 
 Recommended CI flow:
