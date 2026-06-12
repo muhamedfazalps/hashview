@@ -1,0 +1,62 @@
+"""Regression tests for agents routes/helpers (function-coverage batch)."""
+
+from hashview.models import Agents, db
+from tests.unit.helpers import login, make_admin, make_user
+
+
+def _agent(name="ag", status="Pending", uuid="u1"):
+    a = Agents(name=name, src_ip="127.0.0.1", uuid=uuid, status=status)
+    db.session.add(a)
+    db.session.commit()
+    return a
+
+
+def test_fmt_age_buckets():
+    from hashview.agents.routes import _fmt_age
+    assert _fmt_age(0) == "now"
+    assert _fmt_age(30) == "30s ago"
+    assert _fmt_age(120) == "2m ago"
+    assert _fmt_age(3600) == "1h ago"
+    assert _fmt_age(3660) == "1h 1m ago"
+    assert _fmt_age(86400) == "1d ago"
+
+
+def test_agent_ages_returns_mapping(app):
+    from hashview.agents.routes import _agent_ages
+    a = _agent()
+    ages = _agent_ages([a])
+    assert a.id in ages  # value may be None (no last_checkin), key must exist
+
+
+def test_agents_list_renders_for_admin(app, client):
+    admin = make_admin()
+    login(client, admin)
+    _agent(name="VisibleAgent")
+    resp = client.get("/agents")
+    assert resp.status_code == 200
+    assert b"VisibleAgent" in resp.data
+
+
+def test_agents_list_forbidden_for_non_admin(app, client):
+    user = make_user()
+    login(client, user)
+    resp = client.get("/agents")
+    assert resp.status_code == 403
+
+
+def test_agents_authorize_sets_status(app, client):
+    admin = make_admin()
+    login(client, admin)
+    a = _agent(status="Pending")
+    resp = client.get(f"/agents/{a.id}/authorize", follow_redirects=False)
+    assert resp.status_code in (301, 302)
+    assert Agents.query.get(a.id).status == "Authorized"
+
+
+def test_agents_deauthorize_sets_pending(app, client):
+    admin = make_admin()
+    login(client, admin)
+    a = _agent(status="Authorized")
+    resp = client.get(f"/agents/{a.id}/deauthorize", follow_redirects=False)
+    assert resp.status_code in (301, 302)
+    assert Agents.query.get(a.id).status == "Pending"
