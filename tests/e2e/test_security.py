@@ -40,7 +40,7 @@ def test_customer_name_xss_is_escaped(page, live_server, login):
     payload = "<svg onload=alert(1)>"
 
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="New Job").click()
+    page.get_by_role("link", name="New Job", exact=True).click()
     expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.locator("input[name='name']").fill(f"E2E XSS Customer {uuid.uuid4().hex[:6]}")
@@ -83,19 +83,17 @@ def test_task_name_xss_is_escaped(page, live_server, login):
     if attack_mode.count() == 0:
         pytest.skip("Task attack mode selector not found.")
 
-    if attack_mode.locator("option[value='dictionary']").count() > 0:
-        attack_mode.select_option("dictionary")
-        if page.locator("#wl_id option").count() == 0:
-            pytest.skip("No wordlists available for dictionary task.")
-        page.locator("#wl_id").select_option(index=0)
-    elif attack_mode.locator("option[value='maskmode']").count() > 0:
-        attack_mode.select_option("maskmode")
-        page.get_by_label("Mask").fill("?l?l?l?l?l?l")
-    else:
-        pytest.skip("No supported attack modes available.")
+    # Attack-mode <option> values are numeric (see hashview/tasks/forms.py):
+    # 3 = Brute-force (mask), which needs only a mask — no pre-existing wordlist —
+    # so this XSS-escaping check stays self-contained.
+    if attack_mode.locator("option[value='3']").count() == 0:
+        pytest.skip("Brute-force (mask) attack mode not available.")
+    attack_mode.select_option("3")
+    page.locator("#mask").fill("?l?l?l?l?l?l")
 
-    page.get_by_role("button", name=re.compile(r"Add|Submit|Create", re.I)).click()
-    expect(page.get_by_role("heading", name="Agents")).to_be_visible()
+    page.get_by_role("button", name=re.compile(r"^Create$", re.I)).click()
+    # A successful create redirects to /tasks; failed validation stays on /tasks/add.
+    expect(page).to_have_url(re.compile(r".*/tasks/?$"))
 
     assert page.locator(f"script#{element_id}").count() == 0
     content = page.content()
@@ -169,7 +167,7 @@ def test_job_idor_access_denied_for_other_user(
         test_user_credentials["password"],
     )
     page.get_by_role("link", name="Jobs").click()
-    page.get_by_role("link", name="New Job").click()
+    page.get_by_role("link", name="New Job", exact=True).click()
     expect(page.get_by_role("heading", name="Create Job")).to_be_visible()
 
     page.get_by_label("Job Name").fill("E2E IDOR Job")
@@ -183,12 +181,15 @@ def test_job_idor_access_denied_for_other_user(
     page.goto(f"{live_server}/logout", wait_until="domcontentloaded")
     _login(page, live_server, second_email, second_password)
 
-    page.goto(f"{live_server}/jobs/{job_id}/tasks", wait_until="domcontentloaded")
-    if page.url.startswith(f"{live_server}/jobs/{job_id}/tasks"):
-        if (
-            page.get_by_text("unauthorized", exact=False).count() == 0
-            and page.get_by_text("forbidden", exact=False).count() == 0
-        ):
-            pytest.fail(
-                "Second user can access another user's job tasks; possible IDOR."
-            )
+    # Hashview uses a shared-jobs model: every authenticated user may VIEW any
+    # job (the jobs list is org-wide), so authorization is enforced on
+    # MUTATIONS, not views. The IDOR check therefore verifies a non-owner,
+    # non-admin user cannot STOP another user's job. jobs_stop gates on
+    # `current_user.admin or job.owner_id == current_user.id`, is a GET (no CSRF
+    # token needed), and is reachable for any existing job, so a successful
+    # denial proves the ownership guard holds.
+    page.goto(f"{live_server}/jobs/stop/{job_id}", wait_until="domcontentloaded")
+    body = page.content().lower()
+    assert "do not have rights to stop this job" in body, (
+        "Second user was not denied when stopping another user's job; possible IDOR."
+    )
