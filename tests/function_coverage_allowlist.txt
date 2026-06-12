@@ -1,0 +1,2 @@
+# Waived functions, one per line: hashview/path/file.py::function_name
+# Keep empty unless a waiver survives code review.
