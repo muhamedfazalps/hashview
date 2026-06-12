@@ -8,10 +8,16 @@ download endpoint, and the non-MySQL error path.
 
 import gzip
 import os
+import shutil
 import subprocess
 import time
 
 import pytest
+
+_requires_mysqldump = pytest.mark.skipif(
+    shutil.which("mysqldump") is None,
+    reason="mysqldump not installed",
+)
 
 from hashview.models import db, Users
 from hashview.utils.backup import (
@@ -56,6 +62,7 @@ def _login(client, user):
 # backup module
 # ---------------------------------------------------------------------------
 
+@_requires_mysqldump
 def test_backup_roundtrip_decrypts(tmp_path):
     sql = b"-- MySQL dump\nCREATE TABLE t (id INT);\nINSERT INTO t VALUES (1);\n"
     sqlf = tmp_path / "fake.sql"
@@ -154,6 +161,7 @@ def test_purge_stale_backups(tmp_path):
 # routes
 # ---------------------------------------------------------------------------
 
+@_requires_mysqldump
 def test_backup_route_non_mysql_returns_error(app, client):
     """The test app uses sqlite -> the real route should report an error JSON
     (exercises form validation + the BackupError path, no mock)."""
