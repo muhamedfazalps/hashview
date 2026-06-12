@@ -117,3 +117,127 @@ def test_pwdump_machine_accounts_never_imported(app, username, nt):
     assert f"{username}$" not in usernames, f"machine account {username}$ was imported"
     assert not any(u.endswith("$") for u in usernames)
     assert usernames == {username}
+
+
+# --- invariant 2: pwdump *_history entries ----------------------------------
+
+@pytest.mark.security
+@PROPERTY_SETTINGS
+@given(username=USERNAME, suffix=st.integers(min_value=0, max_value=99), nt=HEX32)
+def test_pwdump_history_entries_never_imported(app, username, suffix, nt):
+    """``*_history*`` entries are NTLM password-history records (the AD fix in
+    the CHANGELOG) and must never be imported. The bare-username control line
+    on the same file confirms the filter is selective."""
+    hashfile_id = _make_user_and_hashfile()
+    history_user = f"{username}_history{suffix}"
+    text = (
+        f"{history_user}:1001:aad3b435b51404eeaad3b435b51404ee:{nt}:::\n"
+        f"{username}:1002:aad3b435b51404eeaad3b435b51404ee:{nt}:::\n"
+    )
+    _import_text(text, hashfile_id, file_type="pwdump", hash_type="1000")
+
+    usernames = {row.username for row in _imported_rows(hashfile_id)}
+    assert not any("_history" in u for u in usernames), (
+        f"history entry {history_user} was imported"
+    )
+    assert usernames == {username}
+
+
+# --- invariant 3: NetNTLM machine accounts + case normalisation -------------
+
+# NetNTLM line: USER::DOMAIN:server_chal:nt_resp:lm_resp
+# Username has no '$' (so it imports) and the parser uppercases it; the
+# ciphertext fields 3/4/5 are lowercased while the domain (field 2) is left
+# alone. Exclude usernames already ending in '$' so they don't get filtered.
+NETNTLM_USER = st.text(
+    alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd"), max_codepoint=0x7F),
+    min_size=1,
+    max_size=20,
+).filter(lambda s: not s.endswith("$"))
+HEX_RESP = st.text(alphabet="0123456789abcdefABCDEF", min_size=8, max_size=48)
+
+
+@pytest.mark.security
+@PROPERTY_SETTINGS
+@given(username=NETNTLM_USER, nt_resp=HEX_RESP, lm_resp=HEX_RESP)
+def test_netntlm_machine_accounts_filtered_and_case_normalised(
+    app, username, nt_resp, lm_resp
+):
+    hashfile_id = _make_user_and_hashfile()
+    chal = "1122334455667788"
+    domain = "CORP"
+    real = f"{username}::{domain}:{chal}:{nt_resp}:{lm_resp}\n"
+    machine = f"{username}$::{domain}:{chal}:{nt_resp}:{lm_resp}\n"
+    _import_text(real + machine, hashfile_id, file_type="NetNTLM", hash_type="5500")
+
+    usernames = {row.username for row in _imported_rows(hashfile_id)}
+    # machine account dropped
+    assert not any(u.endswith("$") for u in usernames)
+    # real username imported, uppercased
+    assert usernames == {username.upper()}
+
+    # ciphertext fields lowercased (fields 3/4/5), domain (field 2) untouched
+    for ct in _imported_ciphertexts(hashfile_id):
+        parts = ct.split(":")
+        assert parts[0] == username.upper()
+        assert parts[2] == domain  # domain case-preserved
+        assert parts[3] == chal.lower()
+        assert parts[4] == nt_resp.lower()
+        assert parts[5] == lm_resp.lower()
+
+
+# --- invariant 4: shadow never raises on arbitrary usernames ----------------
+
+# shadow line: username:$id$salt$hash:meta... — username has no ':'.
+SHADOW_USER = st.text(
+    alphabet=st.characters(
+        min_codepoint=0x21, max_codepoint=0x7E, blacklist_characters=":"
+    ),
+    min_size=1,
+    max_size=30,
+)
+CRYPT_TOKEN = st.text(
+    alphabet="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ./",
+    min_size=1,
+    max_size=16,
+)
+CRYPT_HASH = st.text(
+    alphabet="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ./",
+    min_size=20,
+    max_size=86,
+)
+
+
+@pytest.mark.security
+@PROPERTY_SETTINGS
+@given(username=SHADOW_USER, salt=CRYPT_TOKEN, crypt=CRYPT_HASH)
+def test_shadow_never_raises_and_imports_username(app, username, salt, crypt):
+    """The shadow parser must import the leading username and crypt hash for
+    arbitrary printable non-colon usernames without raising."""
+    hashfile_id = _make_user_and_hashfile()
+    line = f"{username}:$6${salt}${crypt}:18000:0:99999:7:::\n"
+    _import_text(line, hashfile_id, file_type="shadow", hash_type="1800")
+
+    usernames = {row.username for row in _imported_rows(hashfile_id)}
+    assert usernames == {username}
+
+
+# --- invariant 5: hash_only non-1000 round-trips without mutation -----------
+
+# hash types where the parser does NOT lowercase (i.e. not 300/1000/1731) and
+# does not special-case ('2100'). Mixed-case hex digests must round-trip
+# verbatim.
+@pytest.mark.security
+@PROPERTY_SETTINGS
+@given(
+    digest=st.text(alphabet="0123456789abcdefABCDEF", min_size=32, max_size=64),
+    hash_type=st.sampled_from(["0", "100", "1400", "1700"]),
+)
+def test_hash_only_non_1000_round_trips_unmutated(app, digest, hash_type):
+    """For non-NTLM/SHA1 hash types, hash_only import must store the exact
+    input (case preserved, no mutation)."""
+    hashfile_id = _make_user_and_hashfile()
+    _import_text(digest + "\n", hashfile_id, file_type="hash_only", hash_type=hash_type)
+
+    ciphertexts = _imported_ciphertexts(hashfile_id)
+    assert digest in ciphertexts, f"{digest!r} not stored verbatim: {ciphertexts!r}"
