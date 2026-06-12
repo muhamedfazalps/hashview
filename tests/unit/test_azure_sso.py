@@ -260,3 +260,57 @@ def test_admin_settings_api_does_not_leak_secret(client):
     body = client.get('/v1/admin/settings').get_data(as_text=True)
     assert 'SUPER-SECRET' not in body
     assert 'xoxb-leak' not in body
+
+
+# ---------------------------------------------------------------------------
+# hashview/auth/oauth.py — config gate, signature cache, lazy client build
+# ---------------------------------------------------------------------------
+
+
+def test_azure_is_configured_gate(app):
+    from hashview.auth.oauth import azure_is_configured
+    assert azure_is_configured(None) is False
+    assert azure_is_configured(_settings(auth_method='local')) is False
+    assert azure_is_configured(_settings(auth_method='azure')) is True
+    assert azure_is_configured(_settings(auth_method='azure', complete=False)) is False
+
+
+def test_signature_changes_with_secret(app):
+    from hashview.auth.oauth import _signature
+    s1 = _settings(auth_method='azure', secret='one')
+    sig1 = _signature(s1)
+    s1.azure_client_secret = 'two'
+    _db.session.commit()
+    assert _signature(s1) != sig1
+    # The plaintext secret never appears in the signature.
+    assert 'two' not in _signature(s1)
+
+
+def test_get_entra_client_none_when_unconfigured(app):
+    from hashview.auth.oauth import get_entra_client
+    assert get_entra_client(_settings(auth_method='local')) is None
+
+
+def test_get_entra_client_builds_when_configured(app, monkeypatch):
+    import hashview.auth.oauth as oauth_mod
+    from hashview.auth.oauth import get_entra_client
+    # Reset the module cache so this test is deterministic.
+    oauth_mod._cache.update(sig=None, client=None)
+
+    built = []
+
+    class _FakeOAuth:
+        def __init__(self, app=None):
+            pass
+
+        def register(self, **kw):
+            built.append(kw)
+
+        def create_client(self, name):
+            return f"client:{name}"
+
+    monkeypatch.setattr(oauth_mod, "OAuth", _FakeOAuth)
+    s = _settings(auth_method='azure', secret='sek')
+    client = get_entra_client(s)
+    assert client == "client:entra"
+    assert built and built[0]["client_id"] == "cid"
