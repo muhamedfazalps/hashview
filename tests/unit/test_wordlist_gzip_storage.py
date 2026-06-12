@@ -649,9 +649,16 @@ def _load_agent_sync(manifest, api_obj):
     src = AGENT_SCRIPT.read_text()
     tree = ast.parse(src)
     wanted = {"_gz_name", "_sha256_file", "_prune_orphan_files", "sync_wordlists"}
-    chunks = [ast.get_source_segment(src, n) for n in tree.body
-              if isinstance(n, ast.FunctionDef) and n.name in wanted]
-    assert len(chunks) == 4, f"expected 4 functions, found {len(chunks)}"
+    chunks = []
+    found = set()
+    for n in tree.body:
+        if isinstance(n, ast.FunctionDef) and n.name in wanted:
+            seg = ast.get_source_segment(src, n)
+            assert seg is not None, f"could not extract source for {n.name}"
+            chunks.append(seg)
+            found.add(n.name)
+    missing = wanted - found
+    assert not missing, f"agent functions not found at module level: {missing}"
     ns = {"os": os, "hashlib": hashlib, "json": json, "secrets": secrets,
           "logging": logging,
           "LOG": logging.getLogger("test-agent-sim"),

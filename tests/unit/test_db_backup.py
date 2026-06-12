@@ -14,16 +14,16 @@ import time
 
 import pytest
 
-_requires_mysqldump = pytest.mark.skipif(
-    shutil.which("mysqldump") is None,
-    reason="mysqldump not installed",
-)
-
 from hashview.models import db, Users
 from hashview.utils.backup import (
     create_encrypted_db_backup, purge_stale_backups, _write_defaults_file, BackupError,
 )
 from sqlalchemy.engine.url import make_url
+
+_requires_mysqldump = pytest.mark.skipif(
+    shutil.which("mysqldump") is None,
+    reason="mysqldump not installed",
+)
 
 MYSQL_URI = "mysql+mysqlconnector://bob:s3cr3t@localhost/hashview"
 TMP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
