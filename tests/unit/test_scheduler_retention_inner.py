@@ -174,3 +174,43 @@ def test_inner_reaps_tmp_files_by_age_and_keeps_gitignore(app, tmp_path, monkeyp
     assert not old_file.exists()       # past retention window -> removed
     assert gitignore.exists()          # always kept
     assert not backup.exists()         # backups reaped within the hour
+
+
+def test_inner_purges_job_referencing_aged_hashfile(app, tmp_path, monkeypatch):
+    # A *fresh* job that references an aged hashfile is deleted along with it.
+    _setup_tmp(tmp_path, monkeypatch)
+    _settings(retention_period=30)
+    admin = _admin()
+    cust = Customers(name="Acme")
+    db.session.add(cust)
+    db.session.commit()
+
+    hashfile = Hashfiles(name="aged.txt", customer_id=cust.id, owner_id=admin.id,
+                         uploaded_at=datetime.utcnow() - timedelta(days=90))
+    db.session.add(hashfile)
+    db.session.commit()
+    job = Jobs(name="fresh-but-doomed", status="Completed", customer_id=cust.id,
+               owner_id=admin.id, created_at=datetime.utcnow(),
+               hashfile_id=hashfile.id)
+    db.session.add(job)
+    db.session.commit()
+    db.session.add(JobTasks(job_id=job.id, task_id=1, status="Not Started"))
+    db.session.add(JobNotifications(owner_id=admin.id, job_id=job.id, method="email"))
+    db.session.commit()
+    job_id, hashfile_id = job.id, hashfile.id
+
+    _run_inner(app)
+    db.session.expire_all()
+
+    assert Hashfiles.query.get(hashfile_id) is None
+    assert Jobs.query.get(job_id) is None  # cascaded via the hashfile branch
+    assert JobTasks.query.filter_by(job_id=job_id).count() == 0
+    assert JobNotifications.query.filter_by(job_id=job_id).count() == 0
+
+
+def test_outer_wrapper_swallows_failures(app, tmp_path, monkeypatch):
+    # No Settings row -> the inner function raises; the scheduled-job wrapper
+    # must swallow it (log + continue) rather than crash the scheduler thread.
+    from hashview.scheduler import data_retention_cleanup
+    _setup_tmp(tmp_path, monkeypatch)
+    data_retention_cleanup(app)  # must not raise
