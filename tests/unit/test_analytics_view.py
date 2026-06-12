@@ -244,3 +244,21 @@ def test_shared_password_zip_download(app, client):
     assert len(names) >= 1                            # at least the Password1 group
     content = "\n".join(archive.read(n).decode("utf-8") for n in names)
     assert "Password1" in content and "alice" in content and "bob" in content
+
+
+def test_download_fig9_shared_password_accounts(app, client):
+    """fig9 download serves the shared-password usernames as a .txt attachment."""
+    user = _admin(); _login(client, user)
+    customer_id, hashfile_id = _seed()
+    resp = client.get(f"/analytics/download/fig9?customer_id={customer_id}&hashfile_id={hashfile_id}")
+    assert resp.status_code == 200
+    assert resp.headers["Content-Disposition"].startswith("attachment")
+
+
+def test_download_fig8_same_user_pass(app, client):
+    """fig8 download serves a .txt attachment (empty result is still valid)."""
+    user = _admin(); _login(client, user)
+    customer_id, hashfile_id = _seed()
+    resp = client.get(f"/analytics/download/fig8?customer_id={customer_id}&hashfile_id={hashfile_id}")
+    assert resp.status_code == 200
+    assert resp.headers["Content-Disposition"].startswith("attachment")
