@@ -45,8 +45,8 @@ jobs:
         run: pip-audit -r requirements.txt
 
   # OpenAPI: structural validation of the committed API spec. Route<->spec
-  # parity is additionally enforced by tests/unit/test_openapi_spec.py (run
-  # locally — there is no full-deps unit-test CI job).
+  # parity is additionally enforced by tests/unit/test_openapi_spec.py (runs
+  # in CI via .github/workflows/unit-tests.yml).
   openapi:
     runs-on: ubuntu-latest
     steps:
