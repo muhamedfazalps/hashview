@@ -1,0 +1,332 @@
+"""Unit tests for install/hashview-agent/agent/api/api.py.
+
+Every function in api.py gets a happy-path test, and every function with a
+426 (agent version older than server) branch gets a SystemExit test. The
+agent's HTTP layer is monkeypatched on the agent.http.http module object,
+which is the same object api.py bound via ``from agent.http import http``.
+"""
+import json
+
+import pytest
+
+from agent.api import api
+from agent.http import http
+
+
+VERSION_MISMATCH = {"type": "message", "status": 426}
+
+
+# ---------------------------------------------------------------------------
+# heartbeat
+# ---------------------------------------------------------------------------
+
+def test_heartbeat_returns_decoded_response_on_200(monkeypatch):
+    payload = {"type": "message", "status": 200, "msg": "OK"}
+    captured = {}
+
+    def fake_post(path, body):
+        captured["path"] = path
+        captured["body"] = body
+        return json.dumps(payload)
+
+    monkeypatch.setattr(http, "post", fake_post)
+    assert api.heartbeat("idle", "stopped") == payload
+    assert captured["path"] == "/v1/agents/heartbeat"
+    assert captured["body"] == {"agent_status": "idle", "hc_status": "stopped"}
+
+
+def test_heartbeat_exits_on_426_version_mismatch(monkeypatch):
+    monkeypatch.setattr(http, "post", lambda path, body: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.heartbeat("idle", "stopped")
+
+
+def test_heartbeat_returns_none_on_unexpected_type(monkeypatch):
+    # Pins actual behavior: non-message types fall through and return None.
+    payload = {"type": "unexpected", "status": 200}
+    monkeypatch.setattr(http, "post", lambda path, body: json.dumps(payload))
+    assert api.heartbeat("idle", "stopped") is None
+
+
+# ---------------------------------------------------------------------------
+# server_settings
+# ---------------------------------------------------------------------------
+
+def test_server_settings_unwraps_settings_key(monkeypatch):
+    settings = {"max_runtime_jobs": 4, "db_version": "0.8.3"}
+    payload = {"status": 200, "settings": settings}
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(payload))
+    assert api.server_settings() == settings
+
+
+def test_server_settings_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.server_settings()
+
+
+# ---------------------------------------------------------------------------
+# rules_list
+# ---------------------------------------------------------------------------
+
+def test_rules_list_unwraps_rules_key(monkeypatch):
+    rules = [{"id": 1, "name": "best64", "checksum": "abc"}]
+    payload = {"status": 200, "rules": rules}
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(payload))
+    assert api.rules_list() == rules
+
+
+def test_rules_list_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.rules_list()
+
+
+# ---------------------------------------------------------------------------
+# get_rules_file (passthrough)
+# ---------------------------------------------------------------------------
+
+def test_get_rules_file_passes_through_http_get(monkeypatch):
+    captured = {}
+
+    def fake_get(path):
+        captured["path"] = path
+        return b"rule-file-bytes"
+
+    monkeypatch.setattr(http, "get", fake_get)
+    assert api.get_rules_file(7) == b"rule-file-bytes"
+    assert captured["path"] == "/v1/rules/7"
+
+
+# ---------------------------------------------------------------------------
+# getWordlists
+# ---------------------------------------------------------------------------
+
+def test_getwordlists_unwraps_wordlists_key(monkeypatch):
+    wordlists = [{"id": 2, "name": "rockyou", "checksum": "def"}]
+    payload = {"status": 200, "wordlists": wordlists}
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(payload))
+    assert api.getWordlists() == wordlists
+
+
+def test_getwordlists_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.getWordlists()
+
+
+# ---------------------------------------------------------------------------
+# get_wordlists_file (passthrough)
+# ---------------------------------------------------------------------------
+
+def test_get_wordlists_file_passes_through_http_get(monkeypatch):
+    captured = {}
+
+    def fake_get(path):
+        captured["path"] = path
+        return b"wordlist-bytes"
+
+    monkeypatch.setattr(http, "get", fake_get)
+    assert api.get_wordlists_file(3) == b"wordlist-bytes"
+    assert captured["path"] == "/v1/wordlists/3"
+
+
+# ---------------------------------------------------------------------------
+# jobTasks (payload value is itself JSON-encoded)
+# ---------------------------------------------------------------------------
+
+def test_jobtasks_double_decodes_job_task(monkeypatch):
+    job_task = {"id": 11, "job_id": 5, "task_id": 9, "status": "Queued"}
+    payload = {"status": 200, "job_task": json.dumps(job_task)}
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(payload))
+    assert api.jobTasks(11) == job_task
+
+
+def test_jobtasks_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.jobTasks(11)
+
+
+# ---------------------------------------------------------------------------
+# jobs (payload value is itself JSON-encoded)
+# ---------------------------------------------------------------------------
+
+def test_jobs_double_decodes_job(monkeypatch):
+    job = {"id": 5, "name": "test job", "hashfile_id": 2}
+    payload = {"status": 200, "job": json.dumps(job)}
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(payload))
+    assert api.jobs(5) == job
+
+
+def test_jobs_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.jobs(5)
+
+
+# ---------------------------------------------------------------------------
+# tasks (payload value is itself JSON-encoded)
+# ---------------------------------------------------------------------------
+
+def test_tasks_double_decodes_task(monkeypatch):
+    task = {"id": 9, "name": "rockyou + best64", "hc_attackmode": "dictionary"}
+    payload = {"status": 200, "task": json.dumps(task)}
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(payload))
+    assert api.tasks(9) == task
+
+
+def test_tasks_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.tasks(9)
+
+
+# ---------------------------------------------------------------------------
+# updateDynamicWordlists
+# ---------------------------------------------------------------------------
+
+def test_updatedynamicwordlists_returns_decoded_response_on_200(monkeypatch):
+    payload = {"type": "message", "status": 200, "msg": "updated"}
+    captured = {}
+
+    def fake_get(path):
+        captured["path"] = path
+        return json.dumps(payload)
+
+    monkeypatch.setattr(http, "get", fake_get)
+    assert api.updateDynamicWordlists(4) == payload
+    assert captured["path"] == "/v1/updateWordlist/4"
+
+
+def test_updatedynamicwordlists_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.updateDynamicWordlists(4)
+
+
+# ---------------------------------------------------------------------------
+# get_hashfile (passthrough)
+# ---------------------------------------------------------------------------
+
+def test_get_hashfile_passes_through_http_get(monkeypatch):
+    captured = {}
+
+    def fake_get(path):
+        captured["path"] = path
+        return b"hashfile-bytes"
+
+    monkeypatch.setattr(http, "get", fake_get)
+    assert api.get_hashfile(6) == b"hashfile-bytes"
+    assert captured["path"] == "/v1/hashfiles/6"
+
+
+# ---------------------------------------------------------------------------
+# uploadCrackFile
+# ---------------------------------------------------------------------------
+
+def test_uploadcrackfile_posts_file_contents_and_returns_response(monkeypatch, tmp_path):
+    crack_file = tmp_path / "hc_cracked_11.txt"
+    crack_file.write_text("8846f7eaee8fb117ad06bdd830b7586c:password\n")
+
+    payload = {"type": "message", "status": 200, "msg": "OK"}
+    captured = {}
+
+    def fake_post(path, data):
+        captured["path"] = path
+        captured["data"] = data
+        return json.dumps(payload)
+
+    monkeypatch.setattr(http, "post", fake_post)
+    assert api.uploadCrackFile(str(crack_file), 11) == payload
+    assert captured["path"] == "/v1/uploadCrackFile/11"
+    assert captured["data"] == {"file": "8846f7eaee8fb117ad06bdd830b7586c:password\n"}
+
+
+def test_uploadcrackfile_exits_on_426(monkeypatch, tmp_path):
+    crack_file = tmp_path / "hc_cracked_11.txt"
+    crack_file.write_text("hash:plain\n")
+    monkeypatch.setattr(http, "post", lambda path, data: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.uploadCrackFile(str(crack_file), 11)
+
+
+# ---------------------------------------------------------------------------
+# getHashType
+# ---------------------------------------------------------------------------
+
+def test_gethashtype_returns_decoded_response_on_200(monkeypatch):
+    payload = {"type": "message", "status": 200, "hash_type": "1000"}
+    captured = {}
+
+    def fake_get(path):
+        captured["path"] = path
+        return json.dumps(payload)
+
+    monkeypatch.setattr(http, "get", fake_get)
+    assert api.getHashType(2) == payload
+    assert captured["path"] == "/v1/getHashType/2"
+
+
+def test_gethashtype_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda path: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.getHashType(2)
+
+
+# ---------------------------------------------------------------------------
+# updateJobTask
+# ---------------------------------------------------------------------------
+
+def test_updatejobtask_returns_decoded_response_on_200(monkeypatch):
+    payload = {"type": "message", "status": 200, "msg": "OK"}
+    captured = {}
+
+    def fake_post(path, body):
+        captured["path"] = path
+        captured["body"] = body
+        return json.dumps(payload)
+
+    monkeypatch.setattr(http, "post", fake_post)
+    assert api.updateJobTask(11, "Running") == payload
+    assert captured["path"] == "/v1/jobtask/status"
+    assert captured["body"] == {"task_status": "Running", "job_task_id": 11}
+
+
+def test_updatejobtask_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "post", lambda path, body: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.updateJobTask(11, "Running")
+
+
+def test_updatejobtask_returns_decoded_response_on_unexpected_status(monkeypatch):
+    # Pins actual behavior: unlike heartbeat, the fallthrough branch here
+    # returns the decoded response instead of None.
+    payload = {"type": "message", "status": 500}
+    monkeypatch.setattr(http, "post", lambda path, body: json.dumps(payload))
+    assert api.updateJobTask(11, "Running") == payload
+
+
+# ---------------------------------------------------------------------------
+# sendError
+# ---------------------------------------------------------------------------
+
+def test_senderror_returns_decoded_response_on_200(monkeypatch):
+    payload = {"type": "message", "status": 200, "msg": "OK"}
+    captured = {}
+
+    def fake_post(path, body):
+        captured["path"] = path
+        captured["body"] = body
+        return json.dumps(payload)
+
+    monkeypatch.setattr(http, "post", fake_post)
+    assert api.sendError("hashcat exploded") == payload
+    assert captured["path"] == "/v1/error"
+    assert captured["body"] == {"error": "hashcat exploded"}
+
+
+def test_senderror_exits_on_426(monkeypatch):
+    monkeypatch.setattr(http, "post", lambda path, body: json.dumps(VERSION_MISMATCH))
+    with pytest.raises(SystemExit):
+        api.sendError("hashcat exploded")
