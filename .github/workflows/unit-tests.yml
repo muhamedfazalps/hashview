@@ -24,10 +24,11 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Create runtime control dirs (gitignored, required by tests)
         run: mkdir -p hashview/control/{hashes,logs,rules,tmp,wordlists,wordlists_import}
+      # Coverage ratchet: raise --cov-fail-under as coverage improves; never lower it.
       - name: Run unit + security tests with coverage
         run: |
           python -m pytest tests/unit tests/security \
-            --cov=hashview --cov-report=term-missing --cov-report=xml -q
+            --cov=hashview --cov-report=term-missing --cov-report=xml --cov-fail-under=71 -q
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
