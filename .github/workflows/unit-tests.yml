@@ -25,9 +25,9 @@ jobs:
       - name: Create runtime control dirs (gitignored, required by tests)
         run: mkdir -p hashview/control/{hashes,logs,rules,tmp,wordlists,wordlists_import}
       # Coverage ratchet: raise --cov-fail-under as coverage improves; never lower it.
-      - name: Run unit + security tests with coverage
+      - name: Run unit + security + agent tests with coverage
         run: |
-          python -m pytest tests/unit tests/security \
+          python -m pytest tests/unit tests/security tests/agent_unit \
             --cov=hashview --cov-report=term-missing --cov-report=xml --cov-fail-under=70 -q
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
