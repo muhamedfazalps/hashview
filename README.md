@@ -4,7 +4,7 @@
 [![E2E](https://github.com/hashview/hashview/actions/workflows/e2e.yml/badge.svg)](https://github.com/hashview/hashview/actions/workflows/e2e.yml)
 [![Lint & Security](https://github.com/hashview/hashview/actions/workflows/lint.yml/badge.svg)](https://github.com/hashview/hashview/actions/workflows/lint.yml)
 [![Pylint](https://github.com/hashview/hashview/actions/workflows/pylint.yml/badge.svg)](https://github.com/hashview/hashview/actions/workflows/pylint.yml)
-[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A570%25-brightgreen)](https://github.com/hashview/hashview/actions/workflows/unit-tests.yml)
+[![Coverage](https://raw.githubusercontent.com/hashview/hashview/badges/coverage.svg)](https://github.com/hashview/hashview/actions/workflows/unit-tests.yml)
 
 >**Hashview** is a tool for security professionals to help organize and automate the repetitious tasks related to password cracking. It is broken into two compoents, the Hashview Server, and Hashview Agent. The Hashview Server is a web application that manages one or more agents, deployed by you on dedicated hardware. (note you can run the server and agent on the same machine). Hashview strives to bring constiency in your hashcat tasks while delivering analytics with pretty pictures ready for ctrl+c, ctrl+v into your reports.
 
