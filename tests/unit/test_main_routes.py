@@ -3,12 +3,10 @@
 from datetime import datetime
 
 from hashview.models import (
-    Customers,
     Hashes,
     HashfileHashes,
     Jobs,
     JobTasks,
-    Tasks,
     db,
 )
 from tests.unit.helpers import login, make_admin, make_customer
@@ -52,3 +50,79 @@ def test_stop_job_task_cancels(app, client):
     resp = client.get(f"/job_task/stop/{jt.id}", follow_redirects=False)
     assert resp.status_code in (301, 302)
     assert JobTasks.query.get(jt.id).status == "Canceled"
+
+
+def test_dashboard_recovery_fragment(app, client):
+    # /dashboard/recovery returns just the live-feed table fragment (polled ~5s).
+    admin = make_admin()
+    login(client, admin)
+    h = Hashes(sub_ciphertext="0" * 8, ciphertext="abc", hash_type=1000,
+               cracked=True, plaintext="Winter2025",
+               recovered_at=datetime(2024, 1, 3), recovered_by=admin.id)
+    db.session.add(h)
+    db.session.commit()
+    db.session.add(HashfileHashes(hash_id=h.id, hashfile_id=1, username="bob"))
+    db.session.commit()
+    resp = client.get("/dashboard/recovery")
+    assert resp.status_code == 200
+    assert b"Winter2025" in resp.data
+    assert b"bob" in resp.data
+    # It's a fragment, not a full page (no layout chrome).
+    assert b"<html" not in resp.data
+
+
+def test_dashboard_jobs_fragment(app, client):
+    # /dashboard/jobs returns the running-job + queue markup fragment (polled ~20s).
+    from hashview.models import Hashfiles
+    admin = make_admin()
+    login(client, admin)
+    cust = make_customer()
+    hf = Hashfiles(name="hf", customer_id=cust.id, owner_id=admin.id, runtime=0)
+    db.session.add(hf)
+    db.session.commit()
+    job = Jobs(name="Quarterly Audit", status="Running", customer_id=cust.id,
+               owner_id=admin.id, hashfile_id=hf.id)
+    db.session.add(job)
+    db.session.commit()
+    resp = client.get("/dashboard/jobs")
+    assert resp.status_code == 200
+    assert b"Quarterly Audit" in resp.data
+    assert b"running jobs" in resp.data
+    assert b'data-job-id="%d"' % job.id in resp.data
+
+
+def test_dashboard_summary_json(app, client):
+    # /dashboard/summary returns rendered KPI html + 7-day chart series (polled ~15s).
+    admin = make_admin()
+    login(client, admin)
+    resp = client.get("/dashboard/summary")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "ok"
+    assert len(data["chart"]["labels"]) == 7
+    assert len(data["chart"]["values"]) == 7
+    assert data["kpis_html"]
+    assert "kpi" in data["kpis_html"]
+
+
+def test_dashboard_fleet_fragment(app, client):
+    # /dashboard/fleet returns the agent-fleet modal contents (polled while open).
+    from hashview.models import Agents
+    admin = make_admin()
+    login(client, admin)
+    db.session.add(Agents(name="cracker01", src_ip="10.0.0.5", uuid="u-123",
+                          status="Idle"))
+    db.session.commit()
+    resp = client.get("/dashboard/fleet")
+    assert resp.status_code == 200
+    assert b"cracker01" in resp.data
+    # A fresh agent with no recent check-in renders an OFFLINE state badge.
+    assert b"OFFLINE" in resp.data
+    assert b"<html" not in resp.data
+
+
+def test_dashboard_endpoints_require_login(app, client):
+    for path in ("/dashboard/jobs", "/dashboard/recovery", "/dashboard/summary",
+                 "/dashboard/fleet"):
+        resp = client.get(path)
+        assert resp.status_code in (301, 302, 401), path

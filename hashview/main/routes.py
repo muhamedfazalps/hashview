@@ -2,9 +2,9 @@
 import json
 from datetime import datetime, timedelta
 
-from flask import Blueprint, flash, redirect, render_template
+from flask import Blueprint, flash, jsonify, redirect, render_template
 from flask_login import current_user, login_required
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 
 from hashview.models import (
     Agents,
@@ -22,54 +22,29 @@ from hashview.utils.utils import update_job_task_status
 
 main = Blueprint('main', __name__)
 
-@main.route("/")
-@login_required
-def home():
-    """Function to return the home page"""
-    jobs = Jobs.query.filter(or_((Jobs.status.like('Running')),(Jobs.status.like('Queued')))).all()
-    running_jobs = Jobs.query.filter_by(status = 'Running').order_by(Jobs.priority.desc(), Jobs.queued_at.asc()).all()
-    queued_jobs = Jobs.query.filter_by(status = 'Queued').order_by(Jobs.priority.desc(), Jobs.queued_at.asc()).all()
-    users = Users.query.all()
-    customers = Customers.query.all()
-    job_tasks = JobTasks.query.all()
-    tasks = Tasks.query.all()
-    agents = Agents.query.all()
-    settings = Settings.query.first()
+def _chart_data():
+    """7-day 'passwords recovered' series: (labels, values), oldest→newest.
 
-    recovered_list = {}
-    time_estimated_list = {}
-
-    # For line graph
-    #fig1_cracked_cnt = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).join(Hashfiles, HashfileHashes.hashfile_id==Hashfiles.id).filter(Hashfiles.uploaded_at == ).filter(Hashes.cracked == '1').count()
+    `values` is a per-day count of cracked hashes; it drives both the line chart and
+    the 'Recovered today' / 'Cracked this week' KPIs.
+    """
     today = datetime.now()
-    fig1_labels = [(today - timedelta(days=i)).strftime("%b-%d") for i in range(6, -1, -1)]
-    # hashfiles = Hashfiles.query.filter(Hashfiles.uploaded_at < filter_after).all()
-    #foo = Hashes.query.filter_by(cracked=1).filter_by(recovered_at=)
-    fig1_values = [
-            Hashes.query.filter(
-                and_(
-                    (Hashes.cracked == 1),
-                    (Hashes.recovered_at > today - timedelta(days=i+1)),
-                    (Hashes.recovered_at < today - timedelta(days=i))
-                    )
-                ).count() for i in range(6, -1, -1)
-            ]
-    #fig1_values = ['7', '6', '5', '4', '3', '2', '1']
+    labels = [(today - timedelta(days=i)).strftime("%b-%d") for i in range(6, -1, -1)]
+    values = [
+        Hashes.query.filter(
+            and_(
+                (Hashes.cracked == 1),
+                (Hashes.recovered_at > today - timedelta(days=i + 1)),
+                (Hashes.recovered_at < today - timedelta(days=i)),
+            )
+        ).count()
+        for i in range(6, -1, -1)
+    ]
+    return labels, values
 
 
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    # Create Agent Progress
-    for agent in agents:
-        if agent.hc_status:
-            recovered_list[agent.id] = json.loads(agent.hc_status)['Recovered']
-            time_estimated_list[agent.id] = json.loads(agent.hc_status)['Time_Estimated']
-
-    collapse_all = ""
-    for job in jobs:
-        collapse_all = collapse_all + "collapse" + str(job.id) + " "
-
-    # Live recovery feed: most recent cracked hashes (time, account, plaintext, type).
+def _recovery_feed():
+    """Most-recent recovered passwords for the live feed (max 10, deduped)."""
     from hashview.jobs.forms import JobsNewHashFileForm
     hash_type_names = {}
     try:
@@ -83,10 +58,7 @@ def home():
     except Exception:  # pragma: no cover - defensive: never break the dashboard
         hash_type_names = {}
 
-    def _hexdec(v):
-        # usernames/plaintexts are stored as plain text now; return as-is.
-        return v or ''
-
+    users = Users.query.all()
     user_names = {u.id: ((u.first_name or '') + ' ' + (u.last_name or '')).strip() for u in users}
 
     # Last 10 recovered passwords, deduped by (hash_id, username). The hash↔hashfile_hashes
@@ -110,15 +82,111 @@ def home():
         recovery_feed.append({
             'key': f'{h.id}:{username}',
             'time': h.recovered_at.strftime('%H:%M:%S') if h.recovered_at else '—',
-            'account': _hexdec(username) or '—',
-            'plaintext': _hexdec(h.plaintext),
+            # usernames/plaintexts are stored as plain text now; use as-is.
+            'account': (username or '') or '—',
+            'plaintext': h.plaintext or '',
             'type': hash_type_names.get(str(h.hash_type), str(h.hash_type)),
             'recovered_by': user_names.get(h.recovered_by) or '—',
         })
         if len(recovery_feed) >= 10:
             break
+    return recovery_feed
 
-    return render_template('home.html.j2', jobs=jobs, running_jobs=running_jobs, queued_jobs=queued_jobs, users=users, customers=customers, job_tasks=job_tasks, tasks=tasks, agents=agents, recovered_list=recovered_list, time_estimated_list=time_estimated_list, collapse_all=collapse_all, timestamp=timestamp, datetime=datetime, timedelta=timedelta, fig1_labels=fig1_labels, fig1_values=fig1_values, settings=settings, recovery_feed=recovery_feed)
+
+def _agents_ctx():
+    """Agents + their parsed hashcat progress.
+
+    Shared by the running-job task table and the agent-fleet modal so the hc_status
+    parse lives in one place.
+    """
+    agents = Agents.query.all()
+    recovered_list = {}
+    time_estimated_list = {}
+    for agent in agents:
+        if agent.hc_status:
+            hc = json.loads(agent.hc_status)
+            recovered_list[agent.id] = hc['Recovered']
+            time_estimated_list[agent.id] = hc['Time_Estimated']
+    return {
+        'agents': agents,
+        'recovered_list': recovered_list,
+        'time_estimated_list': time_estimated_list,
+    }
+
+
+def _jobs_ctx():
+    """Template context for the running-job cards + queue table.
+
+    Shared by the full page (home) and the /dashboard/jobs poll so the markup has a
+    single source of truth.
+    """
+    return {
+        'running_jobs': Jobs.query.filter_by(status='Running').order_by(Jobs.priority.desc(), Jobs.queued_at.asc()).all(),
+        'queued_jobs': Jobs.query.filter_by(status='Queued').order_by(Jobs.priority.desc(), Jobs.queued_at.asc()).all(),
+        'users': Users.query.all(),
+        'customers': Customers.query.all(),
+        'job_tasks': JobTasks.query.all(),
+        'tasks': Tasks.query.all(),
+        'settings': Settings.query.first(),
+        'datetime': datetime,
+        'timedelta': timedelta,
+        **_agents_ctx(),
+    }
+
+
+@main.route("/")
+@login_required
+def home():
+    """Render the operations dashboard."""
+    fig1_labels, fig1_values = _chart_data()
+    return render_template(
+        'home.html.j2',
+        fig1_labels=fig1_labels,
+        fig1_values=fig1_values,
+        recovery_feed=_recovery_feed(),
+        **_jobs_ctx(),
+    )
+
+
+@main.route("/dashboard/jobs")
+@login_required
+def dashboard_jobs():
+    """HTML fragment: running-job cards + queue table (polled ~20s)."""
+    return render_template('_dash_jobs.html.j2', **_jobs_ctx())
+
+
+@main.route("/dashboard/recovery")
+@login_required
+def dashboard_recovery():
+    """HTML fragment: live recovery feed table (polled ~5s)."""
+    return render_template('_dash_recovery.html.j2', recovery_feed=_recovery_feed())
+
+
+@main.route("/dashboard/fleet")
+@login_required
+def dashboard_fleet():
+    """HTML fragment: agent-fleet modal contents (polled ~20s while the modal is open).
+
+    agent_stats is supplied by the inject_nav_counts() context processor.
+    """
+    return render_template('_dash_fleet.html.j2', **_agents_ctx())
+
+
+@main.route("/dashboard/summary")
+@login_required
+def dashboard_summary():
+    """JSON: rendered KPI cards + chart series (polled ~15s).
+
+    Computes the 7×COUNT chart data once and feeds both the KPI row and the line
+    chart. agent_stats / job_queue are supplied to the KPI partial by the global
+    inject_nav_counts() context processor.
+    """
+    fig1_labels, fig1_values = _chart_data()
+    return jsonify({
+        'status': 'ok',
+        'kpis_html': render_template('_dash_kpis.html.j2', fig1_values=fig1_values),
+        'chart': {'labels': fig1_labels, 'values': fig1_values},
+    })
 
 @main.route("/job_task/stop/<int:job_task_id>")
 @login_required

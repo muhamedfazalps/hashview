@@ -2,6 +2,7 @@
 <html lang="en" data-glow="subtle" data-scanlines="{% block scanlines %}on{% endblock %}" data-density="comfortable">
 {% from "icons.html.j2" import icon %}
 <head>
+    <script>/* sidebar collapse pref — applied before paint to avoid a flash of the expanded rail */(function(){try{if(localStorage.getItem('hv_sidebar_collapsed')==='1'){document.documentElement.setAttribute('data-sidebar','collapsed');}}catch(e){}})();</script>
     <meta charset="UTF-8">
     <title>{% block title %}Hashview v{{ get_application_version() }}{% endblock %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -53,6 +54,7 @@
 
         <div class="main">
             <div class="topbar">
+                <button class="icon-btn" id="hv-sidebar-toggle" type="button" aria-label="Toggle sidebar" title="Collapse / expand sidebar" onclick="hvToggleSidebar()">{{ icon('list', size=18) }}</button>
                 <div class="topbar-spacer"></div>
                 {% if job_queue is defined %}
                 <div class="top-stat">
@@ -210,6 +212,19 @@
         tick();
         setInterval(tick, 1000);
     })();
+    </script>
+    <script>
+    // Collapse / expand the sidebar to an icon-only rail; persist the choice.
+    function hvToggleSidebar() {
+        var collapsed = document.documentElement.getAttribute('data-sidebar') === 'collapsed';
+        if (collapsed) {
+            document.documentElement.removeAttribute('data-sidebar');
+            try { localStorage.setItem('hv_sidebar_collapsed', '0'); } catch (e) {}
+        } else {
+            document.documentElement.setAttribute('data-sidebar', 'collapsed');
+            try { localStorage.setItem('hv_sidebar_collapsed', '1'); } catch (e) {}
+        }
+    }
     </script>
     {% block scripts %}{% endblock %}
 </body>

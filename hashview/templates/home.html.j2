@@ -1,262 +1,50 @@
 {% extends "layout.html.j2" %}
 {% from "icons.html.j2" import icon %}
-{% from "macros.html.j2" import status_badge, priority_pips %}
 {% block title %}Dashboard · Hashview{% endblock %}
-{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
 {% block content %}
 <style>
 /* Running-jobs task tables: slightly larger STATUS badges than the app default. */
 .rj-tasks td .badge { font-size: 12px; padding: 4px 11px; }
 .rj-tasks td .badge svg { width: 14px; height: 14px; }
+.queue-tbl thead th { padding-top: 14px; padding-bottom: 14px; }
 </style>
 
 <div class="page-head">
     <div>
         <h1 class="page-title">Operations Dashboard</h1>
-        <div class="page-sub">// recovery telemetry · auto-refresh 60s</div>
+        <div class="page-sub">// recovery telemetry · live</div>
     </div>
     <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}">{{ icon('plus', size=15) }} New Job</a>
 </div>
 
-{# agent fleet state — single source: agent_stats (DB-clock based, matches the sidebar) #}
-{% set agt_up = agent_stats.up if agent_stats is defined else 0 %}
-{% set agt_total = agent_stats.total if agent_stats is defined else (agents|length) %}
-{% set agt_online_ids = agent_stats.online_ids if agent_stats is defined else [] %}
+{# ---------- KPI row (live: /dashboard/summary) ---------- #}
+<div id="dash-kpis" style="margin-bottom: var(--gap);">{% include "_dash_kpis.html.j2" %}</div>
 
-{# ---------- KPI row ---------- #}
-<div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--gap);">
-    <div class="kpi">
-        <div class="kpi-label">{{ icon('key', size=13) }} Recovered today</div>
-        <div class="kpi-value accent">{{ (fig1_values[-1] if fig1_values else 0) | commafy }}</div>
-        {% set delta = (fig1_values[-1] - fig1_values[-2]) if fig1_values and fig1_values|length > 1 else 0 %}
-        <div class="kpi-foot">{% if delta >= 0 %}<span class="up">▲ {{ delta | commafy }}</span>{% else %}<span class="down">▼ {{ delta|abs | commafy }}</span>{% endif %} vs yesterday</div>
-    </div>
-    <div class="kpi">
-        <div class="kpi-label">{{ icon('hash', size=13) }} Cracked this week</div>
-        <div class="kpi-value">{{ fig1_values|sum | commafy }}</div>
-        <div class="kpi-foot mono">last 7 days</div>
-    </div>
-    <div class="kpi" style="cursor:pointer;" onclick="document.getElementById('agent-fleet-modal').showModal()" title="View agent fleet">
-        <div class="kpi-label">{{ icon('cpu', size=13) }} Agents online</div>
-        <div class="kpi-value">{{ agt_up | commafy }}<span style="font-size:16px;color:var(--text-dim);">/{{ agt_total | commafy }}</span></div>
-        <div class="kpi-foot mono">{{ agt_total | commafy }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
-    </div>
-    <div class="kpi">
-        <div class="kpi-label">{{ icon('jobs', size=13) }} Jobs</div>
-        <div class="kpi-value">{{ running_jobs|length | commafy }}<span style="font-size:16px;color:var(--text-dim);"> running</span></div>
-        <div class="kpi-foot"><span style="color:var(--amber);">{{ queued_jobs|length | commafy }} queued</span></div>
-    </div>
-</div>
+{# ---------- Jobs: running + queue, directly under the KPI row (live: /dashboard/jobs) ---------- #}
+<div id="dash-jobs" style="margin-bottom: var(--gap);">{% include "_dash_jobs.html.j2" %}</div>
 
-{# ---------- Agent fleet (modal, opened from the "Agents online" KPI) ---------- #}
-<dialog class="hv-dialog" id="agent-fleet-modal" style="max-width:840px; width:92vw;">
-    <div class="hv-dialog-head">
-        <span class="dot-led {% if agt_total == 0 %}idle{% elif agt_up == agt_total %}on{% elif agt_up == 0 %}off{% else %}run{% endif %}"></span>
-        <h3>Agent Fleet</h3>
-        <span class="mono" style="font-size:11px;color:var(--text-mute);">{{ agt_up | commafy }}/{{ agt_total | commafy }} online</span>
-        <button class="icon-btn" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('x', size=15) }}</button>
-    </div>
-    <div class="hv-dialog-body" style="max-height:70vh; overflow-y:auto;">
-            {% if agents %}
-            <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
-                {% for agent in agents %}
-                    {% set is_down = agent.id not in agt_online_ids %}
-                    {% set working = recovered_list.get(agent.id) %}
-                    <div class="card" style="padding:14px 15px;{% if is_down %}border-color:var(--red-dim);{% endif %}">
-                        <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px;">
-                            <span class="dot-led {% if is_down %}off{% elif working %}run{% else %}on{% endif %}"></span>
-                            <span class="mono" style="font-size:13.5px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ agent.name }}</span>
-                            <span style="margin-left:auto;">
-                                {% if is_down %}<span class="badge red">OFFLINE</span>{% elif working %}<span class="badge amber">CRACKING</span>{% else %}<span class="badge green">ONLINE</span>{% endif %}
-                            </span>
-                        </div>
-                        {% if is_down %}
-                            <div class="mono" style="font-size:11.5px;color:var(--red);margin-bottom:8px;">last seen {{ agent.last_checkin }}</div>
-                            <a class="btn btn-sm btn-danger" href="/agents/restart/{{ agent.id }}" role="button">{{ icon('refresh', size=14) }} Restart</a>
-                        {% else %}
-                            <div style="display:flex;justify-content:space-between;font-size:11.5px;font-family:var(--mono);">
-                                <span style="color:var(--text-mute);">rate</span>
-                                <span style="color:{{ 'var(--primary)' if working else 'var(--text-dim)' }};{% if working %}text-shadow:var(--glow-text);{% endif %}white-space:nowrap;">{{ agent.benchmark or '—' }}</span>
-                            </div>
-                            {% if working %}
-                                <div style="display:flex;justify-content:space-between;font-size:11.5px;font-family:var(--mono);margin-top:7px;">
-                                    <span style="color:var(--text-mute);">recovered</span>
-                                    <span style="color:var(--text);">{{ recovered_list[agent.id] }}</span>
-                                </div>
-                                {% if time_estimated_list.get(agent.id) %}
-                                <div style="display:flex;justify-content:space-between;font-size:11.5px;font-family:var(--mono);margin-top:4px;">
-                                    <span style="color:var(--text-mute);">eta</span>
-                                    <span style="color:var(--amber);">{{ time_estimated_list[agent.id].split('(')[1].split(')')[0] if '(' in time_estimated_list[agent.id] else time_estimated_list[agent.id] }}</span>
-                                </div>
-                                {% endif %}
-                            {% endif %}
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="mono" style="color:var(--text-mute);padding:8px 0;">No agents configured. <a href="{{ url_for('agents.agents_list') }}" style="color:var(--primary);">Add one</a>.</div>
-            {% endif %}
-    </div>
-</dialog>
-
-{# ---------- Passwords recovered + live recovery feed (full width) ---------- #}
+{# ---------- Passwords recovered chart + live recovery feed (full width) ---------- #}
 <div class="card" style="margin-bottom: var(--gap);">
     <div class="card-head"><span class="dot-led on"></span><h3>Passwords Recovered</h3><span class="mono" style="margin-left:auto;font-size:11px;color:var(--text-mute);">last 7 days</span></div>
     <div class="card-body">
         <div class="chart-wrap"><canvas id="chLine"></canvas></div>
 
-        {# ---- live recovery feed (under the graph) ---- #}
+        {# ---- live recovery feed, under the graph (live: /dashboard/recovery) ---- #}
         <div style="display:flex; align-items:center; gap:10px; margin:22px 0 2px; padding-top:16px; border-top:1px solid var(--border-soft);">
             <span class="dot-led on"></span>
             <h3 style="margin:0; font-size:12px; font-family:var(--mono); font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim);">Live Recovery Feed</h3>
         </div>
-        {% if recovery_feed %}
-        <table class="tbl">
-            <thead><tr><th>Time</th><th>Account</th><th>Plaintext</th><th class="center">Type</th><th>Recovered By</th></tr></thead>
-            <tbody id="recovery-feed-body">
-                {% for r in recovery_feed %}
-                <tr data-key="{{ r.key }}">
-                    <td class="mono" style="color:var(--text-dim);">{{ r.time }}</td>
-                    <td class="mono" style="color:var(--text-dim);">{{ r.account }}</td>
-                    <td class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ r.plaintext }}</td>
-                    <td class="center"><span class="badge cyan">{{ r.type }}</span></td>
-                    <td class="mono" style="color:var(--text-dim);">{{ r.recovered_by }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="mono" style="color:var(--text-mute); padding:16px 0 4px;">No recoveries yet.</div>
-        {% endif %}
+        <div id="dash-recovery">{% include "_dash_recovery.html.j2" %}</div>
     </div>
 </div>
 
-<script>
-(function () {
-    // Glow (yellow flash, then fade) each newly-arrived recovery-feed row.
-    // The dashboard auto-refreshes every 60s; sessionStorage tracks which rows
-    // we've already shown so only genuinely-new entries flash (and nothing flashes
-    // on the very first page view of the session).
-    var body = document.getElementById('recovery-feed-body');
-    if (!body) return;
-    var STORE = 'hv_recovery_feed_seen';
-    var prev = null;
-    try { prev = JSON.parse(sessionStorage.getItem(STORE) || 'null'); } catch (e) {}
-    var seen = prev ? new Set(prev) : null;
-    var current = [];
-    body.querySelectorAll('tr[data-key]').forEach(function (tr) {
-        var k = tr.getAttribute('data-key');
-        current.push(k);
-        if (seen && !seen.has(k)) {
-            tr.classList.add('feed-fresh');
-        }
-    });
-    try { sessionStorage.setItem(STORE, JSON.stringify(current)); } catch (e) {}
-})();
-</script>
-
-{# ---------- Jobs ---------- #}
-{% if not running_jobs and not queued_jobs %}
-    <div class="card" style="margin-top:6px;">
-        <div class="card-body" style="text-align:center;padding:48px 24px;">
-            <div class="mono" style="color:var(--text-dim);margin-bottom:14px;">No configured jobs.</div>
-            <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}">{{ icon('plus', size=15) }} Create a New Job</a>
-        </div>
-    </div>
-{% else %}
-
-    {% if running_jobs %}
-    <div class="term-divider">running jobs</div>
-    <div style="margin-top:14px;">
-        {% for job in running_jobs %}
-            {% if job.started_at %}
-                {% set job_elapsed = (datetime.now() - job.started_at).total_seconds() %}
-                {% set job_remaining = (settings.max_runtime_jobs * 3600 - job_elapsed) if settings and settings.max_runtime_jobs else 0 %}
-                {% set job_remaining_abs = job_remaining if job_remaining > 0 else 0 %}
-            {% endif %}
-            {% set total = namespace(value=0) %}
-            {% set done = namespace(value=0) %}
-            {% set running = namespace(value=0) %}
-            {% for jt in job_tasks %}{% if jt.job_id == job.id %}{% set total.value = total.value + 1 %}{% if jt.status == 'Completed' %}{% set done.value = done.value + 1 %}{% elif jt.status == 'Running' %}{% set running.value = running.value + 1 %}{% endif %}{% endif %}{% endfor %}
-            <details class="card job-card" open>
-                <summary class="card-head">
-                    <span class="dot-led run"></span>
-                    <div style="min-width:0;">
-                        <div style="font-size:14px;color:var(--text);font-weight:600;">
-                            <span style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %} /</span> {{ job.name }}
-                        </div>
-                        <div class="mono" style="font-size:10.5px;color:var(--text-mute);margin-top:3px;">#{{ job.id }}{% for u in users %}{% if u.id == job.owner_id %} · owner {{ u.first_name }} {{ u.last_name }}{% endif %}{% endfor %}</div>
-                    </div>
-                    <div style="margin-left:auto;display:flex;align-items:center;gap:16px;">
-                        {% if job.started_at %}
-                        <div class="mono" style="font-size:11px;color:var(--text-dim);text-align:right;">
-                            <div>elapsed <b style="color:var(--text);">{{ (job_elapsed // 3600)|int }}h {{ ((job_elapsed % 3600)//60)|int }}m</b></div>
-                            <div style="margin-top:2px;">left <b style="color:var(--amber);">{% if settings and settings.max_runtime_jobs %}{{ (job_remaining_abs // 3600)|int }}h {{ ((job_remaining_abs % 3600)//60)|int }}m{% else %}N/A{% endif %}</b></div>
-                        </div>
-                        {% endif %}
-                        {{ icon('chevR', cls='ico chev') }}
-                    </div>
-                </summary>
-                <div class="card-body">
-                    <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-bottom:7px;">
-                        <span>{{ done.value }}/{{ total.value }} tasks complete</span><span>{{ running.value }} running</span>
-                    </div>
-                    <div class="progress">
-                        {% if total.value %}
-                        <div class="seg-done" style="width: {{ (done.value / total.value) * 100 }}%"></div>
-                        <div class="seg-run" style="width: {{ (running.value / total.value) * 100 }}%"></div>
-                        {% endif %}
-                    </div>
-                    <table class="tbl rj-tasks" style="margin-top:16px;">
-                        <thead><tr><th>Task</th><th class="center">Status</th><th>Agent</th><th class="center">Recovered</th><th class="center">Rate</th><th class="center">ETA</th><th></th></tr></thead>
-                        <tbody>
-                            {% for jt in job_tasks %}{% if jt.job_id == job.id %}
-                                {% set tname = namespace(v='') %}{% for t in tasks %}{% if t.id == jt.task_id %}{% set tname.v = t.name %}{% endif %}{% endfor %}
-                                {% set ag = namespace(name='', rate='', rec='', eta='') %}
-                                {% for a in agents %}{% if a.id == jt.agent_id %}{% set ag.name = a.name %}{% set ag.rate = a.benchmark %}{% if recovered_list.get(a.id) %}{% set ag.rec = recovered_list[a.id].split(' ')[0] %}{% endif %}{% if time_estimated_list.get(a.id) and '(' in time_estimated_list[a.id] %}{% set ag.eta = time_estimated_list[a.id].split('(')[1].split(')')[0] %}{% endif %}{% endif %}{% endfor %}
-                                <tr>
-                                    <td class="mono">{{ tname.v }}</td>
-                                    <td class="center">{{ status_badge(jt.status) }}</td>
-                                    <td class="mono" style="color:var(--text-dim);">{{ ag.name or '—' }}</td>
-                                    <td class="center num" style="color:{{ 'var(--primary)' if ag.rec else 'var(--text-mute)' }};">{{ ag.rec.split('/') | map('commafy') | join('/') if ag.rec else '—' }}</td>
-                                    <td class="center num" style="color:var(--text-dim);">{{ ag.rate or '—' }}</td>
-                                    <td class="center num" style="color:{{ 'var(--amber)' if ag.eta else 'var(--text-mute)' }};">{{ ag.eta or '—' }}</td>
-                                    <td class="center">{% if jt.status == 'Running' %}<a class="icon-btn" href="{{ url_for('main.stop_job_task', job_task_id=jt.id) }}" title="Stop task">{{ icon('stop', size=15) }}</a>{% endif %}</td>
-                                </tr>
-                            {% endif %}{% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </details>
-        {% endfor %}
-    </div>
-    {% endif %}
-
-    {% if queued_jobs %}
-    <div class="term-divider" style="margin-top:18px;">queue · {{ queued_jobs|length }} pending</div>
-    <style>.queue-tbl thead th { padding-top: 14px; padding-bottom: 14px; }</style>
-    <div class="card" style="margin-top:14px;">
-        <table class="tbl queue-tbl">
-            <thead><tr><th>#</th><th>Job</th><th>Customer</th><th class="center">Tasks</th><th class="center">Priority</th><th>Owner</th></tr></thead>
-            <tbody>
-                {% for job in queued_jobs %}
-                    {% set qt = namespace(v=0) %}{% for jt in job_tasks %}{% if jt.job_id == job.id %}{% set qt.v = qt.v + 1 %}{% endif %}{% endfor %}
-                    <tr>
-                        <td class="mono" style="color:var(--text-mute);">{{ job.id }}</td>
-                        <td style="font-weight:500;">{{ job.name }}</td>
-                        <td style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %}</td>
-                        <td class="center num">{{ qt.v }}</td>
-                        <td class="center">{{ priority_pips(job.priority) }}</td>
-                        <td class="mono" style="color:var(--text-dim);">{% for u in users %}{% if u.id == job.owner_id %}{{ u.first_name }} {{ u.last_name }}{% endif %}{% endfor %}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-
-{% endif %}
+{# ---------- Agent fleet (modal, opened from the "Agents online" KPI) ----------
+   Inner content lives in _dash_fleet.html.j2 and is refreshed in place by
+   /dashboard/fleet while the modal is open (the <dialog> shell stays put so its
+   open/closed state survives the swap). #}
+<dialog class="hv-dialog" id="agent-fleet-modal" style="max-width:840px; width:92vw;">
+    <div id="dash-fleet">{% include "_dash_fleet.html.j2" %}</div>
+</dialog>
 
 {% endblock %}
 
@@ -264,6 +52,8 @@
 <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
 <script>
 (function () {
+    // ---------- Passwords-recovered line chart ----------
+    // Kept on window.hvChart so /dashboard/summary polls can update it in place.
     var css = getComputedStyle(document.documentElement);
     var primary = (css.getPropertyValue('--primary') || '#ffb53d').trim();
     var rgb = (css.getPropertyValue('--primary-rgb') || '255,181,61').trim();
@@ -272,52 +62,170 @@
     var bg = (css.getPropertyValue('--bg') || '#060807').trim();
     var mono = "IBM Plex Mono, monospace";
     var el = document.getElementById('chLine');
-    if (!el || typeof Chart === 'undefined') return;
-    var ctx = el.getContext('2d');
-    var grad = ctx.createLinearGradient(0, 0, 0, 240);
-    grad.addColorStop(0, 'rgba(' + rgb + ',0.28)');
-    grad.addColorStop(1, 'rgba(' + rgb + ',0)');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: {{ fig1_labels | safe }},
-            datasets: [{
-                data: {{ fig1_values | safe }},
-                backgroundColor: grad,
-                borderColor: primary,
-                borderWidth: 2.4,
-                pointBackgroundColor: bg,
-                pointBorderColor: primary,
-                pointBorderWidth: 2,
-                pointRadius: 3,
-                pointHoverRadius: 5,
-                lineTension: 0,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            legend: { display: false },
-            tooltips: {
-                backgroundColor: '#161a14', titleFontFamily: mono, bodyFontFamily: mono,
-                titleFontColor: tick, bodyFontColor: primary, borderColor: '#2a3525', borderWidth: 1,
-                displayColors: false,
-                callbacks: {
-                    // Show e.g. "1,000 cracked": thousands-separated value (commas
-                    // kick in at >= 1000 via toLocaleString) with the word appended.
-                    label: function (tooltipItem) {
-                        var n = Number(tooltipItem.yLabel) || 0;
-                        return n.toLocaleString('en-US') + ' cracked';
-                    }
-                }
+    if (el && typeof Chart !== 'undefined') {
+        var ctx = el.getContext('2d');
+        var grad = ctx.createLinearGradient(0, 0, 0, 240);
+        grad.addColorStop(0, 'rgba(' + rgb + ',0.28)');
+        grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+        window.hvChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ fig1_labels | safe }},
+                datasets: [{
+                    data: {{ fig1_values | safe }},
+                    backgroundColor: grad,
+                    borderColor: primary,
+                    borderWidth: 2.4,
+                    pointBackgroundColor: bg,
+                    pointBorderColor: primary,
+                    pointBorderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    lineTension: 0,
+                    fill: true
+                }]
             },
-            scales: {
-                xAxes: [{ gridLines: { color: grid, zeroLineColor: grid, drawBorder: false }, ticks: { fontColor: tick, fontFamily: mono, fontSize: 10 } }],
-                yAxes: [{ gridLines: { color: grid, zeroLineColor: grid, drawBorder: false }, ticks: { fontColor: tick, fontFamily: mono, fontSize: 10, beginAtZero: true, precision: 0 } }]
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                legend: { display: false },
+                tooltips: {
+                    backgroundColor: '#161a14', titleFontFamily: mono, bodyFontFamily: mono,
+                    titleFontColor: tick, bodyFontColor: primary, borderColor: '#2a3525', borderWidth: 1,
+                    displayColors: false,
+                    callbacks: {
+                        // Show e.g. "1,000 cracked": thousands-separated value + the word.
+                        label: function (tooltipItem) {
+                            var n = Number(tooltipItem.yLabel) || 0;
+                            return n.toLocaleString('en-US') + ' cracked';
+                        }
+                    }
+                },
+                scales: {
+                    xAxes: [{ gridLines: { color: grid, zeroLineColor: grid, drawBorder: false }, ticks: { fontColor: tick, fontFamily: mono, fontSize: 10 } }],
+                    yAxes: [{ gridLines: { color: grid, zeroLineColor: grid, drawBorder: false }, ticks: { fontColor: tick, fontFamily: mono, fontSize: 10, beginAtZero: true, precision: 0 } }]
+                }
             }
+        });
+    }
+
+    // ---------- Live recovery feed: flash newly-arrived rows ----------
+    // sessionStorage tracks which row keys we've already shown so only genuinely-new
+    // entries flash (nothing flashes on the first view of the session). Re-run after
+    // every feed swap.
+    var STORE = 'hv_recovery_feed_seen';
+    function markFreshRecoveryRows() {
+        var body = document.getElementById('recovery-feed-body');
+        if (!body) return;
+        var prev = null;
+        try { prev = JSON.parse(sessionStorage.getItem(STORE) || 'null'); } catch (e) {}
+        var seen = prev ? new Set(prev) : null;
+        var current = [];
+        body.querySelectorAll('tr[data-key]').forEach(function (tr) {
+            var k = tr.getAttribute('data-key');
+            current.push(k);
+            if (seen && !seen.has(k)) { tr.classList.add('feed-fresh'); }
+        });
+        try { sessionStorage.setItem(STORE, JSON.stringify(current)); } catch (e) {}
+    }
+    markFreshRecoveryRows();
+
+    // ---------- Independent dashboard polling (no full-page reload) ----------
+    // recovery feed: 5s · KPIs+chart: 15s · jobs/queue: 20s. Polling pauses while the
+    // tab is hidden and catches up on return. GET-only, so no CSRF token is required.
+    var GET = { headers: { 'X-Requested-With': 'fetch' } };
+
+    function pollRecovery() {
+        fetch('{{ url_for("main.dashboard_recovery") }}', GET)
+            .then(function (r) { return r.ok ? r.text() : null; })
+            .then(function (html) {
+                if (html == null) return;
+                var box = document.getElementById('dash-recovery');
+                if (box) { box.innerHTML = html; markFreshRecoveryRows(); }
+            })
+            .catch(function () {});
+    }
+
+    function pollJobs() {
+        fetch('{{ url_for("main.dashboard_jobs") }}', GET)
+            .then(function (r) { return r.ok ? r.text() : null; })
+            .then(function (html) {
+                if (html == null) return;
+                var box = document.getElementById('dash-jobs');
+                if (!box) return;
+                // Preserve which job cards the user has collapsed across the swap.
+                var openState = {};
+                box.querySelectorAll('details[data-job-id]').forEach(function (d) {
+                    openState[d.getAttribute('data-job-id')] = d.open;
+                });
+                box.innerHTML = html;
+                box.querySelectorAll('details[data-job-id]').forEach(function (d) {
+                    var id = d.getAttribute('data-job-id');
+                    if (id in openState) { d.open = openState[id]; }
+                });
+            })
+            .catch(function () {});
+    }
+
+    function pollSummary() {
+        fetch('{{ url_for("main.dashboard_summary") }}', GET)
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || data.status !== 'ok') return;
+                var kpis = document.getElementById('dash-kpis');
+                if (kpis && data.kpis_html) { kpis.innerHTML = data.kpis_html; }
+                if (window.hvChart && data.chart) {
+                    window.hvChart.data.labels = data.chart.labels;
+                    window.hvChart.data.datasets[0].data = data.chart.values;
+                    window.hvChart.update();
+                }
+            })
+            .catch(function () {});
+    }
+
+    function pollFleet() {
+        // Only refresh while the modal is open — no point querying agents for hidden content.
+        var modal = document.getElementById('agent-fleet-modal');
+        if (!modal || !modal.open) return;
+        fetch('{{ url_for("main.dashboard_fleet") }}', GET)
+            .then(function (r) { return r.ok ? r.text() : null; })
+            .then(function (html) {
+                if (html == null) return;
+                var box = document.getElementById('dash-fleet');
+                if (box) { box.innerHTML = html; }
+            })
+            .catch(function () {});
+    }
+
+    // Opening the fleet modal (from the "Agents online" KPI) shows current data
+    // immediately, then pollFleet keeps it fresh while open. Global so it survives
+    // KPI re-renders from /dashboard/summary.
+    window.hvOpenFleet = function () {
+        var modal = document.getElementById('agent-fleet-modal');
+        if (modal) { modal.showModal(); pollFleet(); }
+    };
+
+    var timers = [];
+    function startPolling() {
+        stopPolling();
+        timers.push(setInterval(pollRecovery, 5000));
+        timers.push(setInterval(pollSummary, 15000));
+        timers.push(setInterval(pollJobs, 20000));
+        timers.push(setInterval(pollFleet, 20000));
+    }
+    function stopPolling() {
+        timers.forEach(clearInterval);
+        timers = [];
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            stopPolling();
+        } else {
+            pollRecovery(); pollSummary(); pollJobs(); pollFleet();
+            startPolling();
         }
     });
+    if (!document.hidden) { startPolling(); }
 })();
 </script>
 {% endblock %}

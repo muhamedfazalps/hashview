@@ -1,0 +1,21 @@
+{# Live recovery feed table. Rendered on the full dashboard and re-rendered by
+   /dashboard/recovery (~5s). The poller re-applies the fresh-row glow after each
+   swap via markFreshRecoveryRows(). #}
+{% if recovery_feed %}
+<table class="tbl">
+    <thead><tr><th>Time</th><th>Account</th><th>Plaintext</th><th class="center">Type</th><th>Recovered By</th></tr></thead>
+    <tbody id="recovery-feed-body">
+        {% for r in recovery_feed %}
+        <tr data-key="{{ r.key }}">
+            <td class="mono" style="color:var(--text-dim);">{{ r.time }}</td>
+            <td class="mono" style="color:var(--text-dim);">{{ r.account }}</td>
+            <td class="mono" style="color:var(--primary); text-shadow:var(--glow-text);">{{ r.plaintext }}</td>
+            <td class="center"><span class="badge cyan">{{ r.type }}</span></td>
+            <td class="mono" style="color:var(--text-dim);">{{ r.recovered_by }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="mono" style="color:var(--text-mute); padding:16px 0 4px;">No recoveries yet.</div>
+{% endif %}

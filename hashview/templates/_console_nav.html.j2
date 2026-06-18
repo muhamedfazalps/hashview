@@ -29,7 +29,7 @@
   {%- set bp = ep.split('.')[0] -%}
   {%- set is_active = (request.endpoint == ep) or (bp != 'main' and request.blueprint == bp) -%}
   {%- set cnt = (nav_counts.get(count_key) if (count_key and nav_counts is defined) else none) -%}
-  <a class="nav-item{% if is_active %} active{% endif %}" href="{{ url_for(ep) }}">
+  <a class="nav-item{% if is_active %} active{% endif %}" href="{{ url_for(ep) }}" title="{{ label }}">
     {{ icon(ico, cls='ico', size=17) }}<span>{{ label }}</span>
     {%- if cnt %}<span class="nav-badge">{{ cnt }}</span>{% endif -%}
   </a>
