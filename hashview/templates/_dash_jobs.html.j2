@@ -1,0 +1,104 @@
+{# Running-job cards + queue table. Rendered on the full dashboard and re-rendered
+   by /dashboard/jobs. Styling (.rj-tasks, .queue-tbl) lives in home.html.j2 so it
+   is not re-injected on every poll. #}
+{% from "icons.html.j2" import icon %}
+{% from "macros.html.j2" import status_badge, priority_pips %}
+{% if not running_jobs and not queued_jobs %}
+    <div class="card" style="margin-top:6px;">
+        <div class="card-body" style="text-align:center;padding:48px 24px;">
+            <div class="mono" style="color:var(--text-dim);margin-bottom:14px;">No configured jobs.</div>
+            <a class="btn btn-primary" href="{{ url_for('jobs.jobs_add') }}">{{ icon('plus', size=15) }} Create a New Job</a>
+        </div>
+    </div>
+{% else %}
+
+    {% if running_jobs %}
+    <div class="term-divider">running jobs</div>
+    <div style="margin-top:14px;">
+        {% for job in running_jobs %}
+            {% if job.started_at %}
+                {% set job_elapsed = (datetime.now() - job.started_at).total_seconds() %}
+                {% set job_remaining = (settings.max_runtime_jobs * 3600 - job_elapsed) if settings and settings.max_runtime_jobs else 0 %}
+                {% set job_remaining_abs = job_remaining if job_remaining > 0 else 0 %}
+            {% endif %}
+            {% set total = namespace(value=0) %}
+            {% set done = namespace(value=0) %}
+            {% set running = namespace(value=0) %}
+            {% for jt in job_tasks %}{% if jt.job_id == job.id %}{% set total.value = total.value + 1 %}{% if jt.status == 'Completed' %}{% set done.value = done.value + 1 %}{% elif jt.status == 'Running' %}{% set running.value = running.value + 1 %}{% endif %}{% endif %}{% endfor %}
+            <details class="card job-card" data-job-id="{{ job.id }}" open>
+                <summary class="card-head">
+                    <span class="dot-led run"></span>
+                    <div style="min-width:0;">
+                        <div style="font-size:14px;color:var(--text);font-weight:600;">
+                            <span style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %} /</span> {{ job.name }}
+                        </div>
+                        <div class="mono" style="font-size:10.5px;color:var(--text-mute);margin-top:3px;">#{{ job.id }}{% for u in users %}{% if u.id == job.owner_id %} · owner {{ u.first_name }} {{ u.last_name }}{% endif %}{% endfor %}</div>
+                    </div>
+                    <div style="margin-left:auto;display:flex;align-items:center;gap:16px;">
+                        {% if job.started_at %}
+                        <div class="mono" style="font-size:11px;color:var(--text-dim);text-align:right;">
+                            <div>elapsed <b style="color:var(--text);">{{ (job_elapsed // 3600)|int }}h {{ ((job_elapsed % 3600)//60)|int }}m</b></div>
+                            <div style="margin-top:2px;">left <b style="color:var(--amber);">{% if settings and settings.max_runtime_jobs %}{{ (job_remaining_abs // 3600)|int }}h {{ ((job_remaining_abs % 3600)//60)|int }}m{% else %}N/A{% endif %}</b></div>
+                        </div>
+                        {% endif %}
+                        {{ icon('chevR', cls='ico chev') }}
+                    </div>
+                </summary>
+                <div class="card-body">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-bottom:7px;">
+                        <span>{{ done.value }}/{{ total.value }} tasks complete</span><span>{{ running.value }} running</span>
+                    </div>
+                    <div class="progress">
+                        {% if total.value %}
+                        <div class="seg-done" style="width: {{ (done.value / total.value) * 100 }}%"></div>
+                        <div class="seg-run" style="width: {{ (running.value / total.value) * 100 }}%"></div>
+                        {% endif %}
+                    </div>
+                    <table class="tbl rj-tasks" style="margin-top:16px;">
+                        <thead><tr><th>Task</th><th class="center">Status</th><th>Agent</th><th class="center">Recovered</th><th class="center">Rate</th><th class="center">ETA</th><th></th></tr></thead>
+                        <tbody>
+                            {% for jt in job_tasks %}{% if jt.job_id == job.id %}
+                                {% set tname = namespace(v='') %}{% for t in tasks %}{% if t.id == jt.task_id %}{% set tname.v = t.name %}{% endif %}{% endfor %}
+                                {% set ag = namespace(name='', rate='', rec='', eta='') %}
+                                {% for a in agents %}{% if a.id == jt.agent_id %}{% set ag.name = a.name %}{% set ag.rate = a.benchmark %}{% if recovered_list.get(a.id) %}{% set ag.rec = recovered_list[a.id].split(' ')[0] %}{% endif %}{% if time_estimated_list.get(a.id) and '(' in time_estimated_list[a.id] %}{% set ag.eta = time_estimated_list[a.id].split('(')[1].split(')')[0] %}{% endif %}{% endif %}{% endfor %}
+                                <tr>
+                                    <td class="mono">{{ tname.v }}</td>
+                                    <td class="center">{{ status_badge(jt.status) }}</td>
+                                    <td class="mono" style="color:var(--text-dim);">{{ ag.name or '—' }}</td>
+                                    <td class="center num" style="color:{{ 'var(--primary)' if ag.rec else 'var(--text-mute)' }};">{{ ag.rec.split('/') | map('commafy') | join('/') if ag.rec else '—' }}</td>
+                                    <td class="center num" style="color:var(--text-dim);">{{ ag.rate or '—' }}</td>
+                                    <td class="center num" style="color:{{ 'var(--amber)' if ag.eta else 'var(--text-mute)' }};">{{ ag.eta or '—' }}</td>
+                                    <td class="center">{% if jt.status == 'Running' %}<a class="icon-btn" href="{{ url_for('main.stop_job_task', job_task_id=jt.id) }}" title="Stop task">{{ icon('stop', size=15) }}</a>{% endif %}</td>
+                                </tr>
+                            {% endif %}{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if queued_jobs %}
+    <div class="term-divider" style="margin-top:18px;">queue · {{ queued_jobs|length }} pending</div>
+    <div class="card" style="margin-top:14px;">
+        <table class="tbl queue-tbl">
+            <thead><tr><th>#</th><th>Job</th><th>Customer</th><th class="center">Tasks</th><th class="center">Priority</th><th>Owner</th></tr></thead>
+            <tbody>
+                {% for job in queued_jobs %}
+                    {% set qt = namespace(v=0) %}{% for jt in job_tasks %}{% if jt.job_id == job.id %}{% set qt.v = qt.v + 1 %}{% endif %}{% endfor %}
+                    <tr>
+                        <td class="mono" style="color:var(--text-mute);">{{ job.id }}</td>
+                        <td style="font-weight:500;">{{ job.name }}</td>
+                        <td style="color:var(--text-dim);">{% for c in customers %}{% if c.id == job.customer_id %}{{ c.name }}{% endif %}{% endfor %}</td>
+                        <td class="center num">{{ qt.v }}</td>
+                        <td class="center">{{ priority_pips(job.priority) }}</td>
+                        <td class="mono" style="color:var(--text-dim);">{% for u in users %}{% if u.id == job.owner_id %}{{ u.first_name }} {{ u.last_name }}{% endif %}{% endfor %}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+{% endif %}

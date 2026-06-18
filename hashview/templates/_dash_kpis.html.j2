@@ -1,0 +1,32 @@
+{# KPI row — recovered today / cracked this week / agents online / jobs.
+   Rendered on the full dashboard and re-rendered by /dashboard/summary.
+   `fig1_values` is passed in; `agent_stats` and `job_queue` come from the
+   inject_nav_counts() context processor. #}
+{% from "icons.html.j2" import icon %}
+{% set agt_up = agent_stats.up if agent_stats is defined else 0 %}
+{% set agt_total = agent_stats.total if agent_stats is defined else 0 %}
+{% set jq_running = job_queue.running if job_queue is defined else 0 %}
+{% set jq_queued = job_queue.queued if job_queue is defined else 0 %}
+<div class="grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('key', size=13) }} Recovered today</div>
+        <div class="kpi-value accent">{{ (fig1_values[-1] if fig1_values else 0) | commafy }}</div>
+        {% set delta = (fig1_values[-1] - fig1_values[-2]) if fig1_values and fig1_values|length > 1 else 0 %}
+        <div class="kpi-foot">{% if delta >= 0 %}<span class="up">▲ {{ delta | commafy }}</span>{% else %}<span class="down">▼ {{ delta|abs | commafy }}</span>{% endif %} vs yesterday</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('hash', size=13) }} Cracked this week</div>
+        <div class="kpi-value">{{ fig1_values|sum | commafy }}</div>
+        <div class="kpi-foot mono">last 7 days</div>
+    </div>
+    <div class="kpi" style="cursor:pointer;" onclick="hvOpenFleet()" title="View agent fleet">
+        <div class="kpi-label">{{ icon('cpu', size=13) }} Agents online</div>
+        <div class="kpi-value">{{ agt_up | commafy }}<span style="font-size:16px;color:var(--text-dim);">/{{ agt_total | commafy }}</span></div>
+        <div class="kpi-foot mono">{{ agt_total | commafy }} configured · <span style="color:var(--primary);">view fleet ›</span></div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">{{ icon('jobs', size=13) }} Jobs</div>
+        <div class="kpi-value">{{ jq_running | commafy }}<span style="font-size:16px;color:var(--text-dim);"> running</span></div>
+        <div class="kpi-foot"><span style="color:var(--amber);">{{ jq_queued | commafy }} queued</span></div>
+    </div>
+</div>

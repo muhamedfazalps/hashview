@@ -338,3 +338,31 @@ input[type="checkbox"].hv-check:checked {
 .page > .row:first-child,
 .page > .container,
 .page > .container-fluid { margin-top: 4px; }
+
+/* ============================================================
+   COLLAPSIBLE SIDEBAR (icon-only rail)
+   Toggled via the topbar button -> html[data-sidebar="collapsed"].
+   Overrides --sidebar-w (defined in phosphor.css) and hides text,
+   keeping the brand mark, nav icons and avatar. Persisted in
+   localStorage('hv_sidebar_collapsed'); applied pre-paint in <head>.
+   ============================================================ */
+.app { transition: grid-template-columns .16s ease; }
+
+html[data-sidebar="collapsed"] { --sidebar-w: 64px; }
+
+/* brand: keep just the # mark, centered */
+html[data-sidebar="collapsed"] .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+html[data-sidebar="collapsed"] .brand > div:not(.brand-mark) { display: none; }
+
+/* nav: drop section labels, center each icon, hide link text + count badges */
+html[data-sidebar="collapsed"] .nav { padding-left: 8px; padding-right: 8px; }
+html[data-sidebar="collapsed"] .nav-group-label { display: none; }
+html[data-sidebar="collapsed"] .nav-item { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+html[data-sidebar="collapsed"] .nav-item > span { display: none; }
+html[data-sidebar="collapsed"] .nav-item.active::before { left: -8px; }
+
+/* foot: drop the agent text strip, keep just the user avatar */
+html[data-sidebar="collapsed"] .agent-mini { display: none; }
+html[data-sidebar="collapsed"] .user-chip { justify-content: center; padding-left: 0; padding-right: 0; }
+html[data-sidebar="collapsed"] .user-chip > div:not(.avatar),
+html[data-sidebar="collapsed"] .user-chip > a { display: none; }
