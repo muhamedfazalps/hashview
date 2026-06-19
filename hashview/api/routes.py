@@ -1403,45 +1403,62 @@ def v1_api_search():
     if not is_authorized(user=True, agent=False, request=request):
         return redirect("/v1/not_authorized")
     
-    search_json = request.get_json()
-    if search_json:
-        # Right now we're only asking hash, in the future we may get requests to search by user or by plaintext.
-        # Use .get() so a body that omits 'hash' falls through to "Invalid Search" instead of raising
-        # KeyError -> HTML 500 (issue #236).
-        if search_json.get('hash'):
-            # we could search by subciphertext instead of ciphertext if things get slow.
-            # subcipher text is indexed whereas ciphertext is not
-            cracked_hash = Hashes.query.filter_by(cracked=True).filter_by(ciphertext=search_json['hash']).first()
-            if cracked_hash:
-                msg = {
-                    'hash_type': cracked_hash.hash_type,
-                    'hash': search_json['hash'],
-                    'plaintext': cracked_hash.plaintext
-                }
-                message = {
-                    'status': 200,
-                    'type': 'message',
-                    'msg': msg
-                }            
-            else:
-                message = {
-                    'status': 200,
-                    'type': 'message',
-                    'msg': 'Search complete. No Results Found.'
-                }            
-        else:
-            message = {
-                'status': 500,
-                'type': 'message',
-                'msg': 'Invalid Search'
-            }
-    else:
-        message = {
-            'status': 500,
-            'type': 'message',
-            'msg': 'Invalid Search'
-        }            
-    return jsonify(message)
+    # silent=True: an empty/invalid body returns None (-> JSON "Invalid Search")
+    # rather than Flask's HTML 400 page (issue #213).
+    search_json = request.get_json(silent=True)
+    if not search_json:
+        return jsonify({'status': 500, 'type': 'message', 'msg': 'Invalid Search'})
+
+    not_found = {'status': 200, 'type': 'message', 'msg': 'Search complete. No Results Found.'}
+
+    # Provide exactly one of hash / plaintext / username (checked in that order).
+
+    # By exact ciphertext -> the single recovered hash (back-compatible object shape).
+    if search_json.get('hash'):
+        ciphertext = search_json['hash']
+        cracked_hash = Hashes.query.filter_by(cracked=True, ciphertext=ciphertext).first()
+        if not cracked_hash:
+            return jsonify(not_found)
+        return jsonify({'status': 200, 'type': 'message', 'msg': {
+            'hash_type': cracked_hash.hash_type,
+            'hash': ciphertext,
+            'plaintext': cracked_hash.plaintext,
+        }})
+
+    # By recovered plaintext -> every cracked hash with that plaintext (a list).
+    if search_json.get('plaintext'):
+        matches = Hashes.query.filter_by(cracked=True, plaintext=search_json['plaintext']).all()
+        if not matches:
+            return jsonify(not_found)
+        return jsonify({'status': 200, 'type': 'message', 'msg': [
+            {'hash_type': h.hash_type, 'hash': h.ciphertext, 'plaintext': h.plaintext}
+            for h in matches
+        ]})
+
+    # By username -> the associated hash(es), with plaintext when recovered (a list).
+    if search_json.get('username'):
+        username = search_json['username']
+        rows = (db.session.query(Hashes)
+                .join(HashfileHashes, Hashes.id == HashfileHashes.hash_id)
+                .filter(HashfileHashes.username == username)
+                .all())
+        seen = set()
+        results = []
+        for h in rows:
+            if h.id in seen:  # a username can map to the same hash across hashfiles
+                continue
+            seen.add(h.id)
+            results.append({
+                'username': username,
+                'hash_type': h.hash_type,
+                'hash': h.ciphertext,
+                'plaintext': h.plaintext if h.cracked else None,
+            })
+        if not results:
+            return jsonify(not_found)
+        return jsonify({'status': 200, 'type': 'message', 'msg': results})
+
+    return jsonify({'status': 500, 'type': 'message', 'msg': 'Invalid Search'})
 
 # Error
 @api.route('/v1/error', methods=['POST'])
