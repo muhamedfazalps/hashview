@@ -2,7 +2,7 @@
 from functools import partial
 from logging import Logger
 
-from flask import Flask
+from flask import Flask, current_app
 from flask_apscheduler import APScheduler
 from flask_mail import Mail, Message
 from flask_sqlalchemy import SQLAlchemy
@@ -155,8 +155,12 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
             hashfile.id, hashfile.name,
         )
 
-    # Clean temp folder of files older than RETENTION PERIOD
-    tmp_directory = Path('hashview/control/tmp').resolve()
+    # Clean temp folder of files older than RETENTION PERIOD.
+    # Build the path from current_app.root_path (we always run inside an app
+    # context) rather than a CWD-relative literal, so the sweep finds control/tmp
+    # regardless of the process working directory (issue #226). The old relative
+    # path silently swept nothing when CWD wasn't the repo root.
+    tmp_directory = Path(current_app.root_path, 'control', 'tmp').resolve()
     retention_limit = time.time() - retention_period * 86400
     # Encrypted one-time DB backups are single-use and contain the whole
     # database; reap them within an hour regardless of the (day-granular)
