@@ -587,10 +587,9 @@ paths:
       summary: Queue a job for execution
       description: >-
         Owner or admin only. Moves the job and its tasks to `Queued` and
-        builds the hashcat command for every job task. NOTE the guard
-        currently requires the job to already be in status `Queued`; jobs in
-        `Ready` are rejected with "Job is not in a queued state" (start them
-        from the web UI instead).
+        builds the hashcat command for every job task. Jobs already in status
+        `Running` or `Queued` are rejected with "Job is already running or
+        queued"; jobs in `Ready` (and other inactive states) are started.
       operationId: startJob
       x-audience: user
       security:
@@ -614,7 +613,7 @@ paths:
                   - $ref: '#/components/schemas/ApiError'
               examples:
                 started: {value: {status: 200, type: message, msg: Job started, job_id: 12}}
-                notQueued: {value: {status: 400, type: Error, msg: Job is not in a queued state}}
+                alreadyActive: {value: {status: 400, type: Error, msg: Job is already running or queued}}
         '302':
           $ref: '#/components/responses/NotAuthorizedRedirect'
 
