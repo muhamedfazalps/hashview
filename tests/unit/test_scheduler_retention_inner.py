@@ -50,12 +50,12 @@ def _settings(retention_period=30):
     return s
 
 
-def _setup_tmp(tmp_path, monkeypatch):
-    """The cleanup reaps control/tmp via the relative path
-    'hashview/control/tmp'; chdir to a temp dir with a stand-in so the test
-    never touches the real control/tmp."""
-    monkeypatch.chdir(tmp_path)
-    tmp_dir = tmp_path / "hashview" / "control" / "tmp"
+def _setup_tmp(app, tmp_path, monkeypatch):
+    """The cleanup reaps <current_app.root_path>/control/tmp; point root_path at a
+    temp dir with a control/tmp stand-in so the test never touches the real
+    control/tmp."""
+    monkeypatch.setattr(app, "root_path", str(tmp_path))
+    tmp_dir = tmp_path / "control" / "tmp"
     os.makedirs(tmp_dir)
     return tmp_dir
 
@@ -65,7 +65,7 @@ def _run_inner(app):
 
 
 def test_inner_purges_aged_job_and_hashfile_rows(app, tmp_path, monkeypatch):
-    _setup_tmp(tmp_path, monkeypatch)
+    _setup_tmp(app, tmp_path, monkeypatch)
     _settings(retention_period=30)
     admin = _admin()
     cust = Customers(name="Acme")
@@ -108,7 +108,7 @@ def test_inner_purges_aged_job_and_hashfile_rows(app, tmp_path, monkeypatch):
 
 
 def test_inner_respects_retention_period_setting(app, tmp_path, monkeypatch):
-    _setup_tmp(tmp_path, monkeypatch)
+    _setup_tmp(app, tmp_path, monkeypatch)
     _settings(retention_period=100)  # window wider than the rows' age
     admin = _admin()
     cust = Customers(name="Acme")
@@ -133,7 +133,7 @@ def test_inner_respects_retention_period_setting(app, tmp_path, monkeypatch):
 
 
 def test_inner_noop_when_nothing_aged(app, tmp_path, monkeypatch):
-    tmp_dir = _setup_tmp(tmp_path, monkeypatch)
+    tmp_dir = _setup_tmp(app, tmp_path, monkeypatch)
     _settings(retention_period=30)
     admin = _admin()
     cust = Customers(name="Acme")
@@ -160,7 +160,7 @@ def test_inner_noop_when_nothing_aged(app, tmp_path, monkeypatch):
 
 
 def test_inner_reaps_tmp_files_by_age_and_keeps_gitignore(app, tmp_path, monkeypatch):
-    tmp_dir = _setup_tmp(tmp_path, monkeypatch)
+    tmp_dir = _setup_tmp(app, tmp_path, monkeypatch)
     _settings(retention_period=30)
 
     old_file = tmp_dir / "stale-upload"
@@ -179,16 +179,48 @@ def test_inner_reaps_tmp_files_by_age_and_keeps_gitignore(app, tmp_path, monkeyp
     two_hours_ago = time.time() - 7200
     os.utime(backup, (two_hours_ago, two_hours_ago))
 
+    # a backup younger than an hour must NOT be reaped (pins the other side of
+    # the backup_limit boundary so an inverted/off-by-one comparison is caught)
+    fresh_backup = tmp_dir / "fresh-backup.sql.gz.enc"
+    fresh_backup.write_text("enc")
+    half_hour_ago = time.time() - 1800
+    os.utime(fresh_backup, (half_hour_ago, half_hour_ago))
+
     _run_inner(app)
 
     assert not old_file.exists()       # past retention window -> removed
     assert gitignore.exists()          # always kept
     assert not backup.exists()         # backups reaped within the hour
+    assert fresh_backup.exists()       # backup younger than an hour -> kept
+
+
+def test_inner_reaps_tmp_regardless_of_cwd(app, tmp_path, monkeypatch):
+    """Regression for #226: the sweep locates control/tmp via current_app.root_path,
+    so it reaps aged files even when the process working directory is elsewhere.
+
+    The old CWD-relative path ('hashview/control/tmp') resolved to nothing when
+    CWD wasn't the repo root, so the sweep silently removed nothing. chdir to an
+    unrelated directory here so this fails against that old behavior from any CWD.
+    """
+    tmp_dir = _setup_tmp(app, tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    os.makedirs(elsewhere)
+    monkeypatch.chdir(elsewhere)
+    _settings(retention_period=30)
+
+    stale_file = tmp_dir / "stale-upload"
+    stale_file.write_text("old")
+    stale = time.time() - 40 * 86400
+    os.utime(stale_file, (stale, stale))
+
+    _run_inner(app)
+
+    assert not stale_file.exists()  # reaped despite CWD != repo root
 
 
 def test_inner_purges_job_referencing_aged_hashfile(app, tmp_path, monkeypatch):
     # A *fresh* job that references an aged hashfile is deleted along with it.
-    _setup_tmp(tmp_path, monkeypatch)
+    _setup_tmp(app, tmp_path, monkeypatch)
     _settings(retention_period=30)
     admin = _admin()
     cust = Customers(name="Acme")
@@ -223,5 +255,5 @@ def test_outer_wrapper_swallows_failures(app, tmp_path, monkeypatch):
     # No Settings row -> the inner function raises; the scheduled-job wrapper
     # must swallow it (log + continue) rather than crash the scheduler thread.
     from hashview.scheduler import data_retention_cleanup
-    _setup_tmp(tmp_path, monkeypatch)
+    _setup_tmp(app, tmp_path, monkeypatch)
     data_retention_cleanup(app)  # must not raise
