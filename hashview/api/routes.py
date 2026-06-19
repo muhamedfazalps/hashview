@@ -750,7 +750,7 @@ def v1_api_post_add_job():
         # Get top 10 effective tasks
         most_effective_tasks_raw = db.session.query(func.count(Hashes.id).label("row_count"), Hashes.task_id, Tasks.name,).join(Tasks, Hashes.task_id == Tasks.id) \
             .filter(Hashes.cracked == '1') \
-            .filter(Hashes.task_id is not None) \
+            .filter(Hashes.task_id.isnot(None)) \
             .filter(Hashes.task_id != '0') \
             .filter(Hashes.hash_type == hash.hash_type) \
             .group_by(Hashes.task_id) \
