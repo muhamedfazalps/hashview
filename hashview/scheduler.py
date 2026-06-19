@@ -133,20 +133,22 @@ def _data_retention_cleanup_inner(db :SQLAlchemy, mailer :Mail, logger :Logger):
 
         hashfile_hashes = HashfileHashes.query.filter_by(hashfile_id = hashfile.id).all()
         for hashfile_hash in hashfile_hashes:
-            hashes = Hashes.query.filter_by(id=hashfile_hash.hash_id).filter_by(cracked=0).all()
-            for hash_entry in hashes:
-                # Only delete this hash if it isn't shared with another hashfile.
-                # If duplicates exist they can still be removed once the
-                # hashfile_hash entry is gone and the count drops below 2.
-                hashfile_cnt = (
-                    HashfileHashes.query.filter_by(hash_id=hash_entry.id)
-                    .distinct('hashfile_id').count()
-                )
-                if hashfile_cnt < 2:
-                    db.session.delete(hash_entry)
-                    db.session.commit()
-                    HashNotifications.query.filter_by(hash_id=hashfile_hash.hash_id).delete()
+            # Capture the id BEFORE deleting anything: a commit/flush expires this
+            # instance, and the DB-level hashfile_hashes.hash_id -> hashes.id FK
+            # (ON DELETE CASCADE) removes this row when its hash is deleted, so its
+            # attributes must not be read afterwards (that raised ObjectDeletedError).
+            hash_id = hashfile_hash.hash_id
             db.session.delete(hashfile_hash)
+            db.session.flush()  # apply the association delete before the orphan check below
+
+            # Purge the underlying hash only if it is now unreferenced by ANY hashfile
+            # and is uncracked (cracked recoveries are kept for reporting). delete()
+            # returns the affected row count, so notifications are cleared only when the
+            # hash actually was. The post-delete count() is dialect-independent, unlike
+            # the old .distinct('hashfile_id') (a no-op outside PostgreSQL).
+            if HashfileHashes.query.filter_by(hash_id=hash_id).count() == 0:
+                if Hashes.query.filter_by(id=hash_id, cracked=0).delete():
+                    HashNotifications.query.filter_by(hash_id=hash_id).delete()
         db.session.delete(hashfile)
         db.session.commit()
 
