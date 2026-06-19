@@ -1391,8 +1391,10 @@ def v1_api_search():
     
     search_json = request.get_json()
     if search_json:
-        # Right now we're only asking hash, in the future we may get requests to search by user or by plaintext
-        if search_json['hash']:
+        # Right now we're only asking hash, in the future we may get requests to search by user or by plaintext.
+        # Use .get() so a body that omits 'hash' falls through to "Invalid Search" instead of raising
+        # KeyError -> HTML 500 (issue #236).
+        if search_json.get('hash'):
             # we could search by subciphertext instead of ciphertext if things get slow.
             # subcipher text is indexed whereas ciphertext is not
             cracked_hash = Hashes.query.filter_by(cracked=True).filter_by(ciphertext=search_json['hash']).first()
