@@ -1122,15 +1122,23 @@ def v1_api_get_hashfile(hashfile_id):
 
     update_heartbeat(request.cookies.get('uuid'))
     random_hex = secrets.token_hex(8)
-    file_object = open('hashview/control/tmp/' + random_hex, 'w')
+    # Build the path from current_app.root_path (like the sibling routes) so it does
+    # not depend on the current working directory (issue #227).
+    tmp_dir = os.path.join(current_app.root_path, 'control/tmp')
+    file_path = os.path.join(tmp_dir, random_hex)
 
-    # do a left join select to get our ciphertext hashes
-    dbresults = db.session.query(Hashes, HashfileHashes).outerjoin(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked == '0').filter(HashfileHashes.hashfile_id==hashfile_id).all()
-    for result in dbresults:
-        file_object.write(result[0].ciphertext + '\n')
-    file_object.close()
+    # Left join to get the uncracked ciphertext hashes. Stream rows with yield_per and
+    # a context manager so a large hashfile isn't fully materialized in memory.
+    dbresults = db.session.query(Hashes, HashfileHashes) \
+        .outerjoin(HashfileHashes, Hashes.id == HashfileHashes.hash_id) \
+        .filter(Hashes.cracked == '0') \
+        .filter(HashfileHashes.hashfile_id == hashfile_id) \
+        .yield_per(1000)
+    with open(file_path, 'w') as file_object:
+        for result in dbresults:
+            file_object.write(result[0].ciphertext + '\n')
 
-    return send_from_directory('control/tmp/', random_hex)
+    return send_from_directory(tmp_dir, random_hex)
 
 # List hashfiles containing at least one hash of the given hash type.
 # No collision with /v1/hashfiles/<int:hashfile_id>: the static 'hash_type/'
