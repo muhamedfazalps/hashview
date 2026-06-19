@@ -15,6 +15,7 @@ Auth model recap (see ``is_authorized``):
 
 import json
 import os
+from unittest import mock
 
 import pytest
 
@@ -765,6 +766,25 @@ def test_send_generated_file_removes_file_after_response_close(app, tmp_path):
 
         response.close()
         assert not generated.exists()
+
+
+@pytest.mark.security
+def test_remove_file_logs_warning_on_oserror(app, tmp_path, monkeypatch):
+    """A cleanup failure is logged (not swallowed) so admins can troubleshoot."""
+    from hashview.api import routes as api_routes
+
+    def boom(_path):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(api_routes.os, "remove", boom)
+
+    with app.app_context():
+        with mock.patch.object(api_routes.current_app.logger, "warning") as warn:
+            api_routes._remove_file(str(tmp_path / "stuck.txt"))
+
+    assert warn.called
+    logged = " ".join(str(a) for a in warn.call_args.args)
+    assert "stuck.txt" in logged
 
 
 # ---------------------------------------------------------------------------

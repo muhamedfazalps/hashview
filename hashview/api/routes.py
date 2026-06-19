@@ -158,6 +158,11 @@ def _remove_file(path):
         os.remove(path)
     except FileNotFoundError:
         pass
+    except OSError as error:
+        # Don't fail the request, but surface the problem so an admin can
+        # troubleshoot temp files stacking up in control/tmp (see issue #226).
+        current_app.logger.warning(
+            'Failed to remove temporary file %s: %s', path, error)
 
 
 def _send_generated_file(directory, filename, **kwargs):
