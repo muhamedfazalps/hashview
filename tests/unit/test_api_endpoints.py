@@ -246,8 +246,13 @@ def test_no_uuid_cookie_does_not_match_null_api_key(client):
 
 
 @pytest.mark.security
-def test_jobs_start_returns_400_when_job_not_queued(client, admin_user):
-    """POST /v1/jobs/start/<id> for a Ready (not Queued) job returns 400."""
+def test_jobs_start_returns_400_when_job_already_queued(client, admin_user):
+    """POST /v1/jobs/start/<id> for a job already Running/Queued returns 400.
+
+    Per issue #217 the guard rejects jobs that are already Running or Queued
+    (and allows Ready jobs to start), so an already-Queued job is the case
+    that must still 400.
+    """
     cust = Customers(name="CustForJob")
     _db.session.add(cust)
     _db.session.commit()
@@ -262,7 +267,7 @@ def test_jobs_start_returns_400_when_job_not_queued(client, admin_user):
 
     job = Jobs(
         name="my-job",
-        status="Ready",
+        status="Queued",
         hashfile_id=hashfile.id,
         customer_id=cust.id,
         owner_id=admin_user.id,
@@ -270,7 +275,7 @@ def test_jobs_start_returns_400_when_job_not_queued(client, admin_user):
     _db.session.add(job)
     _db.session.commit()
 
-    # The route requires at least one JobTask for the "not queued" branch
+    # The route requires at least one JobTask for the status-guard branch
     # to be reachable. Seed one so we hit the status check rather than the
     # "Invalid job ID" fallback.
     from hashview.models import JobTasks

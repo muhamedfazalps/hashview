@@ -821,11 +821,11 @@ def v1_api_post_start_job(job_id):
     current_user = Users.query.filter_by(api_key=uuid).first()
 
     if job and job_tasks:
-        if job.status != 'Queued':
+        if job.status in ('Running', 'Queued'):
             return jsonify({
                 'status': 400,
                 'type': 'Error',
-                'msg': 'Job is not in a queued state'
+                'msg': 'Job is already running or queued'
             })        
         if current_user.admin or job.owner_id == current_user.id:
             job.status = 'Queued'
