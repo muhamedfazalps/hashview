@@ -748,6 +748,25 @@ def test_rules_download_serves_gzip_roundtrip(
     assert gzip.decompress(resp.data) == content
 
 
+@pytest.mark.security
+def test_send_generated_file_removes_file_after_response_close(app, tmp_path):
+    """Generated API download files are removed after the response closes."""
+    from hashview.api import routes as api_routes
+
+    tmp_dir = tmp_path / "control" / "tmp"
+    tmp_dir.mkdir(parents=True)
+    generated = tmp_dir / "download.txt"
+    generated.write_bytes(b"payload")
+
+    with app.test_request_context("/v1/generated"):
+        response = api_routes._send_generated_file(str(tmp_dir), generated.name)
+        assert b"".join(response.response) == b"payload"
+        assert generated.exists()
+
+        response.close()
+        assert not generated.exists()
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/tasks/add
 # ---------------------------------------------------------------------------

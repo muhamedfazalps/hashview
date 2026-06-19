@@ -152,6 +152,21 @@ def versionCheck(agent_version):
     else:
         return False
 
+
+def _remove_file(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def _send_generated_file(directory, filename, **kwargs):
+    file_path = os.path.join(directory, filename)
+    response = send_from_directory(directory, filename, **kwargs)
+    response.call_on_close(lambda: _remove_file(file_path))
+    return response
+
+
 @api.route('/v1/not_authorized', methods=['GET', 'POST'])
 def v1_api_unauthorized():
     message = {
@@ -408,7 +423,8 @@ def v1_api_get_rules_download(rules_id):
 
     tmp_gz = os.path.join(tmp_dir, secrets.token_hex(8) + '.gz')
     compress_to_gz(src_path, tmp_gz, 9)
-    return send_from_directory(tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
+    return _send_generated_file(
+        tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
 
 # Create new rule
 @api.route('/v1/rules/add/<rule_name>', methods=['POST'])
@@ -524,7 +540,8 @@ def v1_api_get_wordlist_download(wordlist_id):
     # and serve that. No shell; pure-Python streamed gzip -9.
     tmp_gz = os.path.join(tmp_dir, secrets.token_hex(8) + '.gz')
     compress_to_gz(wordlist.path, tmp_gz, 9)
-    return send_from_directory(tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
+    return _send_generated_file(
+        tmp_dir, os.path.basename(tmp_gz), mimetype='application/octet-stream')
 
 # Update Dynamic Wordlist
 @api.route('/v1/updateWordlist/<int:wordlist_id>', methods=['GET'])
@@ -1138,7 +1155,7 @@ def v1_api_get_hashfile(hashfile_id):
         for result in dbresults:
             file_object.write(result[0].ciphertext + '\n')
 
-    return send_from_directory(tmp_dir, random_hex)
+    return _send_generated_file(tmp_dir, random_hex)
 
 # List hashfiles containing at least one hash of the given hash type.
 # No collision with /v1/hashfiles/<int:hashfile_id>: the static 'hash_type/'
