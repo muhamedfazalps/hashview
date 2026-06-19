@@ -1109,13 +1109,16 @@ paths:
   /v1/search:
     post:
       tags: [Search]
-      summary: Look up a recovered hash
+      summary: Look up recovered hashes
       description: >-
-        Searches CRACKED hashes by exact ciphertext. When found, `msg` is an
-        OBJECT with the recovered material; when not found, `msg` is the
-        string "Search complete. No Results Found.". A missing/empty body
-        answers body status 500 "Invalid Search"; a JSON body without a
-        `hash` key raises an unhandled server error.
+        Search recovered data. Provide exactly one of `hash`, `plaintext`, or
+        `username` in the body. `hash` matches CRACKED hashes by exact
+        ciphertext and returns a single object. `plaintext` returns every
+        cracked hash with that recovered plaintext (a list). `username` returns
+        the hash(es) tied to that username, with `plaintext` populated when
+        recovered (a list). When nothing matches, `msg` is the string "Search
+        complete. No Results Found."; a missing/empty body, or one with none of
+        the three keys, answers body status 500 "Invalid Search".
       operationId: searchHash
       x-audience: user
       security:
@@ -1129,8 +1132,9 @@ paths:
       responses:
         '200':
           description: >-
-            HTTP 200 always; `msg` is an object (found), a not-found string,
-            or body status 500 "Invalid Search" for an empty body.
+            HTTP 200 always; `msg` is an object (hash match), an array
+            (plaintext / username matches), the not-found string, or body
+            status 500 "Invalid Search".
           content:
             application/json:
               schema:
@@ -1141,6 +1145,18 @@ paths:
                     status: 200
                     type: message
                     msg: {hash_type: 1000, hash: 8846F7EAEE8FB117AD06BDD830B7586C, plaintext: password}
+                plaintextMatch:
+                  value:
+                    status: 200
+                    type: message
+                    msg:
+                      - {hash_type: 1000, hash: 8846F7EAEE8FB117AD06BDD830B7586C, plaintext: password}
+                usernameMatch:
+                  value:
+                    status: 200
+                    type: message
+                    msg:
+                      - {username: admin, hash_type: 1000, hash: 8846F7EAEE8FB117AD06BDD830B7586C, plaintext: password}
                 notFound:
                   value: {status: 200, type: message, msg: Search complete. No Results Found.}
                 invalid:
@@ -1471,11 +1487,23 @@ components:
 
     SearchRequest:
       type: object
-      required: [hash]
+      description: >-
+        Provide exactly one of `hash`, `plaintext`, or `username`. A body with
+        none of them (or an empty body) returns body status 500 "Invalid Search".
       properties:
         hash:
           type: string
-          description: Exact ciphertext to look up among cracked hashes.
+          description: Exact ciphertext to look up among cracked hashes (returns one object).
+        plaintext:
+          type: string
+          description: >-
+            Recovered plaintext to look up; returns every cracked hash with that
+            plaintext (a list).
+        username:
+          type: string
+          description: >-
+            Username to look up; returns the associated hash(es), with plaintext
+            when recovered (a list).
 
     AgentErrorReport:
       type: object
@@ -1657,19 +1685,23 @@ components:
           properties:
             msg:
               description: >-
-                An object when a cracked hash matched; the string "Search
-                complete. No Results Found." otherwise (or "Invalid Search"
-                with body status 500 for an empty body).
+                An object for a `hash` match; an array of result objects for
+                `plaintext` / `username` searches; the string "Search complete.
+                No Results Found." when nothing matched; or "Invalid Search"
+                (body status 500) for an empty/invalid request.
               oneOf:
                 - $ref: '#/components/schemas/SearchResultFound'
+                - type: array
+                  items: {$ref: '#/components/schemas/SearchResultFound'}
                 - type: string
 
     SearchResultFound:
       type: object
       properties:
         hash_type: {type: integer}
-        hash: {type: string, description: The ciphertext searched for.}
-        plaintext: {type: string}
+        hash: {type: string, description: The matching ciphertext.}
+        plaintext: {type: string, nullable: true, description: Recovered plaintext; null for an uncracked username match.}
+        username: {type: string, description: Present only for username searches.}
 
     CustomerAddedResponse:
       allOf:
