@@ -768,10 +768,16 @@ def update_job_task_status(jobtask_id, status):
 
     jobtask.status = status
     if status == 'Completed' or status == 'Canceled':
+        # Clear the assigned agent's stale hashcat status BEFORE nulling agent_id.
+        # Nulling first made the lookup Agents.query.get(None) -> None, so the agent
+        # was never found and kept its stale hc_status forever (issue #237). The
+        # None-guard also avoids the spurious "fully NULL primary key" SAWarning when
+        # an unassigned task is cancelled.
+        if jobtask.agent_id is not None:
+            agent = Agents.query.get(jobtask.agent_id)
+            if agent:
+                agent.hc_status = ''
         jobtask.agent_id = None
-        agent = Agents.query.get(jobtask.agent_id)
-        if agent:
-            agent.hc_status = ''
     db.session.commit()
 
     # Update Jobs
