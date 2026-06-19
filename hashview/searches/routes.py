@@ -54,10 +54,9 @@ def searches_list():
             flash('No results found.', 'warning')
     else:
         customers = None
-        results = None
 
     if hashfile_results and "export" in request.form: #Export Results
-        return export_results(customers, results, hashfiles, searchForm.export_type.data)
+        return export_results(customers, hashfile_results, hashfiles, searchForm.export_type.data)
 
     return render_template('search.html.j2', title='Search', searchForm=searchForm, customers=customers, hash_results=hash_results, hashfile_results=hashfile_results, hashfiles=hashfiles, redacted_data=redacted_data)
 
@@ -66,11 +65,11 @@ def export_results(customers, results, hashfiles, separator):
     """Function to export search results"""
     str_io = io.StringIO()
     separator = (',' if separator == "Comma" else ":")
-    get_rows(strIO, customers, results, hashfiles, separator)
+    get_rows(str_io, customers, results, hashfiles, separator)
     byteIO = io.BytesIO()
-    byteIO.write(strIO.getvalue().encode())
+    byteIO.write(str_io.getvalue().encode())
     byteIO.seek(0)
-    strIO.close()
+    str_io.close()
     return send_file(byteIO, download_name="search.txt", as_attachment=True)
 
 #If this logic changes on in the html (search.html) it will need to change here as well
@@ -99,4 +98,4 @@ def get_rows(str_io, customers, results, hashfiles, separator):
             col.append("unrecovered")
 
         writer.writerow([col[0],col[1],col[2],col[3]])
-    return strIO
+    return str_io
