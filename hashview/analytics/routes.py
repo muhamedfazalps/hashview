@@ -6,9 +6,18 @@ import zipfile
 from collections import Counter, defaultdict
 from datetime import timedelta
 
-from flask import Blueprint, redirect, render_template, request, send_file, send_from_directory
+from flask import (
+    Blueprint,
+    abort,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+)
 from flask_login import login_required
 from sqlalchemy import func, select
+from werkzeug.utils import secure_filename
 
 from hashview.models import Customers, Hashes, HashfileHashes, Hashfiles, Jobs, Tasks, db
 
@@ -451,6 +460,42 @@ def get_analytics():
         rotations=rotations,
         strength_dist=strength_dist)
 
+def _download_scope_ids():
+    """Parse the optional customer_id / hashfile_id download args as ints.
+
+    They are always numeric resource ids; coercing to int (and rejecting
+    non-numeric input) keeps attacker-controlled strings out of the on-disk
+    output filename the download routes build, closing a path-traversal /
+    arbitrary-file-write hole (issue #216). Returns (customer_id, hashfile_id);
+    either may be None. Aborts 400 on non-numeric input.
+    """
+    def _opt_int(name):
+        raw = request.args.get(name)
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            abort(400)
+    return _opt_int('customer_id'), _opt_int('hashfile_id')
+
+
+def _tmp_download_path(filename):
+    """Resolve a download temp file inside control/tmp, refusing path traversal.
+
+    Defense-in-depth on top of the int-coerced ids: run the name through
+    secure_filename and confirm the resolved path stays within control/tmp.
+    Returns (safe_name, abs_path) -- write to abs_path, serve safe_name from
+    'control/tmp'.
+    """
+    safe_name = secure_filename(filename)
+    tmp_dir = os.path.realpath(os.path.join('hashview', 'control', 'tmp'))
+    abs_path = os.path.realpath(os.path.join(tmp_dir, safe_name))
+    if os.path.commonpath((tmp_dir, abs_path)) != tmp_dir:
+        abort(400)
+    return safe_name, abs_path
+
+
 # serve a list of cracks
 @analytics.route('/analytics/download', methods=['GET'])
 @login_required
@@ -466,17 +511,15 @@ def analytics_download_hashes():
     else:
         redirect('/analytics')
 
-    if request.args.get("customer_id"):
-        customer_id = request.args["customer_id"]
-        filename += '_' + customer_id
-    else:
-        customer_id = None
-    if request.args.get("hashfile_id"):
-        hashfile_id = request.args["hashfile_id"]
+    # customer_id / hashfile_id are coerced to int so a crafted value can't
+    # escape control/tmp via the output filename (#216).
+    customer_id, hashfile_id = _download_scope_ids()
+    if customer_id is not None:
+        filename += '_' + str(customer_id)
+    if hashfile_id is not None:
         # Append the hashfile identifier to the filename (not the customer id)
-        filename += '_' + hashfile_id
+        filename += '_' + str(hashfile_id)
     else:
-        hashfile_id = None
         filename += '_all'
 
     filename += '.txt'
@@ -494,7 +537,8 @@ def analytics_download_hashes():
         cracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='1').all()
         uncracked_hashes = db.session.query(Hashes, HashfileHashes).join(HashfileHashes, Hashes.id==HashfileHashes.hash_id).filter(Hashes.cracked=='0').all()
 
-    outfile = open('hashview/control/tmp/' + filename, 'w')
+    safe_name, outfile_path = _tmp_download_path(filename)
+    outfile = open(outfile_path, 'w')
 
     if request.args.get('type') == 'found':
         for entry in cracked_hashes:
@@ -511,7 +555,7 @@ def analytics_download_hashes():
                 outfile.write(str(entry[0].ciphertext) + "\n")
 
     outfile.close()
-    return send_from_directory('control/tmp', filename, as_attachment=True)
+    return send_from_directory('control/tmp', safe_name, as_attachment=True)
 
 # Download the list of accounts that share the same password or password hash (fig9)
 @analytics.route('/analytics/download/fig9', methods=['GET'])
@@ -525,18 +569,14 @@ def analytics_download_fig9():
     # Build a filename that reflects any filters applied
     filename = 'fig9_shared_passwords'
 
-    # Preserve any customer or hashfile filters for consistency with the
-    # main analytics view
-    if request.args.get("customer_id"):
-        customer_id = request.args["customer_id"]
-        filename += '_' + customer_id
-    else:
-        customer_id = None
-    if request.args.get("hashfile_id"):
-        hashfile_id = request.args["hashfile_id"]
-        filename += '_' + hashfile_id
-    else:
-        hashfile_id = None
+    # Preserve any customer or hashfile filters for consistency with the main
+    # analytics view. customer_id / hashfile_id are coerced to int so a crafted
+    # value can't escape control/tmp via the output filename (#216).
+    customer_id, hashfile_id = _download_scope_ids()
+    if customer_id is not None:
+        filename += '_' + str(customer_id)
+    if hashfile_id is not None:
+        filename += '_' + str(hashfile_id)
 
     filename += '.txt'
 
@@ -604,7 +644,7 @@ def analytics_download_fig9():
         )
 
     # Write usernames to the file
-    outfile_path = os.path.join('hashview', 'control', 'tmp', filename)
+    safe_name, outfile_path = _tmp_download_path(filename)
     with open(outfile_path, 'w') as outfile:
         for entry in fig9_usernames:
             if entry:
@@ -615,7 +655,7 @@ def analytics_download_fig9():
                     decoded = entry
                 outfile.write(f"{decoded}\n")
 
-    return send_from_directory('control/tmp', filename, as_attachment=True)
+    return send_from_directory('control/tmp', safe_name, as_attachment=True)
 
 @analytics.route('/analytics/download/fig8', methods=['GET'])
 @login_required
@@ -627,17 +667,13 @@ def analytics_download_fig8():
     # Build a filename that reflects any filters applied
     filename = 'fig8_same_user_pass'
 
-    if request.args.get("customer_id"):
-        customer_id = request.args["customer_id"]
-        filename += '_' + customer_id
-    else:
-        customer_id = None
-
-    if request.args.get("hashfile_id"):
-        hashfile_id = request.args["hashfile_id"]
-        filename += '_' + hashfile_id
-    else:
-        hashfile_id = None
+    # customer_id / hashfile_id are coerced to int so a crafted value can't
+    # escape control/tmp via the output filename (#216).
+    customer_id, hashfile_id = _download_scope_ids()
+    if customer_id is not None:
+        filename += '_' + str(customer_id)
+    if hashfile_id is not None:
+        filename += '_' + str(hashfile_id)
 
     filename += '.txt'
 
@@ -688,12 +724,12 @@ def analytics_download_fig8():
                 fig8_usernames.append(username)
 
     # Write usernames to the file
-    outfile_path = os.path.join('hashview', 'control', 'tmp', filename)
+    safe_name, outfile_path = _tmp_download_path(filename)
     with open(outfile_path, 'w') as outfile:
         for uname in fig8_usernames:
             outfile.write(f"{uname}\n")
 
-    return send_from_directory('control/tmp', filename, as_attachment=True)
+    return send_from_directory('control/tmp', safe_name, as_attachment=True)
 
 
 # --- Shared-password downloads (per-group txt and an all-groups zip) ---------
