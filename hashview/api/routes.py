@@ -223,7 +223,21 @@ def v1_api_set_agent_heartbeat():
             return jsonify(message)
         else:
             # check if job_task
-            agent_data = request.get_json()
+            # silent=True so an empty/invalid body returns None (-> JSON error) instead
+            # of Flask's HTML 400 page, which the agent can't parse (#212).
+            agent_data = request.get_json(silent=True)
+            if not agent_data:
+                return jsonify({
+                    'status': 400,
+                    'type': 'Error',
+                    'msg': 'Missing heartbeat data in request body'
+                })
+            if 'agent_status' not in agent_data:
+                return jsonify({
+                    'status': 400,
+                    'type': 'Error',
+                    'msg': "Missing 'agent_status' in heartbeat data"
+                })
 
             # Check authorization cookies
             if agent_data['agent_status'] == 'Working':
@@ -720,8 +734,9 @@ def v1_api_post_add_job():
             'msg': 'User not found'
         })
     
-    # Expect JSON body
-    job_data = request.get_json()
+    # Expect JSON body. silent=True so an empty/invalid body returns None (-> the JSON
+    # 400 below) instead of Flask's HTML 400 page, which JSON clients can't parse (#212).
+    job_data = request.get_json(silent=True)
     if not job_data:
         return jsonify({
             'status': 400,
@@ -1219,7 +1234,15 @@ def v1_api_put_jobtask_crackfile_upload(task_id, hash_type):
     # We really should validate if task_id is legit
     
     # save to file
-    file_contents = request.get_json()
+    # silent=True so an empty/invalid body returns None (-> JSON error) instead of
+    # Flask's HTML 400 page, which the agent can't parse (#212).
+    file_contents = request.get_json(silent=True)
+    if not file_contents or 'file' not in file_contents:
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Missing file data in request body'
+        })
 
     #for entry in lines:
     for entry in file_contents['file'].split('\n'):
@@ -1270,7 +1293,15 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
     recovered_at_least_one_hash = False
 
     # save to file
-    file_contents = request.get_json()
+    # silent=True so an empty/invalid body returns None (-> JSON error) instead of
+    # Flask's HTML 400 page, which the agent can't parse (#212).
+    file_contents = request.get_json(silent=True)
+    if not file_contents or 'file' not in file_contents:
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Missing file data in request body'
+        })
 
     # Get Hashtype from job_task_id
     job_task = JobTasks.query.get(job_task_id)
@@ -1381,7 +1412,15 @@ def v1_api_set_queue_jobtask_status():
 
     update_heartbeat(request.cookies.get('uuid'))
 
-    status_json = request.get_json()
+    # silent=True so an empty/invalid body returns None (-> JSON error) instead of
+    # Flask's HTML 400 page, which the agent can't parse (#212).
+    status_json = request.get_json(silent=True)
+    if not status_json or 'job_task_id' not in status_json or 'task_status' not in status_json:
+        return jsonify({
+            'status': 400,
+            'type': 'Error',
+            'msg': 'Missing job task status data in request body'
+        })
 
     if (update_job_task_status(jobtask_id = status_json['job_task_id'], status = status_json['task_status'])):
         message = {

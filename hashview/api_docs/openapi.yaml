@@ -1531,8 +1531,8 @@ components:
           type: string
           description: >-
             The agent's self-reported state. The server branches on "Working"
-            and "Idle"; anything else is acknowledged with OK. A missing key
-            raises an unhandled server error.
+            and "Idle"; anything else is acknowledged with OK. A missing/empty
+            body, or a body missing this key, returns body status 400.
           example: Idle
         hc_status:
           type: string
