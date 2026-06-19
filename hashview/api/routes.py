@@ -365,11 +365,12 @@ def v1_api_add_customer():
             'customer_id': customer_entry.id
         }
         return jsonify(message)
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API /v1/customers: failed to add customer')
         return jsonify({
             'status': 500,
             'type': 'Error',
-            'msg': f'Failed to add customer: {e}'
+            'msg': 'Failed to add customer.'
         })
 
 @api.route('/v1/rules', methods=['GET'])
@@ -451,13 +452,14 @@ def v1_api_add_rule(rule_name):
             decompress_gz(tmp_path, final_path)
         else:
             os.rename(tmp_path, final_path)
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API /v1/rules: failed to process rule')
         if os.path.exists(final_path):
             os.remove(final_path)
         return jsonify({
             'status': 400,
             'type': 'Error',
-            'msg': f'Failed to process rule (not valid text or gzip?): {e}'
+            'msg': 'Failed to process rule (not valid text or gzip?).'
         })
     finally:
         if os.path.exists(tmp_path):
@@ -592,11 +594,12 @@ def v1_api_add_wordlist(wordlist_name):
         with open(tmp_path, 'wb') as f:
             f.write(raw_content)
         wordlist_entry = ingest_static_wordlist_file(tmp_path, user.id, wordlist_name)
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API /v1/wordlists: failed to process wordlist')
         return jsonify({
             'status': 400,
             'type': 'Error',
-            'msg': f'Failed to process wordlist (not valid text or gzip?): {e}'
+            'msg': 'Failed to process wordlist (not valid text or gzip?).'
         })
     finally:
         if os.path.exists(tmp_path):
@@ -685,11 +688,12 @@ def v1_api_delete_job(job_id):
         JobNotifications.query.filter_by(job_id=job_id).delete()
         db.session.delete(job)
         db.session.commit()
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API /v1/jobs: failed to delete job')
         return jsonify({
             'status': 500,
             'type': 'Error',
-            'msg': f'Failed to delete job: {e}'
+            'msg': 'Failed to delete job.'
         })
 
     log_event('job.delete', actor=(user.email_address, user.id), target=job_target)
@@ -797,11 +801,12 @@ def v1_api_post_add_job():
             'job_id': job_entry.id
         }
         return jsonify(message)
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API /v1/jobs: failed to add job')
         return jsonify({
             'status': 500,
             'type': 'Error',
-            'msg': f'Failed to add job: {e}'
+            'msg': 'Failed to add job.'
         })
 
 # Start a job
@@ -946,11 +951,12 @@ def v1_api_add_task():
         )
         db.session.add(task)
         db.session.commit()
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API /v1/tasks: failed to add task')
         return jsonify({
             'status': 500,
             'type': 'Error',
-            'msg': f'Failed to add task: {e}'
+            'msg': 'Failed to add task.'
         })
 
     log_event('task.create', actor=(user.email_address, user.id),
@@ -1020,11 +1026,12 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
         with open(file_path, 'w') as f:
             f.write(raw_content)
         f.close()
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API: failed to write hashfile')
         return jsonify({
             'status': 500,
             'type': 'Error',
-            'msg': f'Failed to write hashfile: {e}'
+            'msg': 'Failed to write hashfile.'
         })
 
     # import contents from file
@@ -1107,11 +1114,12 @@ def v1_api_post_hashfile_upload(customer_id, file_format, hash_type, hashfile_na
                 'instacracked': cracked_hashfiles_hashes_cnt
             })
 
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception('API: hash import failed')
         return jsonify({
             'status': 500,
             'type': 'Error',
-            'msg': f'Hash import Failed: {e}'
+            'msg': 'Hash import Failed.'
         })
 
 # generate and serve hashfile
@@ -1234,9 +1242,8 @@ def v1_api_put_jobtask_crackfile_upload(task_id, hash_type):
                     record.recovered_at = datetime.today()
                     record.task_id = task_id
                     db.session.commit()
-                except Exception as error:
-                    print('Failed to import following cracked hash: ' + str(encoded_plaintext))
-                    print('Reason: ' + str(error))
+                except Exception:
+                    current_app.logger.exception('API: failed to import a cracked hash during agent heartbeat')
 
     # Send per-hash "recovered" notifications (email/push/slack) for any now-cracked watched hash.
     process_recovered_hash_notifications()
@@ -1313,9 +1320,8 @@ def v1_api_post_jobtask_crackfile_upload(job_task_id):
                     db.session.commit()
                     recovered_at_least_one_hash = True
 
-                except Exception as error:
-                    print('Failed to import following cracked hash: ' + str(encoded_plaintext))
-                    print('Reason: ' + str(error))
+                except Exception:
+                    current_app.logger.exception('API: failed to import a cracked hash during agent heartbeat')
 
     # Send per-hash "recovered" notifications (email/push/slack) for any now-cracked watched hash.
     process_recovered_hash_notifications()
@@ -1502,11 +1508,12 @@ def v1_api_hashes_import(hash_type):
             with open(file_path, 'w') as f:
                 f.write(raw_content)
             f.close()
-        except Exception as e:
+        except Exception:
+            current_app.logger.exception('API: failed to write file')
             return jsonify({
                 'status': 500,
                 'type': 'Error',
-                'msg': f'Failed to write file: {e}'
+                'msg': 'Failed to write file.'
             })
 
 
@@ -1533,11 +1540,12 @@ def v1_api_hashes_import(hash_type):
                                 record.recovered_at = datetime.today()
                                 record.recovered_by = user.id
                                 db.session.commit()
-                            except Exception as error:
+                            except Exception:
+                                current_app.logger.exception('API: failed to import cracked hash %s', ciphertext)
                                 return jsonify({
                                     'status': 500,
                                     'type': 'Error',
-                                    'msg': f'Failed to import following cracked hash {str(ciphertext)}: {str(error)}'
+                                    'msg': 'Failed to import cracked hash.'
                                 })  
                     else:
                         return jsonify({
@@ -1545,11 +1553,12 @@ def v1_api_hashes_import(hash_type):
                             'type': 'Error',
                             'msg': f'Plaintext for hash {ciphertext}, was found to be invalid.'
                         })
-        except Exception as e:
+        except Exception:
+            current_app.logger.exception('API: failed to open/parse uploaded file')
             return jsonify({
                 'status': 500,
                 'type': 'Error',
-                'msg': f'Failed to openfile file: {e}'
+                'msg': 'Failed to open file.'
             })
 
         # Send per-hash "recovered" notifications (email/push/slack) for any now-cracked watched hash.
